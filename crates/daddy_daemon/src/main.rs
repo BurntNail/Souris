@@ -19,6 +19,10 @@ fn c (c: char) -> Value {
 }
 
 fn main() {
+    
+}
+
+fn ser_test() {
     let mut store = Store::new();
     
     store.insert(s("Date"), i(4));
@@ -27,6 +31,9 @@ fn main() {
     store.insert(s("Is Pretty Sick"), b(true));
     store.insert(i(69), s("Funny Sex Number"));
     store.insert(b(false), bin(&(0xDEADBEEF_u32.to_le_bytes())));
+    store.insert(i(420), bin(&(u128::MAX.to_le_bytes())));
+
+    println!("{store:?}");
 
     let serialised = store.ser().unwrap();
     
