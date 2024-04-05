@@ -1,4 +1,4 @@
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Value {
     Ch(char),
     String(String),
@@ -28,7 +28,7 @@ impl ValueTy {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub enum ValueFailure {
     TooLong,
     InvalidType(u8),
@@ -78,25 +78,17 @@ impl Value {
 
         match self {
             Self::Ch(ch) => {
-                for b in (ch as u32).to_le_bytes() {
-                    res.push(b);
-                }
+                res.extend((ch as u32).to_le_bytes());
             }
             Self::String(s) => {
-                for b in s.as_bytes() {
-                    res.push(*b);
-                }
+                res.extend(s.as_bytes().iter());
             }
             Self::Binary(b) => {
-                for b in b {
-                    res.push(b);
-                }
+                res.extend(b.iter());
             }
             Self::Bool(_) => unreachable!("reached bool after niche optimisations applied uh oh"),
             Self::Int(i) => {
-                for b in i.to_le_bytes() {
-                    res.push(b);
-                }
+                res.extend(i.to_le_bytes().iter());
             }
         }
 
@@ -113,7 +105,7 @@ impl Value {
         let mut state = State::Start;
         let mut tmp: Vec<u8> = vec![];
 
-        for byte in bytes.into_iter() {
+        for byte in bytes.iter() {
             let byte = *byte;
             state = match state {
                 State::Start => {
@@ -138,7 +130,7 @@ impl Value {
             }
         }
 
-        return Ok(match state {
+        Ok(match state {
             State::Start => return Err(ValueFailure::Empty),
             State::FoundType(ty, ty_byte) => {
                 let relevant_niche = ty_byte & 0b000_11111;
@@ -152,33 +144,31 @@ impl Value {
                 let tmp = std::mem::take(&mut tmp);
                 match ty {
                     ValueTy::Ch => {
-                        let ch = unsafe {
-                            char::from_u32_unchecked(u32::from_le_bytes(
-                                tmp.try_into().unwrap_unchecked(),
-                            ))
-                        };
+                        let ch =
+                            char::from_u32(u32::from_le_bytes(
+                                tmp.try_into().unwrap(),
+                            )).unwrap();
                         Self::Ch(ch)
                     }
                     ValueTy::String => {
-                        let st = unsafe { String::from_utf8_unchecked(tmp) };
+                        let st = String::from_utf8(tmp).unwrap();
                         Self::String(st)
                     }
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
                     ValueTy::Int => {
-                        let int = unsafe { i64::from_le_bytes(tmp.try_into().unwrap_unchecked()) };
+                        let int = i64::from_le_bytes(tmp.try_into().unwrap());
                         Self::Int(int)
                     }
                 }
             }
-        });
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::values::{ValueFailure, ValueTy};
-
+    use crate::values::ValueTy;
     use super::Value;
 
     #[test]
