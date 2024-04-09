@@ -208,6 +208,12 @@ mod tests {
             let neg = Value::Int(Integer::i8(-15));
             let ser = neg.clone().serialise().unwrap();
             
+            print!("Got [");
+            for byte in &ser {
+                print!("{byte:#b}, ");
+            }
+            println!("]");
+            
             assert_eq!(neg, Value::deserialise(&ser).unwrap());
         }
         {

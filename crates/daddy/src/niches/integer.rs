@@ -8,6 +8,50 @@ pub enum Integer {
     Large([u8; 8], bool),
 }
 
+#[derive(Copy, Clone, Debug)]
+enum IntegerDiscriminant {
+    Small,
+    Smedium,
+    Medium,
+    Large
+}
+
+impl IntegerDiscriminant {
+    pub const fn bytes(self) -> usize {
+        match self {
+            IntegerDiscriminant::Small => 1,
+            IntegerDiscriminant::Smedium => 2,
+            IntegerDiscriminant::Medium => 4,
+            IntegerDiscriminant::Large => 8
+        }
+    }
+}
+
+impl From<IntegerDiscriminant> for u8 {
+    fn from(value: IntegerDiscriminant) -> Self {
+        match value {
+            IntegerDiscriminant::Small => 0b001,
+            IntegerDiscriminant::Smedium => 0b010,
+            IntegerDiscriminant::Medium => 0b011,
+            IntegerDiscriminant::Large => 0b100,
+        }
+    }
+}
+
+impl TryFrom<u8> for IntegerDiscriminant {
+    type Error = IntegerSerError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0b001 => Ok(Self::Small),
+            0b010 => Ok(Self::Smedium),
+            0b011 => Ok(Self::Medium),
+            0b100 => Ok(Self::Large),
+            _ => Err(IntegerSerError::InvalidDiscriminant),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum IntegerSerError {
     InvalidDiscriminant,
@@ -22,78 +66,133 @@ impl From<IOError> for IntegerSerError {
 }
 
 impl Integer {
-    pub fn ser (self) -> Vec<u8> {
-        let mut res = vec![];
-
-        let disc: u8 = match &self {
-            Self::Small(_, true) =>    0b0001_0001,
-            Self::Small(_, false) =>   0b0001_0000,
-            Self::Medium(_, true) =>   0b0010_0001,
-            Self::Medium(_, false) =>  0b0010_0000,
-            Self::Smedium(_, true) =>  0b0011_0001,
-            Self::Smedium(_, false) => 0b0011_0000,
-            Self::Large(_, true) =>    0b0100_0001,
-            Self::Large(_, false) =>   0b0100_0000
-        };
-        res.push(disc);
-
+    fn to_disc (self) -> IntegerDiscriminant {
         match self {
-            Self::Small(b, _) => res.push(b[0]),
-            Self::Smedium(b, _) => res.extend(b),
-            Self::Medium(b, _) => res.extend(b),
-            Self::Large(b, _) => res.extend(b)
+            Self::Small(_, _) => IntegerDiscriminant::Small,
+            Self::Smedium(_, _) => IntegerDiscriminant::Smedium,
+            Self::Medium(_, _) => IntegerDiscriminant::Medium,
+            Self::Large(_, _) => IntegerDiscriminant::Large,
+        }
+    }
+
+    pub fn ser (self) -> Vec<u8> {
+        //disc structure:
+        //1 bit: is signed
+        //3 bits: original size
+        //3 bits: stored size
+
+        let original_size = self.to_disc();
+        let mut at_max = [0_u8; 8];
+        let is_signed = match self {
+            Self::Small(b, s) => {
+                for (i, b) in b.into_iter().enumerate() {
+                    at_max[i] = b;
+                }
+                s as u8
+            },
+            Self::Smedium(b, s) => {
+                for (i, b) in b.into_iter().enumerate() {
+                    at_max[i] = b;
+                }
+                s as u8
+            },
+            Self::Medium(b, s) => {
+                for (i, b) in b.into_iter().enumerate() {
+                    at_max[i] = b;
+                }
+                s as u8
+            },
+            Self::Large(b, s) => {
+                for (i, b) in b.into_iter().enumerate() {
+                    at_max[i] = b;
+                }
+                s as u8
+            },
         };
+
+        let mut res: Vec<u8> = Vec::with_capacity(9);
+        let at_max_u64 = u64::from_le_bytes(at_max);
+        let stored_size = if at_max_u64 < u8::MAX as u64 {
+            res.extend(&at_max[0..1]);
+            IntegerDiscriminant::Small
+        } else if at_max_u64 < u16::MAX as u64 {
+            res.extend(&at_max[0..2]);
+            IntegerDiscriminant::Smedium
+        } else if at_max_u64 < u32::MAX as u64 {
+            res.extend(&at_max[0..4]);
+            IntegerDiscriminant::Medium
+        } else {
+            res.extend(at_max);
+            IntegerDiscriminant::Large
+        };
+
+        let discriminant: u8 = (is_signed << 7) | (u8::from(original_size) << 4) | (u8::from(stored_size) << 1);
+        res.insert(0, discriminant);
 
         res
     }
 
     pub fn deser<R: Read> (mut reader: R) -> Result<Self, IntegerSerError> {
         let mut discriminant = [0_u8];
-        match reader.read(&mut discriminant)? {
-            0 => return Err(IntegerSerError::NotEnoughBytes),
-            1 => {},
+        let (is_signed, original, stored) = match reader.read(&mut discriminant)? {
+            0 => {
+                return Err(IntegerSerError::NotEnoughBytes)
+            },
+            1 => {
+                let [discriminant] = discriminant;
+                let is_signed = discriminant >> 7 > 0;
+                let original = IntegerDiscriminant::try_from((discriminant & 0b0111_0000) >> 4)?;
+                let stored = IntegerDiscriminant::try_from((discriminant & 0b0000_1110) >> 1)?;
+
+                (is_signed, original, stored)
+            },
             _ => unreachable!("Can only read 1 byte"),
-        }
-        let [discriminant] = discriminant;
-        let is_signed = discriminant << 4 > 0;
+        };
 
-        match discriminant >> 4 {
-            0b0001 => {
+        let mut tmp = [0_u8; 1];
+        let mut read_bytes = Vec::with_capacity(stored.bytes());
+        loop {
+            match reader.read(&mut tmp)? {
+                0 => if read_bytes.len() == stored.bytes() {
+                    break;
+                } else {
+                    eprintln!("Expected to read {} bytes only read {} bytes", stored.bytes(), read_bytes.len());
+                    return Err(IntegerSerError::NotEnoughBytes)
+                },
+                n => read_bytes.extend(&tmp[0..n])
+            }
+        }
+
+        Ok(match original {
+            IntegerDiscriminant::Small => {
                 let mut bytes = [0_u8; 1];
-                match reader.read(&mut bytes)? {
-                    n if n < 1 => Err(IntegerSerError::NotEnoughBytes),
-                    1 => Ok(Self::Small(bytes, is_signed)),
-                    _ => unreachable!("Can only read 1 byte"),
+                for (i, b) in read_bytes.into_iter().enumerate() {
+                    bytes[i] = b;
                 }
-            },
-            0b0010 => {
+                Self::Small(bytes, is_signed)
+            }
+            IntegerDiscriminant::Smedium => {
                 let mut bytes = [0_u8; 2];
-                match reader.read(&mut bytes)? {
-                    n if n < 2 => Err(IntegerSerError::NotEnoughBytes),
-                    2 => Ok(Self::Smedium(bytes, is_signed)),
-                    _ => unreachable!("Can only read 1 byte"),
+                for (i, b) in read_bytes.into_iter().enumerate() {
+                    bytes[i] = b;
                 }
-            },
-            0b0011 => {
+                Self::Smedium(bytes, is_signed)
+            }
+            IntegerDiscriminant::Medium => {
                 let mut bytes = [0_u8; 4];
-                match reader.read(&mut bytes)? {
-                    n if n < 4 => Err(IntegerSerError::NotEnoughBytes),
-                    4 => Ok(Self::Medium(bytes, is_signed)),
-                    _ => unreachable!("Can only read 1 byte"),
+                for (i, b) in read_bytes.into_iter().enumerate() {
+                    bytes[i] = b;
                 }
-
+                Self::Medium(bytes, is_signed)
             },
-            0b0100 => {
+            IntegerDiscriminant::Large => {
                 let mut bytes = [0_u8; 8];
-                match reader.read(&mut bytes)? {
-                    n if n < 8 => Err(IntegerSerError::NotEnoughBytes),
-                    8 => Ok(Self::Large(bytes, is_signed)),
-                    _ => unreachable!("Can only read 1 byte"),
+                for (i, b) in read_bytes.into_iter().enumerate() {
+                    bytes[i] = b;
                 }
-
-            },
-            _ => Err(IntegerSerError::InvalidDiscriminant),
-        }
+                Self::Large(bytes, is_signed)
+            }
+        })
     }
 }
 

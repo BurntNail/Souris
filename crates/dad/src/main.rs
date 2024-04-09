@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use core::panic;
 use std::{
     fs::File,
@@ -24,8 +26,11 @@ fn c(c: char) -> Value {
 }
 
 fn main() {
-    deser_specific();
+    // deser_specific();
+    ser_test();
+    deser_test();
 }
+
 
 fn deser_test() {
     let mut file = File::open("db.ddb").unwrap();
