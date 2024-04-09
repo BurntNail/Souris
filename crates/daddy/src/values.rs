@@ -1,10 +1,13 @@
+use std::io::Cursor;
+use crate::niches::integer::{Integer, IntegerSerError};
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Value {
     Ch(char),
     String(String),
     Binary(Vec<u8>),
     Bool(bool),
-    Int(i64),
+    Int(Integer),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -33,6 +36,13 @@ pub enum ValueFailure {
     TooLong,
     InvalidType(u8),
     Empty,
+    IntegerSerFailure(IntegerSerError),
+}
+
+impl From<IntegerSerError> for ValueFailure {
+    fn from(value: IntegerSerError) -> Self {
+        Self::IntegerSerFailure(value)
+    }
 }
 
 impl Value {
@@ -66,7 +76,6 @@ impl Value {
 
         let niche = match &self {
             Self::Bool(b) => Some(if *b { 1 } else { 0 }),
-            Self::Int(i) if (*i < (1 << 5) && *i >= 0) => Some(*i as u8),
             _ => None,
         };
         if let Some(niche) = niche {
@@ -88,7 +97,7 @@ impl Value {
             }
             Self::Bool(_) => unreachable!("reached bool after niche optimisations applied uh oh"),
             Self::Int(i) => {
-                res.extend(i.to_le_bytes().iter());
+                res.extend(i.ser().iter());
             }
         }
 
@@ -136,8 +145,7 @@ impl Value {
                 let relevant_niche = ty_byte & 0b000_11111;
                 match ty {
                     ValueTy::Bool => Value::Bool(relevant_niche > 0),
-                    ValueTy::Int => Value::Int(relevant_niche as i64),
-                    _ => unreachable!("no other niche optimisations apart from bool & int"),
+                    _ => unreachable!("no other niche optimisations apart from bool"),
                 }
             }
             State::FindingContent(ty) => {
@@ -157,7 +165,7 @@ impl Value {
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
                     ValueTy::Int => {
-                        let int = i64::from_le_bytes(tmp.try_into().unwrap());
+                        let int = Integer::deser(Cursor::new(tmp))?;
                         Self::Int(int)
                     }
                 }
@@ -168,6 +176,7 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
+    use crate::niches::integer::Integer;
     use crate::values::ValueTy;
     use super::Value;
 
@@ -196,32 +205,15 @@ mod tests {
     #[test]
     fn test_ints() {
         {
-            let smol = Value::Int(5);
-            let ser = smol.clone().serialise().unwrap();
-
-            let expected = &[ValueTy::Int.id() << 5 | 5];
-            assert_eq!(&ser, expected);
-
-            assert_eq!(smol, Value::deserialise(&ser).unwrap());
-        }
-        {
-            let neg = Value::Int(-15);
+            let neg = Value::Int(Integer::i8(-15));
             let ser = neg.clone().serialise().unwrap();
-
-            let bytes = (-15_i64).to_le_bytes();
-            let expected = &[ValueTy::Int.id() << 5, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]];
-            assert_eq!(&ser, expected);
-
+            
             assert_eq!(neg, Value::deserialise(&ser).unwrap());
         }
         {
-            let big = Value::Int(1234567890);
+            let big = Value::Int(Integer::usize(123456789));
             let ser = big.clone().serialise().unwrap();
-
-            let bytes = (1234567890_i64).to_le_bytes();
-            let expected = &[ValueTy::Int.id() << 5, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]];
-            assert_eq!(&ser, expected);
-
+            
             assert_eq!(big, Value::deserialise(&ser).unwrap());
         }
     }

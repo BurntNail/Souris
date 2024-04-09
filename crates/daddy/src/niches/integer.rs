@@ -1,5 +1,6 @@
 use std::io::{Error as IOError, Read};
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Integer {
     Small([u8; 1], bool),
     Smedium([u8; 2], bool),

@@ -5,12 +5,13 @@ use std::{
 };
 
 use daddy::{store::Store, values::Value};
+use daddy::niches::integer::Integer;
 
 fn s(s: &str) -> Value {
     Value::String(s.to_string())
 }
 fn i(i: i64) -> Value {
-    Value::Int(i)
+    Value::Int(Integer::i64(i))
 }
 fn b(b: bool) -> Value {
     Value::Bool(b)
@@ -37,7 +38,7 @@ fn deser_test() {
                 if n == 0 {
                     break;
                 } else {
-                    bytes.extend((&tmp[0..n]).iter().cloned())
+                    bytes.extend(tmp[0..n].iter().cloned())
                 }
             }
             Err(e) => panic!("Error reading file: {e:?}"),
