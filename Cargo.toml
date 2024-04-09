@@ -1,3 +1,3 @@
 [workspace]
-members = [ "crates/dad","crates/daddy", "crates/daddy_daemon"]
+members = [ "crates/dad","crates/daddy", "crates/dad"]
 resolver = "2"
