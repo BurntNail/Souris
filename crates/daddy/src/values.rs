@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::io::{Cursor, Read, Error as IOError, SeekFrom, Seek};
 use crate::niches::integer::{Integer, IntegerSerError};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -32,16 +32,23 @@ impl ValueTy {
 }
 
 #[derive(Debug)]
-pub enum ValueFailure {
+pub enum ValueSerError {
     TooLong,
     InvalidType(u8),
     Empty,
     IntegerSerFailure(IntegerSerError),
+    NotEnoughBytes,
+    IOError(IOError)
 }
 
-impl From<IntegerSerError> for ValueFailure {
+impl From<IntegerSerError> for ValueSerError {
     fn from(value: IntegerSerError) -> Self {
         Self::IntegerSerFailure(value)
+    }
+}
+impl From<IOError> for ValueSerError {
+    fn from(value: IOError) -> Self {
+        Self::IOError(value)
     }
 }
 
@@ -68,7 +75,7 @@ impl Value {
     ///     5 bits: zero
     ///     length bytes: content
     ///     4 bytes: end
-    pub fn serialise(self) -> Result<Vec<u8>, ValueFailure> {
+    pub fn serialise(self) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
         let vty = self.to_ty();
@@ -104,7 +111,7 @@ impl Value {
         Ok(res)
     }
 
-    pub fn deserialise(bytes: &[u8]) -> Result<Self, ValueFailure> {
+    pub fn deserialise(bytes: &mut Cursor<impl Read + AsRef<[u8]>>, len: usize) -> Result<Self, ValueSerError> {
         enum State {
             Start,
             FoundType(ValueTy, u8),
@@ -112,10 +119,22 @@ impl Value {
         }
 
         let mut state = State::Start;
-        let mut tmp: Vec<u8> = vec![];
 
-        for byte in bytes.iter() {
-            let byte = *byte;
+        let mut tmp = vec![];
+        let mut byte = [0_u8];
+        let starting_pos = bytes.position();
+
+        loop {
+            if bytes.position() - starting_pos == len as u64 {
+                break;
+            }
+            
+            let byte = match bytes.read(&mut byte)? {
+                0 => return Err(ValueSerError::NotEnoughBytes),
+                1 => byte[0],
+                n => unreachable!("only reads 1 byte lol, read {n}")
+            };
+
             state = match state {
                 State::Start => {
                     let ty = match byte >> 5 {
@@ -124,7 +143,7 @@ impl Value {
                         0b010 => ValueTy::Binary,
                         0b011 => ValueTy::Bool,
                         0b100 => ValueTy::Int,
-                        _ => return Err(ValueFailure::InvalidType(byte >> 5)),
+                        _ => return Err(ValueSerError::InvalidType(byte >> 5)),
                     };
                     State::FoundType(ty, byte)
                 }
@@ -137,10 +156,12 @@ impl Value {
                     State::FindingContent(ty)
                 }
             }
+
         }
 
+
         Ok(match state {
-            State::Start => return Err(ValueFailure::Empty),
+            State::Start => return Err(ValueSerError::Empty),
             State::FoundType(ty, ty_byte) => {
                 let relevant_niche = ty_byte & 0b000_11111;
                 match ty {
@@ -165,7 +186,8 @@ impl Value {
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
                     ValueTy::Int => {
-                        let int = Integer::deser(Cursor::new(tmp))?;
+                        bytes.seek(SeekFrom::Current(-(tmp.len() as i64)))?;
+                        let int = Integer::deser(bytes)?;
                         Self::Int(int)
                     }
                 }
@@ -176,6 +198,7 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     use crate::niches::integer::Integer;
     use crate::values::ValueTy;
     use super::Value;
@@ -189,7 +212,7 @@ mod tests {
             let expected = &[ValueTy::Bool.id() << 5 | 1];
             assert_eq!(&ser, expected);
 
-            assert_eq!(t, Value::deserialise(&ser).unwrap());
+            assert_eq!(t, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
         }
         {
             let f = Value::Bool(false);
@@ -198,7 +221,7 @@ mod tests {
             let expected = &[ValueTy::Bool.id() << 5];
             assert_eq!(&ser, expected);
 
-            assert_eq!(f, Value::deserialise(&ser).unwrap());
+            assert_eq!(f, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
         }
     }
 
@@ -208,19 +231,13 @@ mod tests {
             let neg = Value::Int(Integer::i8(-15));
             let ser = neg.clone().serialise().unwrap();
             
-            print!("Got [");
-            for byte in &ser {
-                print!("{byte:#b}, ");
-            }
-            println!("]");
-            
-            assert_eq!(neg, Value::deserialise(&ser).unwrap());
+            assert_eq!(neg, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
         }
         {
             let big = Value::Int(Integer::usize(123456789));
             let ser = big.clone().serialise().unwrap();
             
-            assert_eq!(big, Value::deserialise(&ser).unwrap());
+            assert_eq!(big, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
         }
     }
 }

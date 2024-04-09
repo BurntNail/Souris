@@ -12,8 +12,8 @@ use daddy::niches::integer::Integer;
 fn s(s: &str) -> Value {
     Value::String(s.to_string())
 }
-fn i(i: i64) -> Value {
-    Value::Int(Integer::i64(i))
+fn i(i: Integer) -> Value {
+    Value::Int(i)
 }
 fn b(b: bool) -> Value {
     Value::Bool(b)
@@ -26,7 +26,6 @@ fn c(c: char) -> Value {
 }
 
 fn main() {
-    // deser_specific();
     ser_test();
     deser_test();
 }
@@ -55,44 +54,17 @@ fn deser_test() {
     println!("{store:#?}");
 }
 
-fn deser_specific() {
-    let mut file = File::open("db.ddb").unwrap();
-    let mut bytes: Vec<u8> = vec![];
-
-    let mut tmp = [0_u8; 128];
-    loop {
-        match file.read(&mut tmp) {
-            Ok(n) => {
-                if n == 0 {
-                    break;
-                } else {
-                    bytes.extend((&tmp[0..n]).iter().cloned())
-                }
-            }
-            Err(e) => panic!("Error reading file: {e:?}"),
-        }
-    }
-
-    let dead = Store::deser_specific(&bytes, b(false)).unwrap();
-    println!("> what state is my beef, computer?");
-    let Value::Binary(b) = dead else {panic!("wrong type found")};
-    let n: u32 = u32::from_le_bytes(b.try_into().unwrap());
-    println!("{n:#X}");
-}
-
 fn ser_test() {
     let mut store = Store::new();
 
-    store.insert(s("Date"), i(4));
-    store.insert(s("Month"), i(1));
-    store.insert(s("Year"), i(2006));
+    store.insert(s("Date"), i(Integer::u8(12)));
+    store.insert(s("Month"), i(Integer::u32(32)));
+    store.insert(s("Year"), i(Integer::i64(-2006)));
     store.insert(s("Is Pretty Sick"), b(true));
-    store.insert(i(69), s("Funny Sex Number"));
+    store.insert(i(Integer::u64(69)), s("Funny Sex Number"));
     store.insert(b(false), bin(&(0xDEADBEEF_u32.to_le_bytes())));
-    store.insert(i(420), bin(&(u128::MAX.to_le_bytes())));
-
-    println!("{store:?}");
-
+    store.insert(i(Integer::u16(12)), bin(&(u128::MAX.to_le_bytes())));
+    
     let serialised = store.ser().unwrap();
 
     let mut file = File::create("db.ddb").unwrap();

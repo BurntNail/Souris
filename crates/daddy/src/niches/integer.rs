@@ -1,6 +1,7 @@
-use std::io::{Error as IOError, Read};
+use std::fmt::{Debug, Display, Formatter};
+use std::io::{Cursor, Error as IOError, Read};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Integer {
     Small([u8; 1], bool),
     Smedium([u8; 2], bool),
@@ -56,6 +57,7 @@ impl TryFrom<u8> for IntegerDiscriminant {
 pub enum IntegerSerError {
     InvalidDiscriminant,
     NotEnoughBytes,
+    WrongType,
     IOError(IOError)
 }
 
@@ -132,7 +134,7 @@ impl Integer {
         res
     }
 
-    pub fn deser<R: Read> (mut reader: R) -> Result<Self, IntegerSerError> {
+    pub fn deser (reader: &mut Cursor<impl Read + AsRef<[u8]>>) -> Result<Self, IntegerSerError> {
         let mut discriminant = [0_u8];
         let (is_signed, original, stored) = match reader.read(&mut discriminant)? {
             0 => {
@@ -152,15 +154,14 @@ impl Integer {
         let mut tmp = [0_u8; 1];
         let mut read_bytes = Vec::with_capacity(stored.bytes());
         loop {
-            match reader.read(&mut tmp)? {
-                0 => if read_bytes.len() == stored.bytes() {
-                    break;
-                } else {
-                    eprintln!("Expected to read {} bytes only read {} bytes", stored.bytes(), read_bytes.len());
-                    return Err(IntegerSerError::NotEnoughBytes)
-                },
-                n => read_bytes.extend(&tmp[0..n])
+            if read_bytes.len() == stored.bytes() {
+                break;
             }
+
+            match reader.read(&mut tmp)? {
+                0 => return Err(IntegerSerError::NotEnoughBytes),
+                n => read_bytes.extend(&tmp[0..n]),
+            };
         }
 
         Ok(match original {
@@ -206,14 +207,14 @@ macro_rules! new_x {
         }
 
         impl TryInto<$t> for Integer {
-            type Error = ();
+            type Error = IntegerSerError;
 
             fn try_into(self) -> Result<$t, Self::Error> {
                 match self {
                     Self::$self_ty(bytes, $is_signed) => {
                         Ok(<$t>::from_le_bytes(bytes))
                     },
-                    _ => Err(())
+                    _ => Err(IntegerSerError::WrongType)
                 }
             }
         }
@@ -230,3 +231,35 @@ new_x!(usize, true => usize, Large);
 new_x!(isize, true => isize, Large);
 new_x!(u64, false => u64, Large);
 new_x!(i64, true => i64, Large);
+
+impl Display for Integer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Small(b, true) => write!(f, "{}", i8::from_le_bytes(*b)),
+            Self::Small(b, false) => write!(f, "{}", u8::from_le_bytes(*b)),
+            Self::Smedium(b, true) => write!(f, "{}", i16::from_le_bytes(*b)),
+            Self::Smedium(b, false) => write!(f, "{}", u16::from_le_bytes(*b)),
+            Self::Medium(b, true) => write!(f, "{}", i32::from_le_bytes(*b)),
+            Self::Medium(b, false) => write!(f, "{}", u32::from_le_bytes(*b)),
+            Self::Large(b, true) => write!(f, "{}", i64::from_le_bytes(*b)),
+            Self::Large(b, false) => write!(f, "{}", u64::from_le_bytes(*b)),
+        }
+    }
+}
+
+impl Debug for Integer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let displayed = self.to_string();
+        let is_signed = match self {
+            Self::Small(_, b) => *b,
+            Self::Smedium(_, b) => *b,
+            Self::Medium(_, b) => *b,
+            Self::Large(_, b) => *b,
+        };
+        
+        f.debug_struct("Integer")
+            .field("variant", &self.to_disc())
+            .field("is_signed", &is_signed)
+            .field("value", &displayed).finish()
+    }
+}
