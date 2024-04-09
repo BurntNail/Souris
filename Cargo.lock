@@ -3,12 +3,12 @@
 version = 3
 
 [[package]]
-name = "daddy"
-version = "0.1.0"
-
-[[package]]
-name = "daddy_daemon"
+name = "dad"
 version = "0.1.0"
 dependencies = [
  "daddy",
 ]
+
+[[package]]
+name = "daddy"
+version = "0.1.0"
