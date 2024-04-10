@@ -1,5 +1,7 @@
-use std::fmt::{Debug, Display, Formatter};
-use std::io::{Cursor, Error as IOError, Read};
+use std::{
+    fmt::{Debug, Display, Formatter},
+    io::{Cursor, Error as IOError, Read},
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub enum IntegerContent {
@@ -174,7 +176,7 @@ impl Debug for Integer {
         let signed_state = self.signed_state;
 
         f.debug_struct("Integer")
-            .field("variant", &self.to_disc())
+            .field("variant", &self.as_disc())
             .field("signed_state", &signed_state)
             .field("value", &displayed)
             .finish()
@@ -243,7 +245,7 @@ impl From<IOError> for IntegerSerError {
 }
 
 impl Integer {
-    fn to_disc(&self) -> IntegerDiscriminant {
+    fn as_disc(&self) -> IntegerDiscriminant {
         match &self.content {
             IntegerContent::Small(_) => IntegerDiscriminant::Small,
             IntegerContent::Smedium(_) => IntegerDiscriminant::Smedium,
@@ -258,7 +260,7 @@ impl Integer {
         //3 bits: original size
         //3 bits: stored size
 
-        let original_size = self.to_disc();
+        let original_size = self.as_disc();
         let mut at_max = [0_u8; 8];
         let stored_size = match self.content {
             IntegerContent::Small([b]) => {
@@ -293,7 +295,7 @@ impl Integer {
         res.extend(&at_max[0..stored_size.bytes()]);
 
         println!("Storing {self} from {original_size:?} in {stored_size:?}");
-        
+
         res
     }
 
@@ -333,7 +335,7 @@ impl Integer {
                 }
                 Self {
                     signed_state,
-                    content: IntegerContent::Small(bytes)
+                    content: IntegerContent::Small(bytes),
                 }
             }
             IntegerDiscriminant::Smedium => {
@@ -343,7 +345,7 @@ impl Integer {
                 }
                 Self {
                     signed_state,
-                    content: IntegerContent::Smedium(bytes)
+                    content: IntegerContent::Smedium(bytes),
                 }
             }
             IntegerDiscriminant::Medium => {
@@ -353,7 +355,7 @@ impl Integer {
                 }
                 Self {
                     signed_state,
-                    content: IntegerContent::Medium(bytes)
+                    content: IntegerContent::Medium(bytes),
                 }
             }
             IntegerDiscriminant::Large => {
@@ -363,7 +365,7 @@ impl Integer {
                 }
                 Self {
                     signed_state,
-                    content: IntegerContent::Large(bytes)
+                    content: IntegerContent::Large(bytes),
                 }
             }
         })

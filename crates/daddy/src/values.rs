@@ -1,6 +1,8 @@
-use crate::niches::integer::Integer;
-use crate::niches::integer::IntegerSerError;
-use std::io::{Cursor, Error as IOError, Read, Seek, SeekFrom};
+use crate::niches::integer::{Integer, IntegerSerError};
+use std::{
+    io::{Cursor, Error as IOError, Read, Seek, SeekFrom},
+    string::FromUtf8Error,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Value {
@@ -40,6 +42,8 @@ pub enum ValueSerError {
     IntegerSerFailure(IntegerSerError),
     NotEnoughBytes,
     IOError(IOError),
+    InvalidCharacter,
+    NonUTF8String(FromUtf8Error),
 }
 
 impl From<IntegerSerError> for ValueSerError {
@@ -50,6 +54,11 @@ impl From<IntegerSerError> for ValueSerError {
 impl From<IOError> for ValueSerError {
     fn from(value: IOError) -> Self {
         Self::IOError(value)
+    }
+}
+impl From<FromUtf8Error> for ValueSerError {
+    fn from(value: FromUtf8Error) -> Self {
+        Self::NonUTF8String(value)
     }
 }
 
@@ -175,18 +184,23 @@ impl Value {
                 let tmp = std::mem::take(&mut tmp);
                 match ty {
                     ValueTy::Ch => {
-                        let ch =
-                            char::from_u32(u32::from_le_bytes(tmp.try_into().unwrap())).unwrap();
+                        let ch = char::from_u32(u32::from_le_bytes(
+                            tmp.try_into().expect("tmp is incorrect length"),
+                        ))
+                        .ok_or(ValueSerError::InvalidCharacter)?;
                         Self::Ch(ch)
                     }
                     ValueTy::String => {
-                        let st = String::from_utf8(tmp).unwrap();
+                        let st = String::from_utf8(tmp)?;
                         Self::String(st)
                     }
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
                     ValueTy::Int => {
-                        bytes.seek(SeekFrom::Current(-(tmp.len() as i64)))?;
+                        bytes.seek(SeekFrom::Current(
+                            -(i64::try_from(tmp.len())
+                                .expect("tmp too big to seek from in reverse")),
+                        ))?;
                         let int = Integer::deser(bytes)?;
                         Self::Int(int)
                     }
@@ -199,8 +213,7 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::Value;
-    use crate::niches::integer::IntegerContent;
-    use crate::values::ValueTy;
+    use crate::{niches::integer::IntegerContent, values::ValueTy};
     use std::io::Cursor;
 
     #[test]

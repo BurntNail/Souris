@@ -1,17 +1,14 @@
 use core::panic;
-use std::io::{Cursor, Seek, SeekFrom};
 use std::{
     collections::{HashMap, VecDeque},
-    io::Error as IOError,
+    io::{Cursor, Error as IOError, Seek, SeekFrom},
     ops::{Index, IndexMut},
 };
 
-use crate::niches::integer::Integer;
-use crate::niches::integer::IntegerSerError;
-use crate::version::VersionSerError;
 use crate::{
+    niches::integer::{Integer, IntegerSerError},
     values::{Value, ValueSerError},
-    version::Version,
+    version::{Version, VersionSerError},
 };
 
 #[derive(Debug)]

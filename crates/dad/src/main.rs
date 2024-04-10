@@ -6,8 +6,7 @@ use std::{
     io::{Read, Write},
 };
 
-use daddy::niches::integer::{Integer};
-use daddy::{store::Store, values::Value};
+use daddy::{niches::integer::Integer, store::Store, values::Value};
 
 fn s(s: &str) -> Value {
     Value::String(s.to_string())
