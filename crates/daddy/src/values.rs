@@ -1,5 +1,6 @@
-use std::io::{Cursor, Read, Error as IOError, SeekFrom, Seek};
-use crate::niches::integer::{Integer, IntegerSerError};
+use crate::niches::integer::Integer;
+use crate::niches::integer::IntegerSerError;
+use std::io::{Cursor, Error as IOError, Read, Seek, SeekFrom};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Value {
@@ -38,7 +39,7 @@ pub enum ValueSerError {
     Empty,
     IntegerSerFailure(IntegerSerError),
     NotEnoughBytes,
-    IOError(IOError)
+    IOError(IOError),
 }
 
 impl From<IntegerSerError> for ValueSerError {
@@ -111,7 +112,10 @@ impl Value {
         Ok(res)
     }
 
-    pub fn deserialise(bytes: &mut Cursor<impl Read + AsRef<[u8]>>, len: usize) -> Result<Self, ValueSerError> {
+    pub fn deserialise(
+        bytes: &mut Cursor<impl Read + AsRef<[u8]>>,
+        len: usize,
+    ) -> Result<Self, ValueSerError> {
         enum State {
             Start,
             FoundType(ValueTy, u8),
@@ -128,11 +132,11 @@ impl Value {
             if bytes.position() - starting_pos == len as u64 {
                 break;
             }
-            
+
             let byte = match bytes.read(&mut byte)? {
                 0 => return Err(ValueSerError::NotEnoughBytes),
                 1 => byte[0],
-                n => unreachable!("only reads 1 byte lol, read {n}")
+                n => unreachable!("only reads 1 byte lol, read {n}"),
             };
 
             state = match state {
@@ -156,9 +160,7 @@ impl Value {
                     State::FindingContent(ty)
                 }
             }
-
         }
-
 
         Ok(match state {
             State::Start => return Err(ValueSerError::Empty),
@@ -174,9 +176,7 @@ impl Value {
                 match ty {
                     ValueTy::Ch => {
                         let ch =
-                            char::from_u32(u32::from_le_bytes(
-                                tmp.try_into().unwrap(),
-                            )).unwrap();
+                            char::from_u32(u32::from_le_bytes(tmp.try_into().unwrap())).unwrap();
                         Self::Ch(ch)
                     }
                     ValueTy::String => {
@@ -198,10 +198,10 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-    use crate::niches::integer::Integer;
-    use crate::values::ValueTy;
     use super::Value;
+    use crate::niches::integer::IntegerContent;
+    use crate::values::ValueTy;
+    use std::io::Cursor;
 
     #[test]
     fn test_bools() {
@@ -212,7 +212,10 @@ mod tests {
             let expected = &[ValueTy::Bool.id() << 5 | 1];
             assert_eq!(&ser, expected);
 
-            assert_eq!(t, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
+            assert_eq!(
+                t,
+                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+            );
         }
         {
             let f = Value::Bool(false);
@@ -221,23 +224,32 @@ mod tests {
             let expected = &[ValueTy::Bool.id() << 5];
             assert_eq!(&ser, expected);
 
-            assert_eq!(f, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
+            assert_eq!(
+                f,
+                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+            );
         }
     }
 
     #[test]
     fn test_ints() {
         {
-            let neg = Value::Int(Integer::i8(-15));
+            let neg = Value::Int(IntegerContent::i8(-15));
             let ser = neg.clone().serialise().unwrap();
-            
-            assert_eq!(neg, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
+
+            assert_eq!(
+                neg,
+                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+            );
         }
         {
-            let big = Value::Int(Integer::usize(123456789));
+            let big = Value::Int(IntegerContent::usize(123456789));
             let ser = big.clone().serialise().unwrap();
-            
-            assert_eq!(big, Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap());
+
+            assert_eq!(
+                big,
+                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+            );
         }
     }
 }

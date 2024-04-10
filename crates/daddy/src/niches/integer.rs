@@ -2,19 +2,32 @@ use std::fmt::{Debug, Display, Formatter};
 use std::io::{Cursor, Error as IOError, Read};
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
-pub enum Integer {
-    Small([u8; 1], bool),
-    Smedium([u8; 2], bool),
-    Medium([u8; 4], bool),
-    Large([u8; 8], bool),
+pub enum IntegerContent {
+    Small([u8; 1]),
+    Smedium([u8; 2]),
+    Medium([u8; 4]),
+    Large([u8; 8]),
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum SignedState {
+    Unsigned,
+    SignedPositive,
+    SignedNegative,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Integer {
+    signed_state: SignedState,
+    content: IntegerContent,
 }
 
 #[derive(Copy, Clone, Debug)]
-enum IntegerDiscriminant {
+pub(super) enum IntegerDiscriminant {
     Small,
     Smedium,
     Medium,
-    Large
+    Large,
 }
 
 impl IntegerDiscriminant {
@@ -23,8 +36,148 @@ impl IntegerDiscriminant {
             IntegerDiscriminant::Small => 1,
             IntegerDiscriminant::Smedium => 2,
             IntegerDiscriminant::Medium => 4,
-            IntegerDiscriminant::Large => 8
+            IntegerDiscriminant::Large => 8,
         }
+    }
+
+    pub fn iterator_to_size_can_fit_in(
+        iter: impl Iterator<Item = u8> + DoubleEndedIterator + ExactSizeIterator,
+        length_minus_one: usize,
+    ) -> Self {
+        let mut last_zeroed = length_minus_one;
+        for (i, b) in iter.enumerate().rev() {
+            if b != 0 {
+                break;
+            } else {
+                last_zeroed = i;
+            }
+        }
+
+        if last_zeroed <= 1 {
+            IntegerDiscriminant::Small
+        } else if last_zeroed <= 2 {
+            IntegerDiscriminant::Smedium
+        } else if last_zeroed <= 4 {
+            IntegerDiscriminant::Medium
+        } else {
+            IntegerDiscriminant::Large
+        }
+    }
+}
+
+macro_rules! new_x {
+    ($t:ty => $name:ident, $disc:ident) => {
+        impl Integer {
+            pub fn $name(n: $t) -> Self {
+                let arr = n.to_le_bytes();
+                Self {
+                    signed_state: SignedState::Unsigned,
+                    content: IntegerContent::$disc(arr),
+                }
+            }
+        }
+
+        impl TryInto<$t> for Integer {
+            type Error = IntegerSerError;
+
+            fn try_into(self) -> Result<$t, Self::Error> {
+                if self.signed_state != SignedState::Unsigned {
+                    return Err(IntegerSerError::WrongType);
+                }
+
+                match self.content {
+                    IntegerContent::$disc(bytes) => Ok(<$t>::from_le_bytes(bytes)),
+                    _ => Err(IntegerSerError::WrongType),
+                }
+            }
+        }
+    };
+    ($t:ty =>> $name:ident, $disc:ident) => {
+        impl Integer {
+            pub fn $name(n: $t) -> Self {
+                if n < 0 {
+                    let arr = (-n).to_le_bytes();
+                    Self {
+                        signed_state: SignedState::SignedNegative,
+                        content: IntegerContent::$disc(arr),
+                    }
+                } else {
+                    let arr = n.to_le_bytes();
+                    Self {
+                        signed_state: SignedState::SignedPositive,
+                        content: IntegerContent::$disc(arr),
+                    }
+                }
+            }
+        }
+
+        impl TryInto<$t> for Integer {
+            type Error = IntegerSerError;
+
+            fn try_into(self) -> Result<$t, Self::Error> {
+                if self.signed_state == SignedState::Unsigned {
+                    return Err(IntegerSerError::WrongType);
+                }
+
+                let raw_n = match self.content {
+                    IntegerContent::$disc(bytes) => <$t>::from_le_bytes(bytes),
+                    _ => return Err(IntegerSerError::WrongType),
+                };
+
+                Ok(if self.signed_state == SignedState::SignedPositive {
+                    raw_n
+                } else {
+                    -raw_n
+                })
+            }
+        }
+    };
+}
+
+new_x!(u8 => u8, Small);
+new_x!(i8 =>> i8, Small);
+new_x!(u16 => u16, Smedium);
+new_x!(i16 =>> i16, Smedium);
+new_x!(u32 => u32, Medium);
+new_x!(i32 =>> i32, Medium);
+new_x!(usize => usize, Large);
+new_x!(isize =>> isize, Large);
+new_x!(u64 => u64, Large);
+new_x!(i64 =>> i64, Large);
+
+impl Display for Integer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match (&self.content, self.signed_state) {
+            (IntegerContent::Small(b), SignedState::SignedNegative) => {
+                write!(f, "{}", -i8::from_le_bytes(*b))
+            }
+            (IntegerContent::Small(b), _) => write!(f, "{}", u8::from_le_bytes(*b)),
+            (IntegerContent::Smedium(b), SignedState::SignedNegative) => {
+                write!(f, "{}", -i16::from_le_bytes(*b))
+            }
+            (IntegerContent::Smedium(b), _) => write!(f, "{}", u16::from_le_bytes(*b)),
+            (IntegerContent::Medium(b), SignedState::SignedNegative) => {
+                write!(f, "{}", -i32::from_le_bytes(*b))
+            }
+            (IntegerContent::Medium(b), _) => write!(f, "{}", u32::from_le_bytes(*b)),
+            (IntegerContent::Large(b), SignedState::SignedNegative) => {
+                write!(f, "{}", -i64::from_le_bytes(*b))
+            }
+            (IntegerContent::Large(b), _) => write!(f, "{}", u64::from_le_bytes(*b)),
+        }
+    }
+}
+
+impl Debug for Integer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let displayed = self.to_string();
+        let signed_state = self.signed_state;
+
+        f.debug_struct("Integer")
+            .field("variant", &self.to_disc())
+            .field("signed_state", &signed_state)
+            .field("value", &displayed)
+            .finish()
     }
 }
 
@@ -53,12 +206,34 @@ impl TryFrom<u8> for IntegerDiscriminant {
     }
 }
 
+impl From<SignedState> for u8 {
+    fn from(value: SignedState) -> Self {
+        match value {
+            SignedState::Unsigned => 0b01,
+            SignedState::SignedPositive => 0b10,
+            SignedState::SignedNegative => 0b11,
+        }
+    }
+}
+impl TryFrom<u8> for SignedState {
+    type Error = IntegerSerError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0b01 => Ok(Self::Unsigned),
+            0b10 => Ok(Self::SignedPositive),
+            0b11 => Ok(Self::SignedNegative),
+            _ => Err(IntegerSerError::InvalidDiscriminant),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum IntegerSerError {
     InvalidDiscriminant,
     NotEnoughBytes,
     WrongType,
-    IOError(IOError)
+    IOError(IOError),
 }
 
 impl From<IOError> for IntegerSerError {
@@ -68,86 +243,72 @@ impl From<IOError> for IntegerSerError {
 }
 
 impl Integer {
-    fn to_disc (self) -> IntegerDiscriminant {
-        match self {
-            Self::Small(_, _) => IntegerDiscriminant::Small,
-            Self::Smedium(_, _) => IntegerDiscriminant::Smedium,
-            Self::Medium(_, _) => IntegerDiscriminant::Medium,
-            Self::Large(_, _) => IntegerDiscriminant::Large,
+    fn to_disc(&self) -> IntegerDiscriminant {
+        match &self.content {
+            IntegerContent::Small(_) => IntegerDiscriminant::Small,
+            IntegerContent::Smedium(_) => IntegerDiscriminant::Smedium,
+            IntegerContent::Medium(_) => IntegerDiscriminant::Medium,
+            IntegerContent::Large(_) => IntegerDiscriminant::Large,
         }
     }
 
-    pub fn ser (self) -> Vec<u8> {
+    pub fn ser(self) -> Vec<u8> {
         //disc structure:
-        //1 bit: is signed
+        //2 bit: signed state
         //3 bits: original size
         //3 bits: stored size
 
         let original_size = self.to_disc();
         let mut at_max = [0_u8; 8];
-        let is_signed = match self {
-            Self::Small(b, s) => {
-                for (i, b) in b.into_iter().enumerate() {
-                    at_max[i] = b;
+        let stored_size = match self.content {
+            IntegerContent::Small([b]) => {
+                at_max[0] = b;
+                IntegerDiscriminant::Small
+            }
+            IntegerContent::Smedium(b) => {
+                for (i, b) in b.iter().enumerate() {
+                    at_max[i] = *b;
                 }
-                s as u8
-            },
-            Self::Smedium(b, s) => {
-                for (i, b) in b.into_iter().enumerate() {
-                    at_max[i] = b;
+                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), b.len() - 1)
+            }
+            IntegerContent::Medium(b) => {
+                for (i, b) in b.iter().enumerate() {
+                    at_max[i] = *b;
                 }
-                s as u8
-            },
-            Self::Medium(b, s) => {
-                for (i, b) in b.into_iter().enumerate() {
-                    at_max[i] = b;
+                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), b.len() - 1)
+            }
+            IntegerContent::Large(b) => {
+                for (i, b) in b.iter().enumerate() {
+                    at_max[i] = *b;
                 }
-                s as u8
-            },
-            Self::Large(b, s) => {
-                for (i, b) in b.into_iter().enumerate() {
-                    at_max[i] = b;
-                }
-                s as u8
-            },
+                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), b.len() - 1)
+            }
         };
 
-        let mut res: Vec<u8> = Vec::with_capacity(9);
-        let at_max_u64 = u64::from_le_bytes(at_max);
-        let stored_size = if at_max_u64 < u8::MAX as u64 {
-            res.extend(&at_max[0..1]);
-            IntegerDiscriminant::Small
-        } else if at_max_u64 < u16::MAX as u64 {
-            res.extend(&at_max[0..2]);
-            IntegerDiscriminant::Smedium
-        } else if at_max_u64 < u32::MAX as u64 {
-            res.extend(&at_max[0..4]);
-            IntegerDiscriminant::Medium
-        } else {
-            res.extend(at_max);
-            IntegerDiscriminant::Large
-        };
+        let mut res = Vec::with_capacity(1 + stored_size.bytes());
+        let discriminant: u8 = (u8::from(self.signed_state) << 6)
+            | (u8::from(original_size) << 3)
+            | u8::from(stored_size);
+        res.push(discriminant);
+        res.extend(&at_max[0..stored_size.bytes()]);
 
-        let discriminant: u8 = (is_signed << 7) | (u8::from(original_size) << 4) | (u8::from(stored_size) << 1);
-        res.insert(0, discriminant);
-
+        println!("Storing {self} from {original_size:?} in {stored_size:?}");
+        
         res
     }
 
-    pub fn deser (reader: &mut Cursor<impl Read + AsRef<[u8]>>) -> Result<Self, IntegerSerError> {
+    pub fn deser(reader: &mut Cursor<impl Read + AsRef<[u8]>>) -> Result<Self, IntegerSerError> {
         let mut discriminant = [0_u8];
-        let (is_signed, original, stored) = match reader.read(&mut discriminant)? {
-            0 => {
-                return Err(IntegerSerError::NotEnoughBytes)
-            },
+        let (signed_state, original, stored) = match reader.read(&mut discriminant)? {
+            0 => return Err(IntegerSerError::NotEnoughBytes),
             1 => {
                 let [discriminant] = discriminant;
-                let is_signed = discriminant >> 7 > 0;
-                let original = IntegerDiscriminant::try_from((discriminant & 0b0111_0000) >> 4)?;
-                let stored = IntegerDiscriminant::try_from((discriminant & 0b0000_1110) >> 1)?;
+                let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
+                let original = IntegerDiscriminant::try_from((discriminant & 0b0011_1000) >> 3)?;
+                let stored = IntegerDiscriminant::try_from(discriminant & 0b0000_0111)?;
 
-                (is_signed, original, stored)
-            },
+                (signed_state, original, stored)
+            }
             _ => unreachable!("Can only read 1 byte"),
         };
 
@@ -170,96 +331,41 @@ impl Integer {
                 for (i, b) in read_bytes.into_iter().enumerate() {
                     bytes[i] = b;
                 }
-                Self::Small(bytes, is_signed)
+                Self {
+                    signed_state,
+                    content: IntegerContent::Small(bytes)
+                }
             }
             IntegerDiscriminant::Smedium => {
                 let mut bytes = [0_u8; 2];
                 for (i, b) in read_bytes.into_iter().enumerate() {
                     bytes[i] = b;
                 }
-                Self::Smedium(bytes, is_signed)
+                Self {
+                    signed_state,
+                    content: IntegerContent::Smedium(bytes)
+                }
             }
             IntegerDiscriminant::Medium => {
                 let mut bytes = [0_u8; 4];
                 for (i, b) in read_bytes.into_iter().enumerate() {
                     bytes[i] = b;
                 }
-                Self::Medium(bytes, is_signed)
-            },
+                Self {
+                    signed_state,
+                    content: IntegerContent::Medium(bytes)
+                }
+            }
             IntegerDiscriminant::Large => {
                 let mut bytes = [0_u8; 8];
                 for (i, b) in read_bytes.into_iter().enumerate() {
                     bytes[i] = b;
                 }
-                Self::Large(bytes, is_signed)
-            }
-        })
-    }
-}
-
-macro_rules! new_x {
-    ($t:ty, $is_signed:expr => $name:ident, $self_ty:ident) => {
-        impl Integer {
-            pub fn $name (n: $t) -> Self {
-                let arr = n.to_le_bytes();
-                Self::$self_ty(arr, $is_signed)
-            }
-        }
-
-        impl TryInto<$t> for Integer {
-            type Error = IntegerSerError;
-
-            fn try_into(self) -> Result<$t, Self::Error> {
-                match self {
-                    Self::$self_ty(bytes, $is_signed) => {
-                        Ok(<$t>::from_le_bytes(bytes))
-                    },
-                    _ => Err(IntegerSerError::WrongType)
+                Self {
+                    signed_state,
+                    content: IntegerContent::Large(bytes)
                 }
             }
-        }
-    };
-}
-
-new_x!(u8, false => u8, Small);
-new_x!(i8, true => i8, Small);
-new_x!(u16, false => u16, Smedium);
-new_x!(i16, true => i16, Smedium);
-new_x!(u32, false => u32, Medium);
-new_x!(i32, true => i32, Medium);
-new_x!(usize, true => usize, Large);
-new_x!(isize, true => isize, Large);
-new_x!(u64, false => u64, Large);
-new_x!(i64, true => i64, Large);
-
-impl Display for Integer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Small(b, true) => write!(f, "{}", i8::from_le_bytes(*b)),
-            Self::Small(b, false) => write!(f, "{}", u8::from_le_bytes(*b)),
-            Self::Smedium(b, true) => write!(f, "{}", i16::from_le_bytes(*b)),
-            Self::Smedium(b, false) => write!(f, "{}", u16::from_le_bytes(*b)),
-            Self::Medium(b, true) => write!(f, "{}", i32::from_le_bytes(*b)),
-            Self::Medium(b, false) => write!(f, "{}", u32::from_le_bytes(*b)),
-            Self::Large(b, true) => write!(f, "{}", i64::from_le_bytes(*b)),
-            Self::Large(b, false) => write!(f, "{}", u64::from_le_bytes(*b)),
-        }
-    }
-}
-
-impl Debug for Integer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let displayed = self.to_string();
-        let is_signed = match self {
-            Self::Small(_, b) => *b,
-            Self::Smedium(_, b) => *b,
-            Self::Medium(_, b) => *b,
-            Self::Large(_, b) => *b,
-        };
-        
-        f.debug_struct("Integer")
-            .field("variant", &self.to_disc())
-            .field("is_signed", &is_signed)
-            .field("value", &displayed).finish()
+        })
     }
 }

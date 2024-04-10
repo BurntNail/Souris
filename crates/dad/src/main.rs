@@ -6,8 +6,8 @@ use std::{
     io::{Read, Write},
 };
 
+use daddy::niches::integer::{Integer};
 use daddy::{store::Store, values::Value};
-use daddy::niches::integer::Integer;
 
 fn s(s: &str) -> Value {
     Value::String(s.to_string())
@@ -29,7 +29,6 @@ fn main() {
     ser_test();
     deser_test();
 }
-
 
 fn deser_test() {
     let mut file = File::open("db.ddb").unwrap();
@@ -63,8 +62,8 @@ fn ser_test() {
     store.insert(s("Is Pretty Sick"), b(true));
     store.insert(i(Integer::u64(69)), s("Funny Sex Number"));
     store.insert(b(false), bin(&(0xDEADBEEF_u32.to_le_bytes())));
-    store.insert(i(Integer::u16(12)), bin(&(u128::MAX.to_le_bytes())));
-    
+    store.insert(i(Integer::i16(12)), bin(&(u128::MAX.to_le_bytes())));
+
     let serialised = store.ser().unwrap();
 
     let mut file = File::create("db.ddb").unwrap();

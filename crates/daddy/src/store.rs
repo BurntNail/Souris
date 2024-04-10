@@ -1,17 +1,18 @@
 use core::panic;
+use std::io::{Cursor, Seek, SeekFrom};
 use std::{
     collections::{HashMap, VecDeque},
     io::Error as IOError,
     ops::{Index, IndexMut},
 };
-use std::io::{Cursor, Seek, SeekFrom};
 
+use crate::niches::integer::Integer;
+use crate::niches::integer::IntegerSerError;
+use crate::version::VersionSerError;
 use crate::{
     values::{Value, ValueSerError},
     version::Version,
 };
-use crate::niches::integer::{Integer, IntegerSerError};
-use crate::version::VersionSerError;
 
 #[derive(Debug)]
 pub struct Store {
@@ -62,9 +63,7 @@ impl<T> TreatAVecLikeAnIterator<T> for VecDeque<T> {
     }
 
     fn take_to_vec(&mut self, n: usize) -> Option<Vec<T>> {
-        (0..n)
-            .map(|_| self.pop_front())
-            .collect::<Option<Vec<T>>>()
+        (0..n).map(|_| self.pop_front()).collect::<Option<Vec<T>>>()
     }
 }
 
@@ -118,21 +117,21 @@ impl Store {
         res.extend(Integer::usize(length).ser());
         res.push(0);
 
-            let mut keys: Vec<u8> = vec![];
-            let mut values: Vec<u8> = vec![];
+        let mut keys: Vec<u8> = vec![];
+        let mut values: Vec<u8> = vec![];
 
-            for (k, v) in self.kvs.into_iter() {
-                let ser_key = k.serialise()?;
-                let ser_value = v.serialise()?;
+        for (k, v) in self.kvs.into_iter() {
+            let ser_key = k.serialise()?;
+            let ser_value = v.serialise()?;
 
-                keys.extend(Integer::usize(ser_key.len()).ser());
-                keys.extend(Integer::usize(ser_value.len()).ser());
-                keys.extend(ser_key.iter());
+            keys.extend(Integer::usize(ser_key.len()).ser());
+            keys.extend(Integer::usize(ser_value.len()).ser());
+            keys.extend(ser_key.iter());
 
-                values.extend(ser_value.iter());
-            }
+            values.extend(ser_value.iter());
+        }
 
-            res.extend(keys);
+        res.extend(keys);
         res.extend(values);
 
         Ok(res)
