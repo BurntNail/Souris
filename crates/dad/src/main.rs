@@ -56,7 +56,7 @@ fn ser_test() {
     let mut store = Store::new();
 
     store.insert(s("Date"), i(Integer::u8(12)));
-    store.insert(s("Month"), i(Integer::u32(32)));
+    store.insert(c('a'), i(Integer::u32(32)));
     store.insert(s("Year"), i(Integer::i64(-2006)));
     store.insert(s("Is Pretty Sick"), b(true));
     store.insert(i(Integer::u64(69)), s("Funny Sex Number"));

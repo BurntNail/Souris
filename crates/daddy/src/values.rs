@@ -11,6 +11,7 @@ pub enum Value {
     Binary(Vec<u8>),
     Bool(bool),
     Int(Integer),
+    
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -37,7 +38,7 @@ impl ValueTy {
 #[derive(Debug)]
 pub enum ValueSerError {
     TooLong,
-    InvalidType(u8),
+    InvalidType,
     Empty,
     IntegerSerFailure(IntegerSerError),
     NotEnoughBytes,
@@ -104,7 +105,7 @@ impl Value {
 
         match self {
             Self::Ch(ch) => {
-                res.extend((ch as u32).to_le_bytes());
+                res.extend(Integer::u32(ch as u32).ser());
             }
             Self::String(s) => {
                 res.extend(s.as_bytes().iter());
@@ -156,7 +157,7 @@ impl Value {
                         0b010 => ValueTy::Binary,
                         0b011 => ValueTy::Bool,
                         0b100 => ValueTy::Int,
-                        _ => return Err(ValueSerError::InvalidType(byte >> 5)),
+                        _ => return Err(ValueSerError::InvalidType),
                     };
                     State::FoundType(ty, byte)
                 }
@@ -184,9 +185,14 @@ impl Value {
                 let tmp = std::mem::take(&mut tmp);
                 match ty {
                     ValueTy::Ch => {
-                        let ch = char::from_u32(u32::from_le_bytes(
-                            tmp.try_into().expect("tmp is incorrect length"),
-                        ))
+                        bytes.seek(SeekFrom::Current(
+                            -(i64::try_from(tmp.len())
+                                .expect("tmp too big to seek from in reverse")),
+                        ))?;
+
+                        let ch = char::from_u32(
+                            Integer::deser(bytes)?.try_into()?
+                        )
                         .ok_or(ValueSerError::InvalidCharacter)?;
                         Self::Ch(ch)
                     }
@@ -213,8 +219,9 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::Value;
-    use crate::{niches::integer::IntegerContent, values::ValueTy};
+    use crate::values::ValueTy;
     use std::io::Cursor;
+    use crate::niches::integer::Integer;
 
     #[test]
     fn test_bools() {
@@ -247,7 +254,7 @@ mod tests {
     #[test]
     fn test_ints() {
         {
-            let neg = Value::Int(IntegerContent::i8(-15));
+            let neg = Value::Int(Integer::i8(-15));
             let ser = neg.clone().serialise().unwrap();
 
             assert_eq!(
@@ -256,7 +263,7 @@ mod tests {
             );
         }
         {
-            let big = Value::Int(IntegerContent::usize(123456789));
+            let big = Value::Int(Integer::usize(123456789));
             let ser = big.clone().serialise().unwrap();
 
             assert_eq!(

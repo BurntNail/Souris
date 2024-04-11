@@ -294,7 +294,7 @@ impl Integer {
         res.push(discriminant);
         res.extend(&at_max[0..stored_size.bytes()]);
 
-        println!("Storing {self} from {original_size:?} in {stored_size:?}");
+        // println!("Storing {self} from {original_size:?} in {stored_size:?}");
 
         res
     }
