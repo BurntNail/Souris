@@ -1,17 +1,20 @@
-use crate::niches::integer::{Integer, IntegerSerError};
-use std::{
-    io::{Cursor, Error as IOError, Read, Seek, SeekFrom},
-    string::FromUtf8Error,
+use crate::{
+    niches::integer::{Integer, IntegerSerError},
+    utilities::cursor::Cursor,
+};
+use alloc::{
+    string::{FromUtf8Error, String},
+    vec,
+    vec::Vec,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub enum Value {
     Ch(char),
     String(String),
     Binary(Vec<u8>),
     Bool(bool),
     Int(Integer),
-    
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -42,7 +45,6 @@ pub enum ValueSerError {
     Empty,
     IntegerSerFailure(IntegerSerError),
     NotEnoughBytes,
-    IOError(IOError),
     InvalidCharacter,
     NonUTF8String(FromUtf8Error),
 }
@@ -50,11 +52,6 @@ pub enum ValueSerError {
 impl From<IntegerSerError> for ValueSerError {
     fn from(value: IntegerSerError) -> Self {
         Self::IntegerSerFailure(value)
-    }
-}
-impl From<IOError> for ValueSerError {
-    fn from(value: IOError) -> Self {
-        Self::IOError(value)
     }
 }
 impl From<FromUtf8Error> for ValueSerError {
@@ -93,7 +90,7 @@ impl Value {
         let ty = vty.id() << 5;
 
         let niche = match &self {
-            Self::Bool(b) => Some(if *b { 1 } else { 0 }),
+            Self::Bool(b) => Some(u8::from(*b)),
             _ => None,
         };
         if let Some(niche) = niche {
@@ -122,10 +119,7 @@ impl Value {
         Ok(res)
     }
 
-    pub fn deserialise(
-        bytes: &mut Cursor<impl Read + AsRef<[u8]>>,
-        len: usize,
-    ) -> Result<Self, ValueSerError> {
+    pub fn deserialise(bytes: &mut Cursor, len: usize) -> Result<Self, ValueSerError> {
         enum State {
             Start,
             FoundType(ValueTy, u8),
@@ -135,18 +129,20 @@ impl Value {
         let mut state = State::Start;
 
         let mut tmp = vec![];
-        let mut byte = [0_u8];
         let starting_pos = bytes.position();
 
         loop {
-            if bytes.position() - starting_pos == len as u64 {
+            if bytes.position() - starting_pos == len as u32 {
                 break;
             }
+            // let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
+            //     unreachable!("didn't get just one byte back")
+            // };
+            // let byte = *byte;
 
-            let byte = match bytes.read(&mut byte)? {
-                0 => return Err(ValueSerError::NotEnoughBytes),
-                1 => byte[0],
-                n => unreachable!("only reads 1 byte lol, read {n}"),
+            let byte = match bytes.read(1) {
+                Some(byte) => byte[0],
+                None => return Err(ValueSerError::NotEnoughBytes),
             };
 
             state = match state {
@@ -182,18 +178,16 @@ impl Value {
                 }
             }
             State::FindingContent(ty) => {
-                let tmp = std::mem::take(&mut tmp);
+                let tmp = core::mem::take(&mut tmp);
                 match ty {
                     ValueTy::Ch => {
-                        bytes.seek(SeekFrom::Current(
+                        bytes.seek(
                             -(i64::try_from(tmp.len())
                                 .expect("tmp too big to seek from in reverse")),
-                        ))?;
+                        );
 
-                        let ch = char::from_u32(
-                            Integer::deser(bytes)?.try_into()?
-                        )
-                        .ok_or(ValueSerError::InvalidCharacter)?;
+                        let ch = char::from_u32(Integer::deser(bytes)?.try_into()?)
+                            .ok_or(ValueSerError::InvalidCharacter)?;
                         Self::Ch(ch)
                     }
                     ValueTy::String => {
@@ -203,10 +197,10 @@ impl Value {
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
                     ValueTy::Int => {
-                        bytes.seek(SeekFrom::Current(
+                        bytes.seek(
                             -(i64::try_from(tmp.len())
                                 .expect("tmp too big to seek from in reverse")),
-                        ))?;
+                        );
                         let int = Integer::deser(bytes)?;
                         Self::Int(int)
                     }
@@ -219,9 +213,7 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::Value;
-    use crate::values::ValueTy;
-    use std::io::Cursor;
-    use crate::niches::integer::Integer;
+    use crate::{niches::integer::Integer, utilities::cursor::Cursor, values::ValueTy};
 
     #[test]
     fn test_bools() {
@@ -234,7 +226,7 @@ mod tests {
 
             assert_eq!(
                 t,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
             );
         }
         {
@@ -246,7 +238,7 @@ mod tests {
 
             assert_eq!(
                 f,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
             );
         }
     }
@@ -259,7 +251,7 @@ mod tests {
 
             assert_eq!(
                 neg,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
             );
         }
         {
@@ -268,7 +260,7 @@ mod tests {
 
             assert_eq!(
                 big,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
             );
         }
     }

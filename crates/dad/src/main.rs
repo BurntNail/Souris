@@ -47,7 +47,7 @@ fn deser_test() {
         }
     }
 
-    let store = Store::deser(bytes).unwrap();
+    let store = Store::deser(&bytes).unwrap();
 
     println!("{store:#?}");
 }

@@ -1,29 +1,26 @@
-use core::panic;
-use std::{
-    collections::{HashMap, VecDeque},
-    io::{Cursor, Error as IOError, Seek, SeekFrom},
-    ops::{Index, IndexMut},
-};
-
 use crate::{
     niches::integer::{Integer, IntegerSerError},
+    utilities::cursor::Cursor,
     values::{Value, ValueSerError},
     version::{Version, VersionSerError},
 };
+use alloc::{collections::BTreeMap, vec, vec::Vec};
+use core::ops::{Index, IndexMut};
 
 #[derive(Debug)]
 pub struct Store {
     version: Version,
-    kvs: HashMap<Value, Value>,
+    kvs: BTreeMap<Value, Value>,
 }
 
 #[derive(Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub enum StoreFailure {
     ValueError(ValueSerError),
     IntegerError(IntegerSerError),
     VersionError(VersionSerError),
-    IO(IOError),
     CouldntFindKey,
+    FileTooLong,
 }
 
 impl From<ValueSerError> for StoreFailure {
@@ -36,31 +33,9 @@ impl From<IntegerSerError> for StoreFailure {
         Self::IntegerError(value)
     }
 }
-impl From<IOError> for StoreFailure {
-    fn from(value: IOError) -> Self {
-        Self::IO(value)
-    }
-}
 impl From<VersionSerError> for StoreFailure {
     fn from(value: VersionSerError) -> Self {
         Self::VersionError(value)
-    }
-}
-
-trait TreatAVecLikeAnIterator<T> {
-    fn skip_front(&mut self, n: usize);
-    fn take_to_vec(&mut self, n: usize) -> Option<Vec<T>>;
-}
-
-impl<T> TreatAVecLikeAnIterator<T> for VecDeque<T> {
-    fn skip_front(&mut self, n: usize) {
-        for _ in 0..n {
-            self.remove(0);
-        }
-    }
-
-    fn take_to_vec(&mut self, n: usize) -> Option<Vec<T>> {
-        (0..n).map(|_| self.pop_front()).collect::<Option<Vec<T>>>()
     }
 }
 
@@ -68,12 +43,13 @@ impl Default for Store {
     fn default() -> Self {
         Self {
             version: Version::V0_1_0,
-            kvs: HashMap::new(),
+            kvs: BTreeMap::new(),
         }
     }
 }
 
 impl Store {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -94,9 +70,9 @@ impl Store {
     /// 1 byte: \0
     ///
     /// keys:
-    ///     8 bytes: key_length
-    ///     8 bytes: value_length
-    ///     key_length bytes: content
+    ///     8 bytes: `key_length`
+    ///     8 bytes: `value_length`
+    ///     `key_length` bytes: content
     ///
     /// values:
     ///     see value serialisations lol
@@ -117,7 +93,7 @@ impl Store {
         let mut keys: Vec<u8> = vec![];
         let mut values: Vec<u8> = vec![];
 
-        for (k, v) in self.kvs.into_iter() {
+        for (k, v) in self.kvs {
             let ser_key = k.serialise()?;
             let ser_value = v.serialise()?;
 
@@ -134,28 +110,28 @@ impl Store {
         Ok(res)
     }
 
-    pub fn deser(bytes: Vec<u8>) -> Result<Self, StoreFailure> {
-        let mut bytes = Cursor::new(bytes.as_slice());
+    pub fn deser(bytes: &[u8]) -> Result<Self, StoreFailure> {
+        let mut bytes = Cursor::new(&bytes).ok_or(StoreFailure::FileTooLong)?;
 
-        bytes.seek(SeekFrom::Current(10))?; //title
-        bytes.seek(SeekFrom::Current(1))?; //\0
+        bytes.seek(10); //title
+        bytes.seek(1); //\0
 
         let version = Version::from_bytes(&mut bytes)?;
 
         match version {
             Version::V0_1_0 => {
-                bytes.seek(SeekFrom::Current(1))?; //\0
-                bytes.seek(SeekFrom::Current(4))?; //size
-                bytes.seek(SeekFrom::Current(1))?; //\0
-
-                let length: usize = Integer::deser(&mut bytes)?.try_into()?;
-
-                bytes.seek(SeekFrom::Current(1))?; //\0
-
                 struct Val {
                     value_length: usize,
                     key: Value,
                 }
+
+                bytes.seek(1); //\0
+                bytes.seek(4); //size
+                bytes.seek(1); //\0
+
+                let length: usize = Integer::deser(&mut bytes)?.try_into()?;
+
+                bytes.seek(1); //\0
 
                 let mut keys = vec![];
                 for _ in 0..length {
@@ -166,7 +142,7 @@ impl Store {
                     keys.push(Val { value_length, key });
                 }
 
-                let mut kvs = HashMap::new();
+                let mut kvs = BTreeMap::new();
                 for Val { value_length, key } in keys {
                     let value = Value::deserialise(&mut bytes, value_length)?;
                     kvs.insert(key, value);
