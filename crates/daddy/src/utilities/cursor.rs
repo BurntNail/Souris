@@ -1,45 +1,50 @@
 pub struct Cursor<'a> {
     backing: &'a [u8],
-    pos: u32,
+    pos: usize,
 }
 
 impl<'a> Cursor<'a> {
-    ///Fails if `backing.len()` > `u32::MAX`
-    pub fn new(backing: &'a impl AsRef<[u8]>) -> Option<Self> {
-        let backing = backing.as_ref();
-        if backing.len() as u32 > u32::MAX {
-            return None;
+    pub fn new(backing: &'a impl AsRef<[u8]>) -> Self {
+        Self {
+            backing: backing.as_ref(),
+            pos: 0,
         }
-
-        Some(Self { backing, pos: 0 })
     }
 
     ///Returns whether move was successful
-    pub fn seek(&mut self, offset: i64) -> bool {
-        let current = self.pos as i64;
+    pub fn seek(&mut self, offset: usize) -> bool {
+        let Some(new_pos) = self.pos.checked_add(offset) else {
+            return false;
+        };
 
-        let new_pos = current + offset;
-
-        if (0..=self.backing.len() as i64).contains(&new_pos) {
-            self.pos = new_pos as u32;
+        if new_pos < self.backing.len() {
+            self.pos = new_pos;
             true
         } else {
             false
         }
     }
 
-    pub fn read(&mut self, n: u32) -> Option<&'a [u8]> {
-        let start = self.pos as usize;
-        if !self.seek(n as i64) {
-            return None;
-        }
-        let end = self.pos as usize;
+    ///Returns whether move was successful
+    pub fn seek_backwards(&mut self, offset: usize) -> bool {
+        let Some(new_pos) = self.pos.checked_sub(offset) else {
+            return false;
+        };
+
+        self.pos = new_pos;
+        true
+    }
+
+    pub fn read(&mut self, n: usize) -> Option<&'a [u8]> {
+        let start = self.pos;
+        let end = start.checked_add(n)?;
+        self.pos = end;
 
         Some(&self.backing[start..end])
     }
 
     pub fn peek(&mut self, n: usize) -> Option<&'a [u8]> {
-        let start = self.pos as usize;
+        let start = self.pos;
         let end = start + n;
         if end > self.backing.len() {
             return None;
@@ -49,7 +54,7 @@ impl<'a> Cursor<'a> {
     }
 
     #[must_use]
-    pub fn position(&self) -> u32 {
+    pub fn position(&self) -> usize {
         self.pos
     }
 }

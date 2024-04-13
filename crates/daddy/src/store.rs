@@ -20,7 +20,6 @@ pub enum StoreFailure {
     IntegerError(IntegerSerError),
     VersionError(VersionSerError),
     CouldntFindKey,
-    FileTooLong,
 }
 
 impl From<ValueSerError> for StoreFailure {
@@ -111,7 +110,7 @@ impl Store {
     }
 
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreFailure> {
-        let mut bytes = Cursor::new(&bytes).ok_or(StoreFailure::FileTooLong)?;
+        let mut bytes = Cursor::new(&bytes);
 
         bytes.seek(10); //title
         bytes.seek(1); //\0

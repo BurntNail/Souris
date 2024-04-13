@@ -1,9 +1,6 @@
 use crate::utilities::cursor::Cursor;
 use alloc::{string::ToString, vec::Vec};
-use core::{
-    fmt::{Debug, Display, Formatter},
-    num::TryFromIntError,
-};
+use core::fmt::{Debug, Display, Formatter};
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Content {
@@ -241,12 +238,6 @@ pub enum IntegerSerError {
     InvalidDiscriminant,
     NotEnoughBytes,
     WrongType,
-    IntTooBig(TryFromIntError),
-}
-impl From<TryFromIntError> for IntegerSerError {
-    fn from(value: TryFromIntError) -> Self {
-        Self::IntTooBig(value)
-    }
 }
 
 impl Integer {
@@ -319,7 +310,7 @@ impl Integer {
         };
 
         let read_bytes = reader
-            .read(u32::try_from(stored.bytes())?)
+            .read(stored.bytes())
             .ok_or(IntegerSerError::NotEnoughBytes)?;
 
         Ok(match original {

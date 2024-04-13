@@ -132,18 +132,13 @@ impl Value {
         let starting_pos = bytes.position();
 
         loop {
-            if bytes.position() - starting_pos == len as u32 {
+            if bytes.position() - starting_pos == len {
                 break;
             }
-            // let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
-            //     unreachable!("didn't get just one byte back")
-            // };
-            // let byte = *byte;
-
-            let byte = match bytes.read(1) {
-                Some(byte) => byte[0],
-                None => return Err(ValueSerError::NotEnoughBytes),
+            let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
+                unreachable!("didn't get just one byte back")
             };
+            let byte = *byte;
 
             state = match state {
                 State::Start => {
@@ -155,6 +150,20 @@ impl Value {
                         0b100 => ValueTy::Int,
                         _ => return Err(ValueSerError::InvalidType),
                     };
+
+                    match ty {
+                        ValueTy::Int => {
+                            let int = Integer::deser(bytes)?;
+                            return Ok(Self::Int(int));
+                        }
+                        ValueTy::Ch => {
+                            let ch = char::from_u32(Integer::deser(bytes)?.try_into()?)
+                                .ok_or(ValueSerError::InvalidCharacter)?;
+                            return Ok(Self::Ch(ch));
+                        }
+                        _ => {}
+                    }
+
                     State::FoundType(ty, byte)
                 }
                 State::FoundType(ty, _ty_byte) => {
@@ -180,30 +189,14 @@ impl Value {
             State::FindingContent(ty) => {
                 let tmp = core::mem::take(&mut tmp);
                 match ty {
-                    ValueTy::Ch => {
-                        bytes.seek(
-                            -(i64::try_from(tmp.len())
-                                .expect("tmp too big to seek from in reverse")),
-                        );
-
-                        let ch = char::from_u32(Integer::deser(bytes)?.try_into()?)
-                            .ok_or(ValueSerError::InvalidCharacter)?;
-                        Self::Ch(ch)
-                    }
+                    ValueTy::Ch => unreachable!("already dealt with character type"),
                     ValueTy::String => {
                         let st = String::from_utf8(tmp)?;
                         Self::String(st)
                     }
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
-                    ValueTy::Int => {
-                        bytes.seek(
-                            -(i64::try_from(tmp.len())
-                                .expect("tmp too big to seek from in reverse")),
-                        );
-                        let int = Integer::deser(bytes)?;
-                        Self::Int(int)
-                    }
+                    ValueTy::Int => unreachable!("already dealt with integer type"),
                 }
             }
         })
@@ -226,7 +219,7 @@ mod tests {
 
             assert_eq!(
                 t,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
             );
         }
         {
@@ -238,7 +231,7 @@ mod tests {
 
             assert_eq!(
                 f,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
             );
         }
     }
@@ -251,16 +244,16 @@ mod tests {
 
             assert_eq!(
                 neg,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
             );
         }
         {
-            let big = Value::Int(Integer::usize(123456789));
+            let big = Value::Int(Integer::usize(123_456_789));
             let ser = big.clone().serialise().unwrap();
 
             assert_eq!(
                 big,
-                Value::deserialise(&mut Cursor::new(ser.as_slice()).unwrap(), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
             );
         }
     }
