@@ -2,19 +2,49 @@ use crate::{
     niches::integer::{Integer, IntegerSerError},
     utilities::cursor::Cursor,
 };
-use alloc::{
-    string::{FromUtf8Error, String},
-    vec,
-    vec::Vec,
-};
+use alloc::{format, string::{FromUtf8Error, String}, vec, vec::Vec};
+use alloc::string::ToString;
+use core::fmt::{Debug, Formatter};
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
     Ch(char),
     String(String),
     Binary(Vec<u8>),
     Bool(bool),
     Int(Integer),
+}
+
+#[allow(clippy::missing_fields_in_debug)]
+impl Debug for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let mut s = f.debug_struct("Value");
+        s.field("ty", &self.to_ty());
+
+        match &self {
+            Self::Ch(ch) => s.field("content", ch),
+            Self::String(str) => s.field("content", str),
+            Self::Binary(b) => {
+                let mut out;
+                match b.len() {
+                    0 => out = "[]".to_string(),
+                    1 => out = format!("[{:#X}]", b[0]),
+                    _ => {
+                        out = format!("[{:#X}", b[0]);
+                        for b in b.iter().skip(1) {
+                            out.push_str(&format!(", {b:#X}"));
+                        }
+                        out.push(']');
+                    }
+                };
+                s.field("content", &out)
+            },
+            Self::Bool(b) => s.field("content", b),
+            Self::Int(i) => s.field("content", i),
+        };
+
+        s.finish()
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -24,6 +54,8 @@ pub(crate) enum ValueTy {
     Binary,
     Bool,
     Int,
+    #[cfg(feature = "serde")]
+    Serde,
 }
 
 impl ValueTy {

@@ -9,7 +9,3 @@ pub mod store;
 pub mod utilities;
 pub mod values;
 pub mod version;
-
-//TODO: explore ways of making this work `no_std`
-//TODO: tests
-//TODO: docs
