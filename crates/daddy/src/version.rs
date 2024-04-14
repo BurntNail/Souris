@@ -1,3 +1,4 @@
+use core::fmt::{Display, Formatter};
 use crate::utilities::cursor::Cursor;
 
 #[derive(Copy, Clone, Debug)]
@@ -10,6 +11,15 @@ pub enum Version {
 pub enum VersionSerError {
     Invalid,
     NotEnoughBytes,
+}
+
+impl Display for VersionSerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            VersionSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
+            VersionSerError::Invalid => write!(f, "Invalid bytes provided"),
+        }
+    }
 }
 
 impl Version {

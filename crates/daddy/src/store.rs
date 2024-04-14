@@ -5,6 +5,8 @@ use crate::{
     version::{Version, VersionSerError},
 };
 use alloc::{collections::BTreeMap, vec, vec::Vec};
+use alloc::collections::btree_map::IntoIter;
+use core::fmt::{Display, Formatter};
 use core::ops::{Index, IndexMut};
 
 #[derive(Debug)]
@@ -13,26 +15,71 @@ pub struct Store {
     kvs: BTreeMap<Value, Value>,
 }
 
+impl Store {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, k: Value, v: Value) {
+        self.kvs.insert(k, v);
+    }
+    
+    pub fn remove(&mut self, k: &Value) -> Option<Value> {
+        self.kvs.remove(k)
+    }
+
+    #[must_use] pub fn version(&self) -> Version {
+        self.version
+    }
+
+    #[must_use] pub fn is_empty(&self) -> bool {
+        self.kvs.is_empty()
+    }
+    #[must_use] pub fn size(&self) -> usize {
+        self.kvs.len()
+    }
+}
+
+impl IntoIterator for Store {
+    type Item = (Value, Value);
+    type IntoIter = IntoIter<Value, Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.kvs.into_iter()
+    }
+}
+
 #[derive(Debug)]
 #[allow(clippy::module_name_repetitions)]
-pub enum StoreFailure {
+pub enum StoreError {
     ValueError(ValueSerError),
     IntegerError(IntegerSerError),
     VersionError(VersionSerError),
     CouldntFindKey,
 }
+impl Display for StoreError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::ValueError(e) => write!(f, "Error de/ser-ing value: {e:?}"),
+            Self::IntegerError(e) => write!(f, "Error de/ser-ing integer: {e:?}"),
+            Self::VersionError(e) => write!(f, "Error de/ser-ing version: {e:?}"),
+            Self::CouldntFindKey => write!(f, "Could not find key"),
+        }
+    }
+}
 
-impl From<ValueSerError> for StoreFailure {
+impl From<ValueSerError> for StoreError {
     fn from(value: ValueSerError) -> Self {
         Self::ValueError(value)
     }
 }
-impl From<IntegerSerError> for StoreFailure {
+impl From<IntegerSerError> for StoreError {
     fn from(value: IntegerSerError) -> Self {
         Self::IntegerError(value)
     }
 }
-impl From<VersionSerError> for StoreFailure {
+impl From<VersionSerError> for StoreError {
     fn from(value: VersionSerError) -> Self {
         Self::VersionError(value)
     }
@@ -48,15 +95,6 @@ impl Default for Store {
 }
 
 impl Store {
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn insert(&mut self, k: Value, v: Value) {
-        self.kvs.insert(k, v);
-    }
-
     ///format:
     ///
     /// 10 bytes: title
@@ -76,7 +114,7 @@ impl Store {
     /// values:
     ///     see value serialisations lol
     ///     NB: same order as keys
-    pub fn ser(self) -> Result<Vec<u8>, StoreFailure> {
+    pub fn ser(&self) -> Result<Vec<u8>, StoreError> {
         let mut res = vec![];
         res.extend(b"DADDYSTORE".iter());
         res.push(0);
@@ -92,7 +130,7 @@ impl Store {
         let mut keys: Vec<u8> = vec![];
         let mut values: Vec<u8> = vec![];
 
-        for (k, v) in self.kvs {
+        for (k, v) in &self.kvs {
             let ser_key = k.serialise()?;
             let ser_value = v.serialise()?;
 
@@ -109,7 +147,7 @@ impl Store {
         Ok(res)
     }
 
-    pub fn deser(bytes: &[u8]) -> Result<Self, StoreFailure> {
+    pub fn deser(bytes: &[u8]) -> Result<Self, StoreError> {
         let mut bytes = Cursor::new(&bytes);
 
         bytes.seek(10); //title

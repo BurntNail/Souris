@@ -108,6 +108,12 @@ macro_rules! new_x {
         impl Integer {
             #[must_use]
             pub fn $name(n: $t) -> Self {
+                Self::from(n)
+            }
+        }
+        
+        impl From<$t> for Integer {
+            fn from(n: $t) -> Self {
                 let arr = n.to_le_bytes();
                 Self {
                     signed_state: SignedState::Unsigned,
@@ -135,6 +141,12 @@ macro_rules! new_x {
         impl Integer {
             #[must_use]
             pub fn $name(n: $t) -> Self {
+                Self::from(n)
+            }
+        }
+        
+        impl From<$t> for Integer {
+            fn from(n: $t) -> Self { 
                 if n < 0 {
                     let arr = (-n).to_le_bytes();
                     Self {
@@ -205,7 +217,7 @@ impl TryFrom<u8> for IntegerDiscriminant {
             0b010 => Ok(Self::Smedium),
             0b011 => Ok(Self::Medium),
             0b100 => Ok(Self::Large),
-            _ => Err(IntegerSerError::InvalidDiscriminant),
+            _ => Err(IntegerSerError::InvalidIntegerSizeDiscriminant(value)),
         }
     }
 }
@@ -227,7 +239,7 @@ impl TryFrom<u8> for SignedState {
             0b01 => Ok(Self::Unsigned),
             0b10 => Ok(Self::SignedPositive),
             0b11 => Ok(Self::SignedNegative),
-            _ => Err(IntegerSerError::InvalidDiscriminant),
+            _ => Err(IntegerSerError::InvalidSignedStateDiscriminant(value)),
         }
     }
 }
@@ -235,9 +247,21 @@ impl TryFrom<u8> for SignedState {
 #[derive(Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub enum IntegerSerError {
-    InvalidDiscriminant,
+    InvalidSignedStateDiscriminant(u8),
+    InvalidIntegerSizeDiscriminant(u8),
     NotEnoughBytes,
     WrongType,
+}
+
+impl Display for IntegerSerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            IntegerSerError::InvalidSignedStateDiscriminant(b) => write!(f, "Invalid signed state discriminant found: {b:#b}"),
+            IntegerSerError::InvalidIntegerSizeDiscriminant(b) => write!(f, "Invalid integer size discriminant found: {b:#b}"),
+            IntegerSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
+            IntegerSerError::WrongType => write!(f, "Attempted to deserialise into different type than was originally serialised from")
+        }
+    }
 }
 
 impl Integer {

@@ -38,6 +38,9 @@ impl<'a> Cursor<'a> {
     pub fn read(&mut self, n: usize) -> Option<&'a [u8]> {
         let start = self.pos;
         let end = start.checked_add(n)?;
+        if end > self.backing.len() {
+            return None;
+        }
         self.pos = end;
 
         Some(&self.backing[start..end])

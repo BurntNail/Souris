@@ -4,7 +4,7 @@ use crate::{
 };
 use alloc::{format, string::{FromUtf8Error, String}, vec, vec::Vec};
 use alloc::string::ToString;
-use core::fmt::{Debug, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
@@ -25,19 +25,7 @@ impl Debug for Value {
             Self::Ch(ch) => s.field("content", ch),
             Self::String(str) => s.field("content", str),
             Self::Binary(b) => {
-                let mut out;
-                match b.len() {
-                    0 => out = "[]".to_string(),
-                    1 => out = format!("[{:#X}]", b[0]),
-                    _ => {
-                        out = format!("[{:#X}", b[0]);
-                        for b in b.iter().skip(1) {
-                            out.push_str(&format!(", {b:#X}"));
-                        }
-                        out.push(']');
-                    }
-                };
-                s.field("content", &out)
+                s.field("content", &display_bytes_as_hex_array(b))
             },
             Self::Bool(b) => s.field("content", b),
             Self::Int(i) => s.field("content", i),
@@ -47,18 +35,47 @@ impl Debug for Value {
     }
 }
 
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match &self {
+            Self::Ch(ch) => write!(f, "{ch:?}"),
+            Self::String(str) => write!(f, "{str:?}"),
+            Self::Binary(b) => {
+                write!(f, "{}", display_bytes_as_hex_array(b))
+            },
+            Self::Bool(b) => write!(f, "{b}"),
+            Self::Int(i) => write!(f, "{i}"),
+        }
+    }
+}
+
+fn display_bytes_as_hex_array(b: &[u8]) -> String {
+    let mut out;
+    match b.len() {
+        0 => out = "[]".to_string(),
+        1 => out = format!("[{:#X}]", b[0]),
+        _ => {
+            out = format!("[{:#X}", b[0]);
+            for b in b.iter().skip(1) {
+                out.push_str(&format!(", {b:#X}"));
+            }
+            out.push(']');
+        }
+    };
+    out
+}
+
 #[derive(Copy, Clone, Debug)]
-pub(crate) enum ValueTy {
+pub enum ValueTy {
     Ch,
     String,
     Binary,
     Bool,
     Int,
-    #[cfg(feature = "serde")]
-    Serde,
 }
 
 impl ValueTy {
+    #[must_use]
     pub fn id(self) -> u8 {
         match self {
             ValueTy::Ch => 0b000,
@@ -72,13 +89,25 @@ impl ValueTy {
 
 #[derive(Debug)]
 pub enum ValueSerError {
-    TooLong,
-    InvalidType,
+    InvalidType(u8),
     Empty,
     IntegerSerFailure(IntegerSerError),
     NotEnoughBytes,
     InvalidCharacter,
     NonUTF8String(FromUtf8Error),
+}
+
+impl Display for ValueSerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ValueSerError::InvalidType(b) => write!(f, "Invalid Type Discriminant found: {b:#b}"),
+            ValueSerError::Empty => write!(f, "Length provided was zero - what did you expect to deserialise there?"),
+            ValueSerError::IntegerSerFailure(e) => write!(f, "Error de/ser-ing integer: {e:?}"),
+            ValueSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
+            ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
+            ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
+        }
+    }
 }
 
 impl From<IntegerSerError> for ValueSerError {
@@ -115,7 +144,7 @@ impl Value {
     ///     5 bits: zero
     ///     length bytes: content
     ///     4 bytes: end
-    pub fn serialise(self) -> Result<Vec<u8>, ValueSerError> {
+    pub fn serialise(&self) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
         let vty = self.to_ty();
@@ -134,7 +163,7 @@ impl Value {
 
         match self {
             Self::Ch(ch) => {
-                res.extend(Integer::u32(ch as u32).ser());
+                res.extend(Integer::u32(*ch as u32).ser());
             }
             Self::String(s) => {
                 res.extend(s.as_bytes().iter());
@@ -161,12 +190,8 @@ impl Value {
         let mut state = State::Start;
 
         let mut tmp = vec![];
-        let starting_pos = bytes.position();
 
-        loop {
-            if bytes.position() - starting_pos == len {
-                break;
-            }
+        for _ in 0..len {
             let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
                 unreachable!("didn't get just one byte back")
             };
@@ -174,13 +199,14 @@ impl Value {
 
             state = match state {
                 State::Start => {
-                    let ty = match byte >> 5 {
+                    let ty = byte >> 5;
+                    let ty = match ty {
                         0b000 => ValueTy::Ch,
                         0b001 => ValueTy::String,
                         0b010 => ValueTy::Binary,
                         0b011 => ValueTy::Bool,
                         0b100 => ValueTy::Int,
-                        _ => return Err(ValueSerError::InvalidType),
+                        _ => return Err(ValueSerError::InvalidType(ty)),
                     };
 
                     match ty {
