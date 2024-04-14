@@ -18,7 +18,13 @@ pub enum Value {
     Bool(bool),
     Int(Integer),
     Imaginary(Integer, Integer),
+    //TODO: Vec
+    //TODO: Store
+    //TODO: Timestamp
 }
+
+//TODO: pass the version to the different parsers so they can respect that 
+//TODO: or scrap the version 
 
 #[allow(clippy::missing_fields_in_debug)]
 impl Debug for Value {
