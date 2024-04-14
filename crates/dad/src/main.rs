@@ -32,6 +32,7 @@ enum Commands {
     #[cfg(debug_assertions)]
     DebugViewAll,
     RemoveEntry,
+    UpdateEntry,
 }
 
 fn main() {
@@ -166,6 +167,44 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 println!("Cancelled. Exiting...");
                 std::process::exit(0);
             }
+        }
+        Commands::UpdateEntry => {
+            let mut store = view_all(path.clone(), &theme)?;
+
+            println!();
+
+            let mut keys = store
+                .clone()
+                .into_iter()
+                .map(|(k, _)| k)
+                .collect::<Vec<_>>();
+            let key = FuzzySelect::with_theme(&theme)
+                .with_prompt("Select key to update value of:")
+                .items(&keys)
+                .interact()?;
+            let key = keys.swap_remove(key); //idc if it gets swapped as we drop it next
+            drop(keys);
+
+            if !Confirm::with_theme(&theme)
+                .with_prompt(format!("Confirm edit key {key}?"))
+                .interact()?
+            {
+                println!("Cancelled. Exiting...");
+                std::process::exit(0);
+            }
+            
+            let existing = &store[key.clone()];
+            let new = get_value_from_stdin("Enter the new value: ", &theme)?;
+            if !Confirm::with_theme(&theme)
+                .with_prompt(format!("Confirm replace value {existing} with {new}?"))
+                .interact()?
+            {
+                println!("Cancelled. Exiting...");
+                std::process::exit(0);
+            }
+            
+            store.insert(key, new);
+            println!("Successfully updated");
         }
     }
 
