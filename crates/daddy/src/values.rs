@@ -2,8 +2,12 @@ use crate::{
     niches::integer::{Integer, IntegerSerError},
     utilities::cursor::Cursor,
 };
-use alloc::{format, string::{FromUtf8Error, String}, vec, vec::Vec};
-use alloc::string::ToString;
+use alloc::{
+    format,
+    string::{FromUtf8Error, String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -13,7 +17,7 @@ pub enum Value {
     Binary(Vec<u8>),
     Bool(bool),
     Int(Integer),
-    Imaginary(Integer, Integer)
+    Imaginary(Integer, Integer),
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -25,9 +29,7 @@ impl Debug for Value {
         match &self {
             Self::Ch(ch) => s.field("content", ch),
             Self::String(str) => s.field("content", str),
-            Self::Binary(b) => {
-                s.field("content", &display_bytes_as_hex_array(b))
-            },
+            Self::Binary(b) => s.field("content", &display_bytes_as_hex_array(b)),
             Self::Bool(b) => s.field("content", b),
             Self::Int(i) => s.field("content", i),
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
@@ -44,13 +46,15 @@ impl Display for Value {
             Self::String(str) => write!(f, "{str:?}"),
             Self::Binary(b) => {
                 write!(f, "{}", display_bytes_as_hex_array(b))
-            },
+            }
             Self::Bool(b) => write!(f, "{b}"),
             Self::Int(i) => write!(f, "{i}"),
-            Self::Imaginary(a, b) => if b.is_negative() {
-                write!(f, "{a}{b}i")
-            } else {
-                write!(f, "{a}+{b}i")
+            Self::Imaginary(a, b) => {
+                if b.is_negative() {
+                    write!(f, "{a}{b}i")
+                } else {
+                    write!(f, "{a}+{b}i")
+                }
             }
         }
     }
@@ -110,7 +114,10 @@ impl Display for ValueSerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             ValueSerError::InvalidType(b) => write!(f, "Invalid Type Discriminant found: {b:#b}"),
-            ValueSerError::Empty => write!(f, "Length provided was zero - what did you expect to deserialise there?"),
+            ValueSerError::Empty => write!(
+                f,
+                "Length provided was zero - what did you expect to deserialise there?"
+            ),
             ValueSerError::IntegerSerFailure(e) => write!(f, "Error de/ser-ing integer: {e:?}"),
             ValueSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
@@ -138,7 +145,7 @@ impl Value {
             Self::Binary(_) => ValueTy::Binary,
             Self::Bool(_) => ValueTy::Bool,
             Self::Int(_) => ValueTy::Int,
-            Self::Imaginary(_, _) => ValueTy::Imaginary
+            Self::Imaginary(_, _) => ValueTy::Imaginary,
         }
     }
 
@@ -275,7 +282,7 @@ impl Value {
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
                     ValueTy::Int => unreachable!("already dealt with integer type"),
-                    ValueTy::Imaginary => unreachable!("already dealt with imaginary type")
+                    ValueTy::Imaginary => unreachable!("already dealt with imaginary type"),
                 }
             }
         })

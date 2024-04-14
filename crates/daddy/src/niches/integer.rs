@@ -1,9 +1,11 @@
 use crate::utilities::cursor::Cursor;
 use alloc::{string::ToString, vec::Vec};
-use core::fmt::{Debug, Display, Formatter};
-use core::num::ParseIntError;
-use core::ops::Neg;
-use core::str::FromStr;
+use core::{
+    fmt::{Debug, Display, Formatter},
+    num::ParseIntError,
+    ops::Neg,
+    str::FromStr,
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Content {
@@ -36,7 +38,7 @@ impl Neg for Integer {
                 SignedState::SignedPositive => SignedState::SignedNegative,
                 SignedState::SignedNegative => SignedState::SignedPositive,
             },
-            content: self.content
+            content: self.content,
         }
     }
 }
@@ -51,20 +53,21 @@ impl Integer {
         }
     }
 
-    pub fn is_zero (&self) -> bool {
+    pub fn is_zero(&self) -> bool {
         match &self.content {
             Content::Small(s) => s.iter(),
             Content::Smedium(sm) => sm.iter(),
             Content::Medium(m) => m.iter(),
-            Content::Large(l) => l.iter()
-        }.all(|b| *b == 0)
+            Content::Large(l) => l.iter(),
+        }
+        .all(|b| *b == 0)
     }
 
-    pub fn is_negative (&self) -> bool {
+    pub fn is_negative(&self) -> bool {
         self.signed_state == SignedState::SignedNegative
     }
 
-    pub fn is_positive (&self) -> bool {
+    pub fn is_positive(&self) -> bool {
         !self.is_negative()
     }
 }
@@ -125,7 +128,8 @@ impl IntegerDiscriminant {
     }
 
     pub fn iterator_to_size_can_fit_in(
-        iter: impl Iterator<Item = u8> + DoubleEndedIterator + ExactSizeIterator, iter_len: usize
+        iter: impl Iterator<Item = u8> + DoubleEndedIterator + ExactSizeIterator,
+        iter_len: usize,
     ) -> Self {
         let mut last_zeroed = iter_len;
         for (i, b) in iter.enumerate().rev() {
@@ -258,26 +262,26 @@ impl FromStr for Integer {
 
         let biggest: u64 = s.parse()?;
         let biggest_bytes = biggest.to_le_bytes();
-        
+
         Ok(if biggest < 1 << 8 {
             Self {
                 signed_state,
-                content: Content::Small((biggest as u8).to_le_bytes())
+                content: Content::Small((biggest as u8).to_le_bytes()),
             }
         } else if biggest < 1 << 16 {
             Self {
                 signed_state,
-                content: Content::Smedium((biggest as u16).to_le_bytes())
+                content: Content::Smedium((biggest as u16).to_le_bytes()),
             }
         } else if biggest < 1 << 32 {
             Self {
                 signed_state,
-                content: Content::Medium((biggest as u32).to_le_bytes())
+                content: Content::Medium((biggest as u32).to_le_bytes()),
             }
         } else {
             Self {
                 signed_state,
-                content: Content::Large(biggest_bytes)
+                content: Content::Large(biggest_bytes),
             }
         })
     }
@@ -337,7 +341,7 @@ pub enum IntegerSerError {
     InvalidIntegerSizeDiscriminant(u8),
     NotEnoughBytes,
     WrongType,
-    IntegerParseError(ParseIntError)
+    IntegerParseError(ParseIntError),
 }
 
 impl From<ParseIntError> for IntegerSerError {
@@ -349,11 +353,20 @@ impl From<ParseIntError> for IntegerSerError {
 impl Display for IntegerSerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            IntegerSerError::InvalidSignedStateDiscriminant(b) => write!(f, "Invalid signed state discriminant found: {b:#b}"),
-            IntegerSerError::InvalidIntegerSizeDiscriminant(b) => write!(f, "Invalid integer size discriminant found: {b:#b}"),
+            IntegerSerError::InvalidSignedStateDiscriminant(b) => {
+                write!(f, "Invalid signed state discriminant found: {b:#b}")
+            }
+            IntegerSerError::InvalidIntegerSizeDiscriminant(b) => {
+                write!(f, "Invalid integer size discriminant found: {b:#b}")
+            }
             IntegerSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
-            IntegerSerError::WrongType => write!(f, "Attempted to deserialise into different type than was originally serialised from"),
-            IntegerSerError::IntegerParseError(e) => write!(f, "Error parsing from base-10 string: {e:?}"),
+            IntegerSerError::WrongType => write!(
+                f,
+                "Attempted to deserialise into different type than was originally serialised from"
+            ),
+            IntegerSerError::IntegerParseError(e) => {
+                write!(f, "Error parsing from base-10 string: {e:?}")
+            }
         }
     }
 }
@@ -466,4 +479,3 @@ impl Integer {
         })
     }
 }
-

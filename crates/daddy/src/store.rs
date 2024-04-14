@@ -4,10 +4,15 @@ use crate::{
     values::{Value, ValueSerError},
     version::{Version, VersionSerError},
 };
-use alloc::{collections::BTreeMap, vec, vec::Vec};
-use alloc::collections::btree_map::IntoIter;
-use core::fmt::{Display, Formatter};
-use core::ops::{Index, IndexMut};
+use alloc::{
+    collections::{btree_map::IntoIter, BTreeMap},
+    vec,
+    vec::Vec,
+};
+use core::{
+    fmt::{Display, Formatter},
+    ops::{Index, IndexMut},
+};
 
 #[derive(Debug, Clone)]
 pub struct Store {
@@ -24,19 +29,22 @@ impl Store {
     pub fn insert(&mut self, k: Value, v: Value) {
         self.kvs.insert(k, v);
     }
-    
+
     pub fn remove(&mut self, k: &Value) -> Option<Value> {
         self.kvs.remove(k)
     }
 
-    #[must_use] pub fn version(&self) -> Version {
+    #[must_use]
+    pub fn version(&self) -> Version {
         self.version
     }
 
-    #[must_use] pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
         self.kvs.is_empty()
     }
-    #[must_use] pub fn size(&self) -> usize {
+    #[must_use]
+    pub fn size(&self) -> usize {
         self.kvs.len()
     }
 }

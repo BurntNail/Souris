@@ -1,8 +1,7 @@
+use crate::{niches::integer::Integer, utilities::cursor::Cursor};
 use alloc::string::ToString;
 use core::str::FromStr;
 use proptest::prelude::*;
-use crate::niches::integer::Integer;
-use crate::utilities::cursor::Cursor;
 
 proptest! {
     #[test]

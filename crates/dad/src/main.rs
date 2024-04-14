@@ -1,16 +1,20 @@
-use std::fmt::{Display, Formatter};
-use std::fs::{File};
-use std::path::PathBuf;
 use clap::{Parser, Subcommand};
-use std::io::{Error as IOError, ErrorKind, Read, Write};
-use comfy_table::modifiers::UTF8_ROUND_CORNERS;
-use comfy_table::presets::UTF8_FULL;
-use comfy_table::{ContentArrangement, Table};
-use dialoguer::{Confirm, Error as DError, FuzzySelect, Input};
-use dialoguer::theme::{ColorfulTheme, Theme};
-use daddy::niches::integer::Integer;
-use daddy::store::{Store, StoreError};
-use daddy::values::{Value, ValueTy};
+use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
+use daddy::{
+    niches::integer::Integer,
+    store::{Store, StoreError},
+    values::{Value, ValueTy},
+};
+use dialoguer::{
+    theme::{ColorfulTheme, Theme},
+    Confirm, Error as DError, FuzzySelect, Input,
+};
+use std::{
+    fmt::{Display, Formatter},
+    fs::File,
+    io::{Error as IOError, ErrorKind, Read, Write},
+    path::PathBuf,
+};
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -30,7 +34,7 @@ enum Commands {
     RemoveEntry,
 }
 
-fn main () {
+fn main() {
     if let Err(e) = fun_main(Args::parse()) {
         eprintln!("Error running program: {e:?}");
         std::process::exit(1);
@@ -70,7 +74,7 @@ impl From<DError> for Error {
     }
 }
 
-fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
+fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
 
     match command {
@@ -83,7 +87,8 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
             println!("Version: {:?}", store.version());
 
             let mut table = Table::new();
-            table.set_header(vec!["Key", "Value"])
+            table
+                .set_header(vec!["Key", "Value"])
                 .load_preset(UTF8_FULL)
                 .apply_modifier(UTF8_ROUND_CORNERS)
                 .set_content_arrangement(ContentArrangement::Dynamic);
@@ -92,7 +97,7 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
                 table.add_row(vec![format!("{k}"), format!("{v}")]);
             }
             println!("{table}");
-        },
+        }
         #[cfg(debug_assertions)]
         Commands::DebugViewAll => {
             let store = view_all(path, &theme)?;
@@ -111,7 +116,10 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
 
             println!();
 
-            if Confirm::with_theme(&theme).with_prompt("Confirm Addition?").interact()? {
+            if Confirm::with_theme(&theme)
+                .with_prompt("Confirm Addition?")
+                .interact()?
+            {
                 store.insert(key, value);
                 let mut file = File::create(path)?;
                 file.write_all(&store.ser()?)?;
@@ -121,26 +129,35 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
                 println!("Cancelled. Exiting...");
                 std::process::exit(0);
             }
-        },
+        }
         Commands::RemoveEntry => {
             let mut store = view_all(path.clone(), &theme)?;
 
             println!();
 
-            let mut keys = store.clone().into_iter().map(|(k, _)| k).collect::<Vec<_>>();
-            let key = FuzzySelect::with_theme(&theme).with_prompt("Select key to be removed:").items(&keys).interact()?;
+            let mut keys = store
+                .clone()
+                .into_iter()
+                .map(|(k, _)| k)
+                .collect::<Vec<_>>();
+            let key = FuzzySelect::with_theme(&theme)
+                .with_prompt("Select key to be removed:")
+                .items(&keys)
+                .interact()?;
             let key = keys.swap_remove(key); //idc if it gets swapped as we drop it next
             drop(keys);
-            
-            
-            if Confirm::with_theme(&theme).with_prompt("Confirm Removal?").interact()? {
+
+            if Confirm::with_theme(&theme)
+                .with_prompt("Confirm Removal?")
+                .interact()?
+            {
                 match store.remove(&key) {
                     Some(value) => {
                         let mut file = File::create(path)?;
                         file.write_all(&store.ser()?)?;
 
                         println!("Successfully removed {value:?} from store.");
-                    },
+                    }
                     None => {
                         println!("Key not found. Nothing removed.");
                     }
@@ -149,45 +166,70 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
                 println!("Cancelled. Exiting...");
                 std::process::exit(0);
             }
-
         }
     }
 
     Ok(())
 }
 
-fn get_value_from_stdin (prompt: impl Display, theme: &dyn Theme) -> Result<Value, Error> {
+fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value, Error> {
     println!("{prompt}");
 
-    let tys = [ValueTy::Bool, ValueTy::Int, ValueTy::Ch, ValueTy::String, ValueTy::Binary, ValueTy::Imaginary];
+    let tys = [
+        ValueTy::Bool,
+        ValueTy::Int,
+        ValueTy::Ch,
+        ValueTy::String,
+        ValueTy::Binary,
+        ValueTy::Imaginary,
+    ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
-        .items(tys.into_iter().map(|x| format!("{x:?}")).collect::<Vec<_>>().as_slice())
+        .items(
+            tys.into_iter()
+                .map(|x| format!("{x:?}"))
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
         .interact()?;
     Ok(match tys[selection] {
         ValueTy::Ch => {
-            let ch: char = Input::with_theme(theme).with_prompt("Which character?").interact()?;
+            let ch: char = Input::with_theme(theme)
+                .with_prompt("Which character?")
+                .interact()?;
             Value::Ch(ch)
-        },
+        }
         ValueTy::String => {
-            let st: String = Input::with_theme(theme).with_prompt("What text?").interact()?;
+            let st: String = Input::with_theme(theme)
+                .with_prompt("What text?")
+                .interact()?;
             Value::String(st)
-        },
+        }
         ValueTy::Binary => {
-            let st: String = Input::with_theme(theme).with_prompt("What text to be interpreted as UTF-8 bytes?").interact()?;
+            let st: String = Input::with_theme(theme)
+                .with_prompt("What text to be interpreted as UTF-8 bytes?")
+                .interact()?;
             Value::Binary(st.as_bytes().to_vec())
-        },
+        }
         ValueTy::Bool => {
-            let b = FuzzySelect::with_theme(theme).items(&["False", "True"]).interact()?;
+            let b = FuzzySelect::with_theme(theme)
+                .items(&["False", "True"])
+                .interact()?;
             Value::Bool(b != 0)
-        },
+        }
         ValueTy::Int => {
-            let i: Integer = Input::with_theme(theme).with_prompt("Which number?").interact()?;
+            let i: Integer = Input::with_theme(theme)
+                .with_prompt("Which number?")
+                .interact()?;
             Value::Int(i)
-        },
+        }
         ValueTy::Imaginary => {
-            let a: Integer = Input::with_theme(theme).with_prompt("Real Part?").interact()?;
-            let b: Integer = Input::with_theme(theme).with_prompt("Imaginary Part?").interact()?;
+            let a: Integer = Input::with_theme(theme)
+                .with_prompt("Real Part?")
+                .interact()?;
+            let b: Integer = Input::with_theme(theme)
+                .with_prompt("Imaginary Part?")
+                .interact()?;
 
             Value::Imaginary(a, b)
         }
@@ -199,13 +241,14 @@ fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
         Err(e) if e.kind() == ErrorKind::NotFound => {
             if Confirm::with_theme(theme)
                 .with_prompt("No file found. Create new?")
-                .interact()? {
+                .interact()?
+            {
                 new_store_in_file(path, theme)
             } else {
                 println!("File not created. Exiting...");
                 std::process::exit(0);
             }
-        },
+        }
         Err(e) => Err(e.into()),
         Ok(mut file) => {
             let mut contents: Vec<u8> = vec![];
@@ -214,7 +257,7 @@ fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
                 loop {
                     match file.read(&mut tmp)? {
                         0 => break,
-                        n => contents.extend(&tmp[0..n])
+                        n => contents.extend(&tmp[0..n]),
                     }
                 }
             }
@@ -232,13 +275,14 @@ fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
         Err(e) if e.kind() == ErrorKind::AlreadyExists => {
             if Confirm::with_theme(theme)
                 .with_prompt("File already exists. Continue & Overwrite?")
-                .interact()? {
+                .interact()?
+            {
                 File::create(path)?
             } else {
                 println!("File not overwritten. Exiting...");
                 std::process::exit(0);
             }
-        },
+        }
         Err(e) => return Err(e.into()),
         Ok(f) => f,
     };

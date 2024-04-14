@@ -1,5 +1,5 @@
-use core::fmt::{Display, Formatter};
 use crate::utilities::cursor::Cursor;
+use core::fmt::{Display, Formatter};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Version {
