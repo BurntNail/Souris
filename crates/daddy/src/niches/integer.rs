@@ -171,15 +171,15 @@ macro_rules! new_x {
             }
         }
 
-        impl TryInto<$t> for Integer {
+        impl TryFrom<Integer> for $t {
             type Error = IntegerSerError;
 
-            fn try_into(self) -> Result<$t, Self::Error> {
-                if self.signed_state != SignedState::Unsigned {
+            fn try_from(i: Integer) -> Result<Self, Self::Error> {
+                if i.signed_state == SignedState::SignedNegative {
                     return Err(IntegerSerError::WrongType);
                 }
 
-                match self.content {
+                match i.content {
                     Content::$disc(bytes) => Ok(<$t>::from_le_bytes(bytes)),
                     _ => Err(IntegerSerError::WrongType),
                 }
@@ -212,26 +212,23 @@ macro_rules! new_x {
             }
         }
 
-        impl TryInto<$t> for Integer {
+        impl TryFrom<Integer> for $t {
             type Error = IntegerSerError;
 
-            fn try_into(self) -> Result<$t, Self::Error> {
-                if self.signed_state == SignedState::Unsigned {
-                    return Err(IntegerSerError::WrongType);
-                }
-
-                let raw_n = match self.content {
+            fn try_from(i: Integer) -> Result<Self, Self::Error> {
+                let raw_n = match i.content {
                     Content::$disc(bytes) => <$t>::from_le_bytes(bytes),
                     _ => return Err(IntegerSerError::WrongType),
                 };
 
-                Ok(if self.signed_state == SignedState::SignedPositive {
-                    raw_n
-                } else {
+                Ok(if i.signed_state == SignedState::SignedNegative {
                     -raw_n
+                } else {
+                    raw_n
                 })
             }
         }
+
     };
 }
 
@@ -253,6 +250,13 @@ impl FromStr for Integer {
         if s.is_empty() {
             return Err(IntegerSerError::NotEnoughBytes);
         };
+
+        if s == "0" {
+            return Ok(Self {
+                signed_state: SignedState::Unsigned,
+                content: Content::Small([0])
+            });
+        }
 
         let (s, signed_state) = if s.as_bytes()[0] == b'-' {
             (&s[1..], SignedState::SignedNegative)
@@ -418,7 +422,7 @@ impl Integer {
         res
     }
 
-    pub fn deser(reader: &mut Cursor) -> Result<Self, IntegerSerError> {
+    pub fn deser(reader: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
         let (signed_state, original, stored) = {
             let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)? else {
                 unreachable!("didn't get just one byte back")
@@ -477,5 +481,39 @@ impl Integer {
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{niches::integer::Integer, utilities::cursor::Cursor};
+    use alloc::string::ToString;
+    use core::str::FromStr;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn doesnt_crash (s in "\\PC*") {
+            let _ = Integer::from_str(&s);
+        }
+
+        #[test]
+        fn parse_valids (i in any::<i64>()) {
+            let int = Integer::from_str(&i.to_string()).unwrap();
+            assert_eq!(i64::try_from(int).unwrap(), i);
+        }
+
+        #[test]
+        fn back_to_original (i in any::<i64>()) {
+            let s = i.to_string();
+
+            let parsed = Integer::from_str(&s).unwrap();
+
+            let sered = parsed.ser();
+            let got_back = Integer::deser(&mut Cursor::new(&sered)).unwrap();
+            assert_eq!(parsed, got_back);
+
+            assert_eq!(i64::try_from(got_back).unwrap(), i);
+        }
     }
 }

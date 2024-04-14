@@ -201,7 +201,7 @@ impl Value {
         Ok(res)
     }
 
-    pub fn deserialise(bytes: &mut Cursor, len: usize) -> Result<Self, ValueSerError> {
+    pub fn deserialise(bytes: &mut Cursor<u8>, len: usize) -> Result<Self, ValueSerError> {
         enum State {
             Start,
             FoundType(ValueTy, u8),

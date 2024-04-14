@@ -30,7 +30,7 @@ impl Version {
         }
     }
 
-    pub fn from_bytes(cursor: &mut Cursor) -> Result<Self, VersionSerError> {
+    pub fn from_bytes(cursor: &mut Cursor<u8>) -> Result<Self, VersionSerError> {
         match cursor.read(6).ok_or(VersionSerError::NotEnoughBytes)? {
             b"V0_1_0" => Ok(Self::V0_1_0),
             _ => Err(VersionSerError::Invalid),
