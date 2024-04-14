@@ -25,6 +25,8 @@ enum Commands {
     CreateNew,
     AddEntry,
     ViewAll,
+    #[cfg(debug_assertions)]
+    DebugViewAll,
     RemoveEntry,
 }
 
@@ -77,7 +79,7 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
         }
         Commands::ViewAll => {
             let store = view_all(path, &theme)?;
-            
+
             println!("Version: {:?}", store.version());
 
             let mut table = Table::new();
@@ -91,17 +93,22 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
             }
             println!("{table}");
         },
+        #[cfg(debug_assertions)]
+        Commands::DebugViewAll => {
+            let store = view_all(path, &theme)?;
+            println!("{store:?}");
+        }
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
-            
+
             let key = get_value_from_stdin("Please enter the key:", &theme)?;
             let value = get_value_from_stdin("Please enter the value:", &theme)?;
-            
+
             println!();
 
             println!("Received Key: {key}");
             println!("Received Value: {value}");
-            
+
             println!();
 
             if Confirm::with_theme(&theme).with_prompt("Confirm Addition?").interact()? {
@@ -150,33 +157,39 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
 fn get_value_from_stdin (prompt: impl Display, theme: &dyn Theme) -> Result<Value, Error> {
     println!("{prompt}");
 
-    let tys = [ValueTy::Bool, ValueTy::Int, ValueTy::Ch, ValueTy::String, ValueTy::Binary];
+    let tys = [ValueTy::Bool, ValueTy::Int, ValueTy::Ch, ValueTy::String, ValueTy::Binary, ValueTy::Imaginary];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
         .items(tys.into_iter().map(|x| format!("{x:?}")).collect::<Vec<_>>().as_slice())
         .interact()?;
-    match tys[selection] {
+    Ok(match tys[selection] {
         ValueTy::Ch => {
             let ch: char = Input::with_theme(theme).with_prompt("Which character?").interact()?;
-            Ok(Value::Ch(ch))
+            Value::Ch(ch)
         },
         ValueTy::String => {
             let st: String = Input::with_theme(theme).with_prompt("What text?").interact()?;
-            Ok(Value::String(st))
+            Value::String(st)
         },
         ValueTy::Binary => {
             let st: String = Input::with_theme(theme).with_prompt("What text to be interpreted as UTF-8 bytes?").interact()?;
-            Ok(Value::Binary(st.as_bytes().to_vec()))
+            Value::Binary(st.as_bytes().to_vec())
         },
         ValueTy::Bool => {
             let b = FuzzySelect::with_theme(theme).items(&["False", "True"]).interact()?;
-            Ok(Value::Bool(b != 0))
+            Value::Bool(b != 0)
         },
         ValueTy::Int => {
-            let i: i64 = Input::with_theme(theme).with_prompt("Which number?").interact()?;
-            Ok(Value::Int(Integer::from(i)))
+            let i: Integer = Input::with_theme(theme).with_prompt("Which number?").interact()?;
+            Value::Int(i)
         },
-    }
+        ValueTy::Imaginary => {
+            let a: Integer = Input::with_theme(theme).with_prompt("Real Part?").interact()?;
+            let b: Integer = Input::with_theme(theme).with_prompt("Imaginary Part?").interact()?;
+
+            Value::Imaginary(a, b)
+        }
+    })
 }
 
 fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
@@ -203,9 +216,9 @@ fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
                     }
                 }
             }
-            
+
             println!("Read {} bytes.", contents.len()); //grammar: always != 1
-            
+
             let store = Store::deser(&contents)?;
             Ok(store)
         }
@@ -227,7 +240,7 @@ fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
         Err(e) => return Err(e.into()),
         Ok(f) => f,
     };
-    
+
     let store = Store::new();
     file.write_all(&store.ser()?)?;
     println!("Successfully created new DDB.");

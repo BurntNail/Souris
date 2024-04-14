@@ -5,6 +5,7 @@ use crate::{
 use alloc::{format, string::{FromUtf8Error, String}, vec, vec::Vec};
 use alloc::string::ToString;
 use core::fmt::{Debug, Display, Formatter};
+use core::ops::Neg;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
@@ -13,6 +14,7 @@ pub enum Value {
     Binary(Vec<u8>),
     Bool(bool),
     Int(Integer),
+    Imaginary(Integer, Integer)
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -29,6 +31,7 @@ impl Debug for Value {
             },
             Self::Bool(b) => s.field("content", b),
             Self::Int(i) => s.field("content", i),
+            Self::Imaginary(a, b) => s.field("content", &(a, b)),
         };
 
         s.finish()
@@ -45,6 +48,11 @@ impl Display for Value {
             },
             Self::Bool(b) => write!(f, "{b}"),
             Self::Int(i) => write!(f, "{i}"),
+            Self::Imaginary(a, b) => if b.is_negative() {
+                write!(f, "{a} - {}i", b.neg())
+            } else {
+                write!(f, "{a} + {b}i")
+            }
         }
     }
 }
@@ -72,6 +80,7 @@ pub enum ValueTy {
     Binary,
     Bool,
     Int,
+    Imaginary,
 }
 
 impl ValueTy {
@@ -83,6 +92,7 @@ impl ValueTy {
             ValueTy::Binary => 0b010,
             ValueTy::Bool => 0b011,
             ValueTy::Int => 0b100,
+            ValueTy::Imaginary => 0b101,
         }
     }
 }
@@ -129,6 +139,7 @@ impl Value {
             Self::Binary(_) => ValueTy::Binary,
             Self::Bool(_) => ValueTy::Bool,
             Self::Int(_) => ValueTy::Int,
+            Self::Imaginary(_, _) => ValueTy::Imaginary
         }
     }
 
@@ -175,6 +186,10 @@ impl Value {
             Self::Int(i) => {
                 res.extend(i.ser().iter());
             }
+            Self::Imaginary(a, b) => {
+                res.extend(a.ser().iter());
+                res.extend(b.ser().iter());
+            }
         }
 
         Ok(res)
@@ -213,6 +228,11 @@ impl Value {
                         ValueTy::Int => {
                             let int = Integer::deser(bytes)?;
                             return Ok(Self::Int(int));
+                        }
+                        ValueTy::Imaginary => {
+                            let a = Integer::deser(bytes)?;
+                            let b = Integer::deser(bytes)?;
+                            return Ok(Self::Imaginary(a, b));
                         }
                         ValueTy::Ch => {
                             let ch = char::from_u32(Integer::deser(bytes)?.try_into()?)
@@ -255,6 +275,7 @@ impl Value {
                     ValueTy::Binary => Self::Binary(tmp),
                     ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
                     ValueTy::Int => unreachable!("already dealt with integer type"),
+                    ValueTy::Imaginary => unreachable!("already dealt with imaginary type")
                 }
             }
         })

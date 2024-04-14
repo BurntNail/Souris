@@ -1,6 +1,9 @@
 use crate::utilities::cursor::Cursor;
 use alloc::{string::ToString, vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
+use core::num::ParseIntError;
+use core::ops::Neg;
+use core::str::FromStr;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Content {
@@ -21,6 +24,49 @@ pub enum SignedState {
 pub struct Integer {
     signed_state: SignedState,
     content: Content,
+}
+
+impl Neg for Integer {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self {
+            signed_state: match self.signed_state {
+                SignedState::Unsigned => SignedState::Unsigned,
+                SignedState::SignedPositive => SignedState::SignedNegative,
+                SignedState::SignedNegative => SignedState::SignedPositive,
+            },
+            content: self.content
+        }
+    }
+}
+
+impl Integer {
+    fn as_disc(&self) -> IntegerDiscriminant {
+        match &self.content {
+            Content::Small(_) => IntegerDiscriminant::Small,
+            Content::Smedium(_) => IntegerDiscriminant::Smedium,
+            Content::Medium(_) => IntegerDiscriminant::Medium,
+            Content::Large(_) => IntegerDiscriminant::Large,
+        }
+    }
+
+    pub fn is_zero (&self) -> bool {
+        match &self.content {
+            Content::Small(s) => s.iter(),
+            Content::Smedium(sm) => sm.iter(),
+            Content::Medium(m) => m.iter(),
+            Content::Large(l) => l.iter()
+        }.all(|b| *b == 0)
+    }
+
+    pub fn is_negative (&self) -> bool {
+        self.signed_state == SignedState::SignedNegative
+    }
+
+    pub fn is_positive (&self) -> bool {
+        !self.is_negative()
+    }
 }
 
 impl Display for Integer {
@@ -111,7 +157,7 @@ macro_rules! new_x {
                 Self::from(n)
             }
         }
-        
+
         impl From<$t> for Integer {
             fn from(n: $t) -> Self {
                 let arr = n.to_le_bytes();
@@ -144,9 +190,9 @@ macro_rules! new_x {
                 Self::from(n)
             }
         }
-        
+
         impl From<$t> for Integer {
-            fn from(n: $t) -> Self { 
+            fn from(n: $t) -> Self {
                 if n < 0 {
                     let arr = (-n).to_le_bytes();
                     Self {
@@ -196,6 +242,45 @@ new_x!(usize => usize, Large);
 new_x!(isize =>> isize, Large);
 new_x!(u64 => u64, Large);
 new_x!(i64 =>> i64, Large);
+
+impl FromStr for Integer {
+    type Err = IntegerSerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Err(IntegerSerError::NotEnoughBytes);
+        };
+
+        let (s, signed_state) = if s.as_bytes()[0] == b'-' {
+            (&s[1..], SignedState::SignedNegative)
+        } else {
+            (s, SignedState::Unsigned)
+        };
+
+        let biggest: u64 = s.parse()?;
+        let biggest_bytes = biggest.to_le_bytes();
+        let smallest_size = IntegerDiscriminant::iterator_to_size_can_fit_in(biggest_bytes.into_iter(), 7);
+        
+        Ok(match smallest_size {
+            IntegerDiscriminant::Small => Self {
+                signed_state,
+                content: Content::Small((biggest as u8).to_le_bytes()),
+            },
+            IntegerDiscriminant::Smedium => Self {
+                signed_state,
+                content: Content::Smedium((biggest as u16).to_le_bytes()),
+            },
+            IntegerDiscriminant::Medium => Self {
+                signed_state,
+                content: Content::Medium((biggest as u32).to_le_bytes()),
+            },
+            IntegerDiscriminant::Large => Self {
+                signed_state,
+                content: Content::Large(biggest_bytes)
+            },
+        })
+    }
+}
 
 impl From<IntegerDiscriminant> for u8 {
     fn from(value: IntegerDiscriminant) -> Self {
@@ -251,6 +336,13 @@ pub enum IntegerSerError {
     InvalidIntegerSizeDiscriminant(u8),
     NotEnoughBytes,
     WrongType,
+    IntegerParseError(ParseIntError)
+}
+
+impl From<ParseIntError> for IntegerSerError {
+    fn from(value: ParseIntError) -> Self {
+        Self::IntegerParseError(value)
+    }
 }
 
 impl Display for IntegerSerError {
@@ -259,21 +351,13 @@ impl Display for IntegerSerError {
             IntegerSerError::InvalidSignedStateDiscriminant(b) => write!(f, "Invalid signed state discriminant found: {b:#b}"),
             IntegerSerError::InvalidIntegerSizeDiscriminant(b) => write!(f, "Invalid integer size discriminant found: {b:#b}"),
             IntegerSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
-            IntegerSerError::WrongType => write!(f, "Attempted to deserialise into different type than was originally serialised from")
+            IntegerSerError::WrongType => write!(f, "Attempted to deserialise into different type than was originally serialised from"),
+            IntegerSerError::IntegerParseError(e) => write!(f, "Error parsing from base-10 string: {e:?}"),
         }
     }
 }
 
 impl Integer {
-    fn as_disc(&self) -> IntegerDiscriminant {
-        match &self.content {
-            Content::Small(_) => IntegerDiscriminant::Small,
-            Content::Smedium(_) => IntegerDiscriminant::Smedium,
-            Content::Medium(_) => IntegerDiscriminant::Medium,
-            Content::Large(_) => IntegerDiscriminant::Large,
-        }
-    }
-
     #[must_use]
     pub fn ser(self) -> Vec<u8> {
         //disc structure:
