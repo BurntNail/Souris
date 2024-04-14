@@ -9,7 +9,7 @@ use alloc::collections::btree_map::IntoIter;
 use core::fmt::{Display, Formatter};
 use core::ops::{Index, IndexMut};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Store {
     version: Version,
     kvs: BTreeMap<Value, Value>,

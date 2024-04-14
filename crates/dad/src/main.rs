@@ -96,7 +96,7 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
         #[cfg(debug_assertions)]
         Commands::DebugViewAll => {
             let store = view_all(path, &theme)?;
-            println!("{store:?}");
+            println!("{store:#?}");
         }
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
@@ -127,10 +127,12 @@ fn fun_main (Args { path, command }: Args) -> Result<(), Error>{
 
             println!();
 
-            let key = get_value_from_stdin("Please enter the key to be removed:", &theme)?;
-
-            println!("Received Key: {key}");
-
+            let mut keys = store.clone().into_iter().map(|(k, _)| k).collect::<Vec<_>>();
+            let key = FuzzySelect::with_theme(&theme).with_prompt("Select key to be removed:").items(&keys).interact()?;
+            let key = keys.swap_remove(key); //idc if it gets swapped as we drop it next
+            drop(keys);
+            
+            
             if Confirm::with_theme(&theme).with_prompt("Confirm Removal?").interact()? {
                 match store.remove(&key) {
                     Some(value) => {

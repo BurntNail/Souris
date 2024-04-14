@@ -5,7 +5,6 @@ use crate::{
 use alloc::{format, string::{FromUtf8Error, String}, vec, vec::Vec};
 use alloc::string::ToString;
 use core::fmt::{Debug, Display, Formatter};
-use core::ops::Neg;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
@@ -49,9 +48,9 @@ impl Display for Value {
             Self::Bool(b) => write!(f, "{b}"),
             Self::Int(i) => write!(f, "{i}"),
             Self::Imaginary(a, b) => if b.is_negative() {
-                write!(f, "{a} - {}i", b.neg())
+                write!(f, "{a}{b}i")
             } else {
-                write!(f, "{a} + {b}i")
+                write!(f, "{a}+{b}i")
             }
         }
     }
@@ -221,6 +220,7 @@ impl Value {
                         0b010 => ValueTy::Binary,
                         0b011 => ValueTy::Bool,
                         0b100 => ValueTy::Int,
+                        0b101 => ValueTy::Imaginary,
                         _ => return Err(ValueSerError::InvalidType(ty)),
                     };
 

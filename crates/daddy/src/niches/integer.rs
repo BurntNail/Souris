@@ -125,10 +125,9 @@ impl IntegerDiscriminant {
     }
 
     pub fn iterator_to_size_can_fit_in(
-        iter: impl Iterator<Item = u8> + DoubleEndedIterator + ExactSizeIterator,
-        length_minus_one: usize,
+        iter: impl Iterator<Item = u8> + DoubleEndedIterator + ExactSizeIterator, iter_len: usize
     ) -> Self {
-        let mut last_zeroed = length_minus_one;
+        let mut last_zeroed = iter_len;
         for (i, b) in iter.enumerate().rev() {
             if b != 0 {
                 break;
@@ -137,11 +136,11 @@ impl IntegerDiscriminant {
             last_zeroed = i;
         }
 
-        if last_zeroed <= 1 {
+        if last_zeroed < 2 {
             IntegerDiscriminant::Small
-        } else if last_zeroed <= 2 {
+        } else if last_zeroed < 3 {
             IntegerDiscriminant::Smedium
-        } else if last_zeroed <= 4 {
+        } else if last_zeroed < 5 {
             IntegerDiscriminant::Medium
         } else {
             IntegerDiscriminant::Large
@@ -259,25 +258,27 @@ impl FromStr for Integer {
 
         let biggest: u64 = s.parse()?;
         let biggest_bytes = biggest.to_le_bytes();
-        let smallest_size = IntegerDiscriminant::iterator_to_size_can_fit_in(biggest_bytes.into_iter(), 7);
         
-        Ok(match smallest_size {
-            IntegerDiscriminant::Small => Self {
+        Ok(if biggest < 1 << 8 {
+            Self {
                 signed_state,
-                content: Content::Small((biggest as u8).to_le_bytes()),
-            },
-            IntegerDiscriminant::Smedium => Self {
+                content: Content::Small((biggest as u8).to_le_bytes())
+            }
+        } else if biggest < 1 << 16 {
+            Self {
                 signed_state,
-                content: Content::Smedium((biggest as u16).to_le_bytes()),
-            },
-            IntegerDiscriminant::Medium => Self {
+                content: Content::Smedium((biggest as u16).to_le_bytes())
+            }
+        } else if biggest < 1 << 32 {
+            Self {
                 signed_state,
-                content: Content::Medium((biggest as u32).to_le_bytes()),
-            },
-            IntegerDiscriminant::Large => Self {
+                content: Content::Medium((biggest as u32).to_le_bytes())
+            }
+        } else {
+            Self {
                 signed_state,
                 content: Content::Large(biggest_bytes)
-            },
+            }
         })
     }
 }
@@ -376,19 +377,19 @@ impl Integer {
                 for (i, b) in b.iter().enumerate() {
                     at_max[i] = *b;
                 }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), b.len() - 1)
+                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 2)
             }
             Content::Medium(b) => {
                 for (i, b) in b.iter().enumerate() {
                     at_max[i] = *b;
                 }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), b.len() - 1)
+                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 4)
             }
             Content::Large(b) => {
                 for (i, b) in b.iter().enumerate() {
                     at_max[i] = *b;
                 }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), b.len() - 1)
+                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 8)
             }
         };
 
@@ -465,3 +466,4 @@ impl Integer {
         })
     }
 }
+
