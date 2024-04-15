@@ -23,13 +23,9 @@ pub enum Value {
     Int(Integer),
     Imaginary(Integer, Integer),
     Array(Array),
-    //TODO: Vec
     //TODO: Store
     //TODO: Timestamp
 }
-
-//TODO: pass the version to the different parsers so they can respect that
-//TODO: or scrap the version
 
 #[allow(clippy::missing_fields_in_debug)]
 impl Debug for Value {
@@ -205,7 +201,10 @@ impl Value {
                         res.extend(Integer::u32(*ch as u32).ser(version));
                     }
                     Self::String(s) => {
-                        res.extend(s.as_bytes().iter());
+                        let bytes = s.as_bytes();
+                        
+                        res.extend(Integer::usize(bytes.len()).ser(version).iter());
+                        res.extend(bytes.iter());
                     }
                     Self::Binary(b) => {
                         res.extend(b.iter());
@@ -224,7 +223,7 @@ impl Value {
                         res.extend(a.ser(version)?.iter());
                     }
                 }
-
+                
                 Ok(res)
             }
         }
@@ -232,95 +231,59 @@ impl Value {
 
     pub fn deserialise(
         bytes: &mut Cursor<u8>,
-        len: usize,
         version: Version,
     ) -> Result<Self, ValueSerError> {
-        enum State {
-            Start,
-            FoundType(ValueTy, u8),
-            FindingContent(ValueTy),
-        }
-
-        let mut state = State::Start;
-
         match version {
             Version::V0_1_0 => {
-                let mut tmp = vec![];
+                let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
+                    unreachable!("didn't get just one byte back")
+                };
+                let byte = *byte;
 
-                for _ in 0..len {
-                    let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
-                        unreachable!("didn't get just one byte back")
-                    };
-                    let byte = *byte;
+                let ty = byte >> 5;
+                let ty = match ty {
+                    0b000 => ValueTy::Ch,
+                    0b001 => ValueTy::String,
+                    0b010 => ValueTy::Binary,
+                    0b011 => ValueTy::Bool,
+                    0b100 => ValueTy::Int,
+                    0b101 => ValueTy::Imaginary,
+                    0b110 => ValueTy::Array,
+                    _ => return Err(ValueSerError::InvalidType(ty)),
+                };
 
-                    state = match state {
-                        State::Start => {
-                            let ty = byte >> 5;
-                            let ty = match ty {
-                                0b000 => ValueTy::Ch,
-                                0b001 => ValueTy::String,
-                                0b010 => ValueTy::Binary,
-                                0b011 => ValueTy::Bool,
-                                0b100 => ValueTy::Int,
-                                0b101 => ValueTy::Imaginary,
-                                0b110 => ValueTy::Array,
-                                _ => return Err(ValueSerError::InvalidType(ty)),
-                            };
-
-                            match ty {
-                                ValueTy::Int => {
-                                    let int = Integer::deser(bytes, version)?;
-                                    return Ok(Self::Int(int));
-                                }
-                                ValueTy::Imaginary => {
-                                    let a = Integer::deser(bytes, version)?;
-                                    let b = Integer::deser(bytes, version)?;
-                                    return Ok(Self::Imaginary(a, b));
-                                }
-                                ValueTy::Ch => {
-                                    let ch =
-                                        char::from_u32(Integer::deser(bytes, version)?.try_into()?)
-                                            .ok_or(ValueSerError::InvalidCharacter)?;
-                                    return Ok(Self::Ch(ch));
-                                }
-                                ValueTy::Array => {
-                                    let a = Array::deser(bytes, version)?;
-                                    return Ok(Self::Array(a));
-                                }
-                                _ => {}
-                            }
-
-                            State::FoundType(ty, byte)
-                        }
-                        State::FoundType(ty, _ty_byte) => {
-                            tmp.push(byte);
-                            State::FindingContent(ty)
-                        }
-                        State::FindingContent(ty) => {
-                            tmp.push(byte);
-                            State::FindingContent(ty)
-                        }
+                Ok(match ty {
+                    ValueTy::Int => {
+                        let int = Integer::deser(bytes, version)?;
+                        Self::Int(int)
                     }
-                }
-
-                Ok(match state {
-                    State::Start => return Err(ValueSerError::Empty),
-                    State::FoundType(ty, ty_byte) => {
-                        let relevant_niche = ty_byte & 0b000_11111;
-                        match ty {
-                            ValueTy::Bool => Value::Bool(relevant_niche > 0),
-                            _ => unreachable!("no other niche optimisations apart from bool"),
-                        }
+                    ValueTy::Imaginary => {
+                        let a = Integer::deser(bytes, version)?;
+                        let b = Integer::deser(bytes, version)?;
+                        Self::Imaginary(a, b)
                     }
-                    State::FindingContent(ty) => {
-                        let tmp = core::mem::take(&mut tmp);
-
-                        if ty == ValueTy::String {
-                            let st = String::from_utf8(tmp)?;
-                            Self::String(st)
-                        } else {
-                            unreachable!("Already dealt with {ty:?}");
-                        }
+                    ValueTy::Ch => {
+                        let ch =
+                            char::from_u32(Integer::deser(bytes, version)?.try_into()?)
+                                .ok_or(ValueSerError::InvalidCharacter)?;
+                        Self::Ch(ch)
+                    }
+                    ValueTy::Array => {
+                        let a = Array::deser(bytes, version)?;
+                        Self::Array(a)
+                    }
+                    ValueTy::String => {
+                        let len: usize = Integer::deser(bytes, version)?.try_into()?;
+                        let str_bytes = bytes.read(len).ok_or(ValueSerError::NotEnoughBytes)?.to_vec();
+                        Self::String(String::from_utf8(str_bytes)?)
+                    }
+                    ValueTy::Binary => {
+                        let len: usize = Integer::deser(bytes, version)?.try_into()?;
+                        let bytes = bytes.read(len).ok_or(ValueSerError::NotEnoughBytes)?.to_vec();
+                        Self::Binary(bytes)
+                    }
+                    ValueTy::Bool => {
+                        Self::Bool((byte & 0b000_11111) > 0)
                     }
                 })
             }
@@ -346,7 +309,7 @@ mod tests {
 
             assert_eq!(
                 t,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), Version::V0_1_0).unwrap()
             );
         }
         {
@@ -358,7 +321,7 @@ mod tests {
 
             assert_eq!(
                 f,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), Version::V0_1_0).unwrap()
             );
         }
     }
@@ -371,7 +334,7 @@ mod tests {
 
             assert_eq!(
                 neg,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), Version::V0_1_0).unwrap()
             );
         }
         {
@@ -380,7 +343,7 @@ mod tests {
 
             assert_eq!(
                 big,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), Version::V0_1_0).unwrap()
             );
         }
     }

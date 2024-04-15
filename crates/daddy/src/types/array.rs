@@ -51,7 +51,6 @@ impl Array {
 
                 for v in &self.0 {
                     let bytes = v.ser(version)?;
-                    res.extend(Integer::usize(bytes.len()).ser(version).iter());
                     res.extend(bytes.iter());
                 }
 
@@ -64,14 +63,11 @@ impl Array {
         match version {
             Version::V0_1_0 => {
                 let len: usize = Integer::deser(bytes, version)?.try_into()?;
-                Ok(Self(
-                    (0..len)
-                        .map(|_| {
-                            let len: usize = Integer::deser(bytes, version)?.try_into()?;
-                            Value::deserialise(bytes, len, version)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
-                ))
+                let mut v = Vec::with_capacity(len);
+                for _ in 0..len {
+                    v.push(Value::deserialise(bytes, version)?);
+                }
+                Ok(Self(v)) //yes, could use FP and `map` etc, but this makes it easier to ensure no screwery with control flow
             }
         }
     }
