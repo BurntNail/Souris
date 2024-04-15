@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
 use daddy::{
     store::{Store, StoreError},
-    types::integer::Integer,
+    types::{array::Array, integer::Integer},
     values::{Value, ValueTy},
 };
 use dialoguer::{
@@ -221,6 +221,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         ValueTy::String,
         ValueTy::Binary,
         ValueTy::Imaginary,
+        ValueTy::Array,
     ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
@@ -271,6 +272,38 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                 .interact()?;
 
             Value::Imaginary(a, b)
+        }
+        ValueTy::Array => {
+            let res = if Confirm::with_theme(theme)
+                .with_prompt("Do you know how long the array is?")
+                .interact()?
+            {
+                let length: usize = Input::with_theme(theme)
+                    .with_prompt("How long?")
+                    .interact()?;
+
+                (0..length)
+                    .map(|i| get_value_from_stdin(format!("Please enter item {}", i + 1), theme))
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                let mut res = vec![];
+                let mut i = 1;
+                loop {
+                    let item = get_value_from_stdin(format!("Please enter item {i}"), theme)?;
+                    res.push(item);
+                    i += 1;
+
+                    if Confirm::with_theme(theme)
+                        .with_prompt("Is that everything?")
+                        .interact()?
+                    {
+                        break;
+                    }
+                }
+                res
+            };
+
+            Value::Array(Array(res))
         }
     })
 }

@@ -1,5 +1,8 @@
 use crate::{
-    types::integer::{Integer, IntegerSerError},
+    types::{
+        array::{Array, ArraySerError},
+        integer::{Integer, IntegerSerError},
+    },
     utilities::cursor::Cursor,
     version::Version,
 };
@@ -19,6 +22,7 @@ pub enum Value {
     Bool(bool),
     Int(Integer),
     Imaginary(Integer, Integer),
+    Array(Array),
     //TODO: Vec
     //TODO: Store
     //TODO: Timestamp
@@ -40,6 +44,7 @@ impl Debug for Value {
             Self::Bool(b) => s.field("content", b),
             Self::Int(i) => s.field("content", i),
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
+            Self::Array(a) => s.field("content", &a),
         };
 
         s.finish()
@@ -63,6 +68,7 @@ impl Display for Value {
                     write!(f, "{a}+{b}i")
                 }
             }
+            Self::Array(a) => write!(f, "{a}"),
         }
     }
 }
@@ -83,7 +89,7 @@ fn display_bytes_as_hex_array(b: &[u8]) -> String {
     out
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ValueTy {
     Ch,
     String,
@@ -91,6 +97,7 @@ pub enum ValueTy {
     Bool,
     Int,
     Imaginary,
+    Array,
 }
 
 impl ValueTy {
@@ -103,6 +110,7 @@ impl ValueTy {
             ValueTy::Bool => 0b011,
             ValueTy::Int => 0b100,
             ValueTy::Imaginary => 0b101,
+            ValueTy::Array => 0b110,
         }
     }
 }
@@ -111,10 +119,11 @@ impl ValueTy {
 pub enum ValueSerError {
     InvalidType(u8),
     Empty,
-    IntegerSerFailure(IntegerSerError),
+    IntegerSerError(IntegerSerError),
     NotEnoughBytes,
     InvalidCharacter,
     NonUTF8String(FromUtf8Error),
+    ArraySerError(ArraySerError),
 }
 
 impl Display for ValueSerError {
@@ -125,22 +134,28 @@ impl Display for ValueSerError {
                 f,
                 "Length provided was zero - what did you expect to deserialise there?"
             ),
-            ValueSerError::IntegerSerFailure(e) => write!(f, "Error de/ser-ing integer: {e:?}"),
+            ValueSerError::IntegerSerError(e) => write!(f, "Error de/ser-ing integer: {e:?}"),
             ValueSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
+            ValueSerError::ArraySerError(e) => write!(f, "Error de/ser-ing array: {e:?}"),
         }
     }
 }
 
 impl From<IntegerSerError> for ValueSerError {
     fn from(value: IntegerSerError) -> Self {
-        Self::IntegerSerFailure(value)
+        Self::IntegerSerError(value)
     }
 }
 impl From<FromUtf8Error> for ValueSerError {
     fn from(value: FromUtf8Error) -> Self {
         Self::NonUTF8String(value)
+    }
+}
+impl From<ArraySerError> for ValueSerError {
+    fn from(value: ArraySerError) -> Self {
+        Self::ArraySerError(value)
     }
 }
 
@@ -153,13 +168,11 @@ impl Value {
             Self::Bool(_) => ValueTy::Bool,
             Self::Int(_) => ValueTy::Int,
             Self::Imaginary(_, _) => ValueTy::Imaginary,
+            Self::Array(_) => ValueTy::Array,
         }
     }
 
     ///Structure of Value in DB:
-    ///
-    /// end marker: 0xDEADBEEF
-    ///
     ///
     /// 3 bits: type
     /// either:
@@ -207,6 +220,9 @@ impl Value {
                         res.extend(a.ser(version).iter());
                         res.extend(b.ser(version).iter());
                     }
+                    Self::Array(a) => {
+                        res.extend(a.ser(version)?.iter());
+                    }
                 }
 
                 Ok(res)
@@ -247,6 +263,7 @@ impl Value {
                                 0b011 => ValueTy::Bool,
                                 0b100 => ValueTy::Int,
                                 0b101 => ValueTy::Imaginary,
+                                0b110 => ValueTy::Array,
                                 _ => return Err(ValueSerError::InvalidType(ty)),
                             };
 
@@ -265,6 +282,10 @@ impl Value {
                                         char::from_u32(Integer::deser(bytes, version)?.try_into()?)
                                             .ok_or(ValueSerError::InvalidCharacter)?;
                                     return Ok(Self::Ch(ch));
+                                }
+                                ValueTy::Array => {
+                                    let a = Array::deser(bytes, version)?;
+                                    return Ok(Self::Array(a));
                                 }
                                 _ => {}
                             }
@@ -293,16 +314,12 @@ impl Value {
                     }
                     State::FindingContent(ty) => {
                         let tmp = core::mem::take(&mut tmp);
-                        match ty {
-                            ValueTy::Ch => unreachable!("already dealt with character type"),
-                            ValueTy::String => {
-                                let st = String::from_utf8(tmp)?;
-                                Self::String(st)
-                            }
-                            ValueTy::Binary => Self::Binary(tmp),
-                            ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
-                            ValueTy::Int => unreachable!("already dealt with integer type"),
-                            ValueTy::Imaginary => unreachable!("already dealt with imaginary type"),
+
+                        if ty == ValueTy::String {
+                            let st = String::from_utf8(tmp)?;
+                            Self::String(st)
+                        } else {
+                            unreachable!("Already dealt with {ty:?}");
                         }
                     }
                 })
