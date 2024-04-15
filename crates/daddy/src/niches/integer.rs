@@ -6,6 +6,7 @@ use core::{
     ops::Neg,
     str::FromStr,
 };
+use crate::version::Version;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Content {
@@ -377,110 +378,116 @@ impl Display for IntegerSerError {
 
 impl Integer {
     #[must_use]
-    pub fn ser(self) -> Vec<u8> {
-        //disc structure:
-        //2 bit: signed state
-        //3 bits: original size
-        //3 bits: stored size
+    pub fn ser(self, version: Version) -> Vec<u8> {
+        match version {
+            Version::V0_1_0 => {
+                //disc structure:
+                //2 bit: signed state
+                //3 bits: original size
+                //3 bits: stored size
 
-        let original_size = self.as_disc();
-        let mut at_max = [0_u8; 8];
-        let stored_size = match self.content {
-            Content::Small([b]) => {
-                at_max[0] = b;
-                IntegerDiscriminant::Small
-            }
-            Content::Smedium(b) => {
-                for (i, b) in b.iter().enumerate() {
-                    at_max[i] = *b;
-                }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 2)
-            }
-            Content::Medium(b) => {
-                for (i, b) in b.iter().enumerate() {
-                    at_max[i] = *b;
-                }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 4)
-            }
-            Content::Large(b) => {
-                for (i, b) in b.iter().enumerate() {
-                    at_max[i] = *b;
-                }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 8)
-            }
-        };
+                let original_size = self.as_disc();
+                let mut at_max = [0_u8; 8];
+                let stored_size = match self.content {
+                    Content::Small([b]) => {
+                        at_max[0] = b;
+                        IntegerDiscriminant::Small
+                    }
+                    Content::Smedium(b) => {
+                        for (i, b) in b.iter().enumerate() {
+                            at_max[i] = *b;
+                        }
+                        IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 2)
+                    }
+                    Content::Medium(b) => {
+                        for (i, b) in b.iter().enumerate() {
+                            at_max[i] = *b;
+                        }
+                        IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 4)
+                    }
+                    Content::Large(b) => {
+                        for (i, b) in b.iter().enumerate() {
+                            at_max[i] = *b;
+                        }
+                        IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 8)
+                    }
+                };
 
-        let mut res = Vec::with_capacity(1 + stored_size.bytes());
-        let discriminant: u8 = (u8::from(self.signed_state) << 6)
-            | (u8::from(original_size) << 3)
-            | u8::from(stored_size);
-        res.push(discriminant);
-        res.extend(&at_max[0..stored_size.bytes()]);
+                let mut res = Vec::with_capacity(1 + stored_size.bytes());
+                let discriminant: u8 = (u8::from(self.signed_state) << 6)
+                    | (u8::from(original_size) << 3)
+                    | u8::from(stored_size);
+                res.push(discriminant);
+                res.extend(&at_max[0..stored_size.bytes()]);
 
-        // println!("Storing {self} from {original_size:?} in {stored_size:?}");
-
-        res
+                res
+            }
+        }
     }
 
-    pub fn deser(reader: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
-        let (signed_state, original, stored) = {
-            let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)? else {
-                unreachable!("didn't get just one byte back")
-            };
-            let discriminant = *discriminant;
-            let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-            let original = IntegerDiscriminant::try_from((discriminant & 0b0011_1000) >> 3)?;
-            let stored = IntegerDiscriminant::try_from(discriminant & 0b0000_0111)?;
+    pub fn deser(reader: &mut Cursor<u8>, version: Version) -> Result<Self, IntegerSerError> {
+        match version {
+            Version::V0_1_0 => {
+                let (signed_state, original, stored) = {
+                    let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)? else {
+                        unreachable!("didn't get just one byte back")
+                    };
+                    let discriminant = *discriminant;
+                    let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
+                    let original = IntegerDiscriminant::try_from((discriminant & 0b0011_1000) >> 3)?;
+                    let stored = IntegerDiscriminant::try_from(discriminant & 0b0000_0111)?;
 
-            (signed_state, original, stored)
-        };
+                    (signed_state, original, stored)
+                };
 
-        let read_bytes = reader
-            .read(stored.bytes())
-            .ok_or(IntegerSerError::NotEnoughBytes)?;
+                let read_bytes = reader
+                    .read(stored.bytes())
+                    .ok_or(IntegerSerError::NotEnoughBytes)?;
 
-        Ok(match original {
-            IntegerDiscriminant::Small => {
-                let mut bytes = [0_u8; 1];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Small(bytes),
-                }
+                Ok(match original {
+                    IntegerDiscriminant::Small => {
+                        let mut bytes = [0_u8; 1];
+                        for (i, b) in read_bytes.iter().copied().enumerate() {
+                            bytes[i] = b;
+                        }
+                        Self {
+                            signed_state,
+                            content: Content::Small(bytes),
+                        }
+                    }
+                    IntegerDiscriminant::Smedium => {
+                        let mut bytes = [0_u8; 2];
+                        for (i, b) in read_bytes.iter().copied().enumerate() {
+                            bytes[i] = b;
+                        }
+                        Self {
+                            signed_state,
+                            content: Content::Smedium(bytes),
+                        }
+                    }
+                    IntegerDiscriminant::Medium => {
+                        let mut bytes = [0_u8; 4];
+                        for (i, b) in read_bytes.iter().copied().enumerate() {
+                            bytes[i] = b;
+                        }
+                        Self {
+                            signed_state,
+                            content: Content::Medium(bytes),
+                        }
+                    }
+                    IntegerDiscriminant::Large => {
+                        let mut bytes = [0_u8; 8];
+                        for (i, b) in read_bytes.iter().copied().enumerate() {
+                            bytes[i] = b;
+                        }
+                        Self {
+                            signed_state,
+                            content: Content::Large(bytes),
+                        }
+                    }
+                })
             }
-            IntegerDiscriminant::Smedium => {
-                let mut bytes = [0_u8; 2];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Smedium(bytes),
-                }
-            }
-            IntegerDiscriminant::Medium => {
-                let mut bytes = [0_u8; 4];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Medium(bytes),
-                }
-            }
-            IntegerDiscriminant::Large => {
-                let mut bytes = [0_u8; 8];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Large(bytes),
-                }
-            }
-        })
+        }
     }
 }
 

@@ -129,30 +129,34 @@ impl Store {
         res.extend(self.version.to_bytes().iter());
         res.push(0);
 
-        let length = self.kvs.len();
-        res.extend(b"SIZE".iter());
-        res.push(0);
-        res.extend(Integer::usize(length).ser());
-        res.push(0);
+        match self.version {
+            Version::V0_1_0 => {
+                let length = self.kvs.len();
+                res.extend(b"SIZE".iter());
+                res.push(0);
+                res.extend(Integer::usize(length).ser(self.version));
+                res.push(0);
 
-        let mut keys: Vec<u8> = vec![];
-        let mut values: Vec<u8> = vec![];
+                let mut keys: Vec<u8> = vec![];
+                let mut values: Vec<u8> = vec![];
 
-        for (k, v) in &self.kvs {
-            let ser_key = k.serialise()?;
-            let ser_value = v.serialise()?;
+                for (k, v) in &self.kvs {
+                    let ser_key = k.ser(self.version)?;
+                    let ser_value = v.ser(self.version)?;
 
-            keys.extend(Integer::usize(ser_key.len()).ser());
-            keys.extend(Integer::usize(ser_value.len()).ser());
-            keys.extend(ser_key.iter());
+                    keys.extend(Integer::usize(ser_key.len()).ser(self.version));
+                    keys.extend(Integer::usize(ser_value.len()).ser(self.version));
+                    keys.extend(ser_key.iter());
 
-            values.extend(ser_value.iter());
+                    values.extend(ser_value.iter());
+                }
+
+                res.extend(keys);
+                res.extend(values);
+
+                Ok(res)
+            }
         }
-
-        res.extend(keys);
-        res.extend(values);
-
-        Ok(res)
     }
 
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreError> {
@@ -174,22 +178,22 @@ impl Store {
                 bytes.seek(4); //size
                 bytes.seek(1); //\0
 
-                let length: usize = Integer::deser(&mut bytes)?.try_into()?;
+                let length: usize = Integer::deser(&mut bytes, version)?.try_into()?;
 
                 bytes.seek(1); //\0
 
                 let mut keys = vec![];
                 for _ in 0..length {
-                    let key_length: usize = Integer::deser(&mut bytes)?.try_into()?;
-                    let value_length: usize = Integer::deser(&mut bytes)?.try_into()?;
+                    let key_length: usize = Integer::deser(&mut bytes, version)?.try_into()?;
+                    let value_length: usize = Integer::deser(&mut bytes, version)?.try_into()?;
 
-                    let key = Value::deserialise(&mut bytes, key_length)?;
+                    let key = Value::deserialise(&mut bytes, key_length, version)?;
                     keys.push(Val { value_length, key });
                 }
 
                 let mut kvs = BTreeMap::new();
                 for Val { value_length, key } in keys {
-                    let value = Value::deserialise(&mut bytes, value_length)?;
+                    let value = Value::deserialise(&mut bytes, value_length, version)?;
                     kvs.insert(key, value);
                 }
 

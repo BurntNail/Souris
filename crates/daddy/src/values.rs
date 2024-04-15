@@ -9,6 +9,7 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::{Debug, Display, Formatter};
+use crate::version::Version;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
@@ -167,47 +168,51 @@ impl Value {
     ///     5 bits: zero
     ///     length bytes: content
     ///     4 bytes: end
-    pub fn serialise(&self) -> Result<Vec<u8>, ValueSerError> {
-        let mut res = vec![];
+    pub fn ser(&self, version: Version) -> Result<Vec<u8>, ValueSerError> {
+        match version {
+            Version::V0_1_0 => {
+                let mut res = vec![];
 
-        let vty = self.to_ty();
-        let ty = vty.id() << 5;
+                let vty = self.to_ty();
+                let ty = vty.id() << 5;
 
-        let niche = match &self {
-            Self::Bool(b) => Some(u8::from(*b)),
-            _ => None,
-        };
-        if let Some(niche) = niche {
-            res.push(niche | ty);
-            return Ok(res);
+                let niche = match &self {
+                    Self::Bool(b) => Some(u8::from(*b)),
+                    _ => None,
+                };
+                if let Some(niche) = niche {
+                    res.push(niche | ty);
+                    return Ok(res);
+                }
+
+                res.push(ty);
+
+                match self {
+                    Self::Ch(ch) => {
+                        res.extend(Integer::u32(*ch as u32).ser(version));
+                    }
+                    Self::String(s) => {
+                        res.extend(s.as_bytes().iter());
+                    }
+                    Self::Binary(b) => {
+                        res.extend(b.iter());
+                    }
+                    Self::Bool(_) => unreachable!("reached bool after niche optimisations applied uh oh"),
+                    Self::Int(i) => {
+                        res.extend(i.ser(version).iter());
+                    }
+                    Self::Imaginary(a, b) => {
+                        res.extend(a.ser(version).iter());
+                        res.extend(b.ser(version).iter());
+                    }
+                }
+
+                Ok(res)
+            }
         }
-
-        res.push(ty);
-
-        match self {
-            Self::Ch(ch) => {
-                res.extend(Integer::u32(*ch as u32).ser());
-            }
-            Self::String(s) => {
-                res.extend(s.as_bytes().iter());
-            }
-            Self::Binary(b) => {
-                res.extend(b.iter());
-            }
-            Self::Bool(_) => unreachable!("reached bool after niche optimisations applied uh oh"),
-            Self::Int(i) => {
-                res.extend(i.ser().iter());
-            }
-            Self::Imaginary(a, b) => {
-                res.extend(a.ser().iter());
-                res.extend(b.ser().iter());
-            }
-        }
-
-        Ok(res)
     }
 
-    pub fn deserialise(bytes: &mut Cursor<u8>, len: usize) -> Result<Self, ValueSerError> {
+    pub fn deserialise(bytes: &mut Cursor<u8>, len: usize, version: Version) -> Result<Self, ValueSerError> {
         enum State {
             Start,
             FoundType(ValueTy, u8),
@@ -216,82 +221,86 @@ impl Value {
 
         let mut state = State::Start;
 
-        let mut tmp = vec![];
+        match version {
+            Version::V0_1_0 => {
+                let mut tmp = vec![];
 
-        for _ in 0..len {
-            let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
-                unreachable!("didn't get just one byte back")
-            };
-            let byte = *byte;
-
-            state = match state {
-                State::Start => {
-                    let ty = byte >> 5;
-                    let ty = match ty {
-                        0b000 => ValueTy::Ch,
-                        0b001 => ValueTy::String,
-                        0b010 => ValueTy::Binary,
-                        0b011 => ValueTy::Bool,
-                        0b100 => ValueTy::Int,
-                        0b101 => ValueTy::Imaginary,
-                        _ => return Err(ValueSerError::InvalidType(ty)),
+                for _ in 0..len {
+                    let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
+                        unreachable!("didn't get just one byte back")
                     };
+                    let byte = *byte;
 
-                    match ty {
-                        ValueTy::Int => {
-                            let int = Integer::deser(bytes)?;
-                            return Ok(Self::Int(int));
+                    state = match state {
+                        State::Start => {
+                            let ty = byte >> 5;
+                            let ty = match ty {
+                                0b000 => ValueTy::Ch,
+                                0b001 => ValueTy::String,
+                                0b010 => ValueTy::Binary,
+                                0b011 => ValueTy::Bool,
+                                0b100 => ValueTy::Int,
+                                0b101 => ValueTy::Imaginary,
+                                _ => return Err(ValueSerError::InvalidType(ty)),
+                            };
+
+                            match ty {
+                                ValueTy::Int => {
+                                    let int = Integer::deser(bytes, version)?;
+                                    return Ok(Self::Int(int));
+                                }
+                                ValueTy::Imaginary => {
+                                    let a = Integer::deser(bytes, version)?;
+                                    let b = Integer::deser(bytes, version)?;
+                                    return Ok(Self::Imaginary(a, b));
+                                }
+                                ValueTy::Ch => {
+                                    let ch = char::from_u32(Integer::deser(bytes, version)?.try_into()?)
+                                        .ok_or(ValueSerError::InvalidCharacter)?;
+                                    return Ok(Self::Ch(ch));
+                                }
+                                _ => {}
+                            }
+
+                            State::FoundType(ty, byte)
                         }
-                        ValueTy::Imaginary => {
-                            let a = Integer::deser(bytes)?;
-                            let b = Integer::deser(bytes)?;
-                            return Ok(Self::Imaginary(a, b));
+                        State::FoundType(ty, _ty_byte) => {
+                            tmp.push(byte);
+                            State::FindingContent(ty)
                         }
-                        ValueTy::Ch => {
-                            let ch = char::from_u32(Integer::deser(bytes)?.try_into()?)
-                                .ok_or(ValueSerError::InvalidCharacter)?;
-                            return Ok(Self::Ch(ch));
+                        State::FindingContent(ty) => {
+                            tmp.push(byte);
+                            State::FindingContent(ty)
                         }
-                        _ => {}
                     }
+                }
 
-                    State::FoundType(ty, byte)
-                }
-                State::FoundType(ty, _ty_byte) => {
-                    tmp.push(byte);
-                    State::FindingContent(ty)
-                }
-                State::FindingContent(ty) => {
-                    tmp.push(byte);
-                    State::FindingContent(ty)
-                }
+                Ok(match state {
+                    State::Start => return Err(ValueSerError::Empty),
+                    State::FoundType(ty, ty_byte) => {
+                        let relevant_niche = ty_byte & 0b000_11111;
+                        match ty {
+                            ValueTy::Bool => Value::Bool(relevant_niche > 0),
+                            _ => unreachable!("no other niche optimisations apart from bool"),
+                        }
+                    }
+                    State::FindingContent(ty) => {
+                        let tmp = core::mem::take(&mut tmp);
+                        match ty {
+                            ValueTy::Ch => unreachable!("already dealt with character type"),
+                            ValueTy::String => {
+                                let st = String::from_utf8(tmp)?;
+                                Self::String(st)
+                            }
+                            ValueTy::Binary => Self::Binary(tmp),
+                            ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
+                            ValueTy::Int => unreachable!("already dealt with integer type"),
+                            ValueTy::Imaginary => unreachable!("already dealt with imaginary type"),
+                        }
+                    }
+                })
             }
         }
-
-        Ok(match state {
-            State::Start => return Err(ValueSerError::Empty),
-            State::FoundType(ty, ty_byte) => {
-                let relevant_niche = ty_byte & 0b000_11111;
-                match ty {
-                    ValueTy::Bool => Value::Bool(relevant_niche > 0),
-                    _ => unreachable!("no other niche optimisations apart from bool"),
-                }
-            }
-            State::FindingContent(ty) => {
-                let tmp = core::mem::take(&mut tmp);
-                match ty {
-                    ValueTy::Ch => unreachable!("already dealt with character type"),
-                    ValueTy::String => {
-                        let st = String::from_utf8(tmp)?;
-                        Self::String(st)
-                    }
-                    ValueTy::Binary => Self::Binary(tmp),
-                    ValueTy::Bool => unreachable!("all bools go through nice optimisation"),
-                    ValueTy::Int => unreachable!("already dealt with integer type"),
-                    ValueTy::Imaginary => unreachable!("already dealt with imaginary type"),
-                }
-            }
-        })
     }
 }
 
@@ -304,7 +313,7 @@ mod tests {
     fn test_bools() {
         {
             let t = Value::Bool(true);
-            let ser = t.clone().serialise().unwrap();
+            let ser = t.clone().ser().unwrap();
 
             let expected = &[ValueTy::Bool.id() << 5 | 1];
             assert_eq!(&ser, expected);
@@ -316,7 +325,7 @@ mod tests {
         }
         {
             let f = Value::Bool(false);
-            let ser = f.clone().serialise().unwrap();
+            let ser = f.clone().ser().unwrap();
 
             let expected = &[ValueTy::Bool.id() << 5];
             assert_eq!(&ser, expected);
@@ -332,7 +341,7 @@ mod tests {
     fn test_ints() {
         {
             let neg = Value::Int(Integer::i8(-15));
-            let ser = neg.clone().serialise().unwrap();
+            let ser = neg.clone().ser().unwrap();
 
             assert_eq!(
                 neg,
@@ -341,7 +350,7 @@ mod tests {
         }
         {
             let big = Value::Int(Integer::usize(123_456_789));
-            let ser = big.clone().serialise().unwrap();
+            let ser = big.clone().ser().unwrap();
 
             assert_eq!(
                 big,
