@@ -37,3 +37,58 @@ impl Version {
         }
     }
 }
+
+//TODO: actually work this out
+/*#[cfg(test)]
+mod strat {
+    use proptest::arbitrary::Arbitrary;
+    use proptest::prelude::Strategy;
+    use proptest::strategy::{NewTree, ValueTree};
+    use proptest::test_runner::TestRunner;
+    use crate::version::Version;
+
+    struct VersionValueTree {
+        current: Version,
+    }
+
+    impl ValueTree for VersionValueTree {
+        type Value = Version;
+
+        fn current(&self) -> Self::Value {
+            self.current
+        }
+
+        fn simplify(&mut self) -> bool {
+            false
+        }
+
+        fn complicate(&mut self) -> bool {
+            false
+        }
+    }
+
+    #[derive(Debug)]
+    struct VersionStrategy(u8);
+
+    impl Strategy for VersionStrategy {
+        type Tree = VersionValueTree;
+        type Value = Version;
+
+        fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+            Ok(VersionValueTree {
+                current: Version::V0_1_0
+            })
+        }
+    }
+
+    impl Arbitrary for Version {
+        type Parameters = u8;
+
+        fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+            VersionStrategy(args)
+        }
+
+        type Strategy = VersionStrategy;
+    }
+
+}*/

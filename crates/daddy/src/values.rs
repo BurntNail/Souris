@@ -314,32 +314,34 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::Value;
-    use crate::{types::integer::Integer, utilities::cursor::Cursor, values::ValueTy};
+    use crate::{
+        types::integer::Integer, utilities::cursor::Cursor, values::ValueTy, version::Version,
+    };
 
     #[test]
     fn test_bools() {
         {
             let t = Value::Bool(true);
-            let ser = t.clone().ser().unwrap();
+            let ser = t.clone().ser(Version::V0_1_0).unwrap();
 
             let expected = &[ValueTy::Bool.id() << 5 | 1];
             assert_eq!(&ser, expected);
 
             assert_eq!(
                 t,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
             );
         }
         {
             let f = Value::Bool(false);
-            let ser = f.clone().ser().unwrap();
+            let ser = f.clone().ser(Version::V0_1_0).unwrap();
 
             let expected = &[ValueTy::Bool.id() << 5];
             assert_eq!(&ser, expected);
 
             assert_eq!(
                 f,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
             );
         }
     }
@@ -348,20 +350,20 @@ mod tests {
     fn test_ints() {
         {
             let neg = Value::Int(Integer::i8(-15));
-            let ser = neg.clone().ser().unwrap();
+            let ser = neg.clone().ser(Version::V0_1_0).unwrap();
 
             assert_eq!(
                 neg,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
             );
         }
         {
             let big = Value::Int(Integer::usize(123_456_789));
-            let ser = big.clone().ser().unwrap();
+            let ser = big.clone().ser(Version::V0_1_0).unwrap();
 
             assert_eq!(
                 big,
-                Value::deserialise(&mut Cursor::new(&ser), ser.len()).unwrap()
+                Value::deserialise(&mut Cursor::new(&ser), ser.len(), Version::V0_1_0).unwrap()
             );
         }
     }

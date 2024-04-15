@@ -497,8 +497,8 @@ impl Integer {
 
 #[cfg(test)]
 mod tests {
-    use crate::{types::integer::Integer, utilities::cursor::Cursor};
-    use alloc::string::ToString;
+    use crate::{types::integer::Integer, utilities::cursor::Cursor, version::Version};
+    use alloc::{format, string::ToString};
     use core::str::FromStr;
     use proptest::prelude::*;
 
@@ -511,20 +511,20 @@ mod tests {
         #[test]
         fn parse_valids (i in any::<i64>()) {
             let int = Integer::from_str(&i.to_string()).unwrap();
-            assert_eq!(i64::try_from(int).unwrap(), i);
+            prop_assert_eq!(i64::try_from(int).unwrap(), i);
         }
 
         #[test]
-        fn back_to_original (i in any::<i64>()) {
+        fn back_to_original (i in any::<i64>(), v in any::<u8>().prop_map(|_n| Version::V0_1_0)) {
             let s = i.to_string();
 
             let parsed = Integer::from_str(&s).unwrap();
 
-            let sered = parsed.ser();
-            let got_back = Integer::deser(&mut Cursor::new(&sered)).unwrap();
-            assert_eq!(parsed, got_back);
+            let sered = parsed.ser(v);
+            let got_back = Integer::deser(&mut Cursor::new(&sered), v).unwrap();
+            prop_assert_eq!(parsed, got_back);
 
-            assert_eq!(i64::try_from(got_back).unwrap(), i);
+            prop_assert_eq!(i64::try_from(got_back).unwrap(), i);
         }
     }
 }
