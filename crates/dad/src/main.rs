@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
 use daddy::{
-    niches::integer::Integer,
     store::{Store, StoreError},
+    types::integer::Integer,
     values::{Value, ValueTy},
 };
 use dialoguer::{
@@ -192,7 +192,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 println!("Cancelled. Exiting...");
                 std::process::exit(0);
             }
-            
+
             let existing = &store[key.clone()];
             let new = get_value_from_stdin("Enter the new value: ", &theme)?;
             if !Confirm::with_theme(&theme)
@@ -202,7 +202,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 println!("Cancelled. Exiting...");
                 std::process::exit(0);
             }
-            
+
             store.insert(key, new);
             println!("Successfully updated");
         }

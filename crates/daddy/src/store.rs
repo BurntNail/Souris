@@ -1,5 +1,5 @@
 use crate::{
-    niches::integer::{Integer, IntegerSerError},
+    types::integer::{Integer, IntegerSerError},
     utilities::cursor::Cursor,
     values::{Value, ValueSerError},
     version::{Version, VersionSerError},

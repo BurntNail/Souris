@@ -1,6 +1,7 @@
 use crate::{
-    niches::integer::{Integer, IntegerSerError},
+    types::integer::{Integer, IntegerSerError},
     utilities::cursor::Cursor,
+    version::Version,
 };
 use alloc::{
     format,
@@ -9,7 +10,6 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::{Debug, Display, Formatter};
-use crate::version::Version;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
@@ -24,8 +24,8 @@ pub enum Value {
     //TODO: Timestamp
 }
 
-//TODO: pass the version to the different parsers so they can respect that 
-//TODO: or scrap the version 
+//TODO: pass the version to the different parsers so they can respect that
+//TODO: or scrap the version
 
 #[allow(clippy::missing_fields_in_debug)]
 impl Debug for Value {
@@ -197,7 +197,9 @@ impl Value {
                     Self::Binary(b) => {
                         res.extend(b.iter());
                     }
-                    Self::Bool(_) => unreachable!("reached bool after niche optimisations applied uh oh"),
+                    Self::Bool(_) => {
+                        unreachable!("reached bool after niche optimisations applied uh oh")
+                    }
                     Self::Int(i) => {
                         res.extend(i.ser(version).iter());
                     }
@@ -212,7 +214,11 @@ impl Value {
         }
     }
 
-    pub fn deserialise(bytes: &mut Cursor<u8>, len: usize, version: Version) -> Result<Self, ValueSerError> {
+    pub fn deserialise(
+        bytes: &mut Cursor<u8>,
+        len: usize,
+        version: Version,
+    ) -> Result<Self, ValueSerError> {
         enum State {
             Start,
             FoundType(ValueTy, u8),
@@ -255,8 +261,9 @@ impl Value {
                                     return Ok(Self::Imaginary(a, b));
                                 }
                                 ValueTy::Ch => {
-                                    let ch = char::from_u32(Integer::deser(bytes, version)?.try_into()?)
-                                        .ok_or(ValueSerError::InvalidCharacter)?;
+                                    let ch =
+                                        char::from_u32(Integer::deser(bytes, version)?.try_into()?)
+                                            .ok_or(ValueSerError::InvalidCharacter)?;
                                     return Ok(Self::Ch(ch));
                                 }
                                 _ => {}
@@ -307,7 +314,7 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::Value;
-    use crate::{niches::integer::Integer, utilities::cursor::Cursor, values::ValueTy};
+    use crate::{types::integer::Integer, utilities::cursor::Cursor, values::ValueTy};
 
     #[test]
     fn test_bools() {

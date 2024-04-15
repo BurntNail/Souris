@@ -4,8 +4,8 @@
 
 extern crate alloc;
 
-pub mod niches;
 pub mod store;
+pub mod types;
 pub mod utilities;
 pub mod values;
 pub mod version;

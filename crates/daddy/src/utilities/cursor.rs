@@ -79,12 +79,12 @@ mod tests {
 
         assert_eq!(cursor.read(5), Some([5, 6, 7, 8, 9].as_slice()));
         assert_eq!(cursor.position(), 10);
-        
+
         cursor.seek_backwards(4);
         assert_eq!(cursor.position(), 6);
-        
+
         assert_eq!(cursor.read(2), Some([6, 7].as_slice()));
-        
+
         cursor.seek(2);
         assert_eq!(cursor.position(), 8);
         assert_eq!(cursor.read(1), Some([8].as_slice()));

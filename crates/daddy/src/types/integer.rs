@@ -1,4 +1,4 @@
-use crate::utilities::cursor::Cursor;
+use crate::{utilities::cursor::Cursor, version::Version};
 use alloc::{string::ToString, vec::Vec};
 use core::{
     fmt::{Debug, Display, Formatter},
@@ -6,7 +6,6 @@ use core::{
     ops::Neg,
     str::FromStr,
 };
-use crate::version::Version;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Content {
@@ -54,6 +53,7 @@ impl Integer {
         }
     }
 
+    #[must_use]
     pub fn is_zero(&self) -> bool {
         match &self.content {
             Content::Small(s) => s.iter(),
@@ -64,10 +64,12 @@ impl Integer {
         .all(|b| *b == 0)
     }
 
+    #[must_use]
     pub fn is_negative(&self) -> bool {
         self.signed_state == SignedState::SignedNegative
     }
 
+    #[must_use]
     pub fn is_positive(&self) -> bool {
         !self.is_negative()
     }
@@ -229,7 +231,6 @@ macro_rules! new_x {
                 })
             }
         }
-
     };
 }
 
@@ -247,6 +248,7 @@ new_x!(i64 =>> i64, Large);
 impl FromStr for Integer {
     type Err = IntegerSerError;
 
+    #[allow(clippy::cast_possible_truncation)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
             return Err(IntegerSerError::NotEnoughBytes);
@@ -255,7 +257,7 @@ impl FromStr for Integer {
         if s == "0" {
             return Ok(Self {
                 signed_state: SignedState::Unsigned,
-                content: Content::Small([0])
+                content: Content::Small([0]),
             });
         }
 
@@ -429,12 +431,14 @@ impl Integer {
         match version {
             Version::V0_1_0 => {
                 let (signed_state, original, stored) = {
-                    let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)? else {
+                    let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)?
+                    else {
                         unreachable!("didn't get just one byte back")
                     };
                     let discriminant = *discriminant;
                     let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-                    let original = IntegerDiscriminant::try_from((discriminant & 0b0011_1000) >> 3)?;
+                    let original =
+                        IntegerDiscriminant::try_from((discriminant & 0b0011_1000) >> 3)?;
                     let stored = IntegerDiscriminant::try_from(discriminant & 0b0000_0111)?;
 
                     (signed_state, original, stored)
@@ -493,7 +497,7 @@ impl Integer {
 
 #[cfg(test)]
 mod tests {
-    use crate::{niches::integer::Integer, utilities::cursor::Cursor};
+    use crate::{types::integer::Integer, utilities::cursor::Cursor};
     use alloc::string::ToString;
     use core::str::FromStr;
     use proptest::prelude::*;
