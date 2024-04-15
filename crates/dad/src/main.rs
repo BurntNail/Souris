@@ -15,6 +15,8 @@ use std::{
     io::{Error as IOError, ErrorKind, Read, Write},
     path::PathBuf,
 };
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use daddy::types::ts::Timestamp;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -47,6 +49,7 @@ enum Error {
     IO(IOError),
     Store(StoreError),
     Dialoguer(DError),
+    InvalidDateOrTime,
 }
 
 impl Display for Error {
@@ -55,6 +58,7 @@ impl Display for Error {
             Error::IO(e) => write!(f, "Error handling IO: {e:?}"),
             Error::Store(e) => write!(f, "Error in store: {e:?}"),
             Error::Dialoguer(e) => write!(f, "Error with dialoguer: {e:?}"),
+            Error::InvalidDateOrTime => write!(f, "Received invalid date/time"),
         }
     }
 }
@@ -222,6 +226,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         ValueTy::Binary,
         ValueTy::Imaginary,
         ValueTy::Array,
+        ValueTy::Timestamp
     ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
@@ -272,6 +277,44 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                 .interact()?;
 
             Value::Imaginary(a, b)
+        }
+        ValueTy::Timestamp => {
+            let ts: NaiveDateTime = if Confirm::with_theme(theme).with_prompt("Would you use the format?").interact()? {
+                Input::with_theme(theme)
+                    .with_prompt("%Y-%m-%dT%H:%M:%S%.f")
+                    .interact()?
+            } else {
+                let y = Input::with_theme(theme)
+                    .with_prompt("Year?")
+                    .interact()?;
+                let m = Input::with_theme(theme)
+                    .with_prompt("Month?")
+                    .interact()?;
+                let d = Input::with_theme(theme)
+                    .with_prompt("Date?")
+                    .interact()?;
+
+                let date = NaiveDate::from_ymd_opt(y, m, d).ok_or(Error::InvalidDateOrTime)?;
+
+                let h = Input::with_theme(theme)
+                    .with_prompt("Hour?")
+                    .interact()?;
+                let m = Input::with_theme(theme)
+                    .with_prompt("Minute?")
+                    .interact()?;
+                let s = Input::with_theme(theme)
+                    .with_prompt("Seconds?")
+                    .interact()?;
+                let ms = Input::with_theme(theme)
+                    .with_prompt("Milliseconds?")
+                    .interact()?;
+
+                let time = NaiveTime::from_hms_milli_opt(h, m, s, ms).ok_or(Error::InvalidDateOrTime)?;
+
+                NaiveDateTime::new(date, time)
+            };
+
+            Value::Timestamp(Timestamp(ts))
         }
         ValueTy::Array => {
             let res = if Confirm::with_theme(theme)

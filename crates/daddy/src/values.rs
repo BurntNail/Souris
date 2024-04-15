@@ -13,6 +13,7 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::{Debug, Display, Formatter};
+use crate::types::ts::{Timestamp, TSError};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
@@ -23,6 +24,7 @@ pub enum Value {
     Int(Integer),
     Imaginary(Integer, Integer),
     Array(Array),
+    Timestamp(Timestamp)
     //TODO: Store
     //TODO: Timestamp
 }
@@ -41,6 +43,7 @@ impl Debug for Value {
             Self::Int(i) => s.field("content", i),
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
             Self::Array(a) => s.field("content", &a),
+            Self::Timestamp(ndt) => s.field("content", &ndt)
         };
 
         s.finish()
@@ -65,6 +68,7 @@ impl Display for Value {
                 }
             }
             Self::Array(a) => write!(f, "{a}"),
+            Self::Timestamp(ndt) => write!(f, "{ndt}"),
         }
     }
 }
@@ -94,6 +98,7 @@ pub enum ValueTy {
     Int,
     Imaginary,
     Array,
+    Timestamp,
 }
 
 impl ValueTy {
@@ -107,6 +112,7 @@ impl ValueTy {
             ValueTy::Int => 0b100,
             ValueTy::Imaginary => 0b101,
             ValueTy::Array => 0b110,
+            ValueTy::Timestamp => 0b111,
         }
     }
 }
@@ -120,6 +126,7 @@ pub enum ValueSerError {
     InvalidCharacter,
     NonUTF8String(FromUtf8Error),
     ArraySerError(ArraySerError),
+    TSError(TSError),
 }
 
 impl Display for ValueSerError {
@@ -135,6 +142,7 @@ impl Display for ValueSerError {
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
             ValueSerError::ArraySerError(e) => write!(f, "Error de/ser-ing array: {e:?}"),
+            ValueSerError::TSError(e) => write!(f, "Error de/ser-ing timestamp: {e:?}"),
         }
     }
 }
@@ -154,6 +162,11 @@ impl From<ArraySerError> for ValueSerError {
         Self::ArraySerError(value)
     }
 }
+impl From<TSError> for ValueSerError {
+    fn from(value: TSError) -> Self {
+        Self::TSError(value)
+    }
+}
 
 impl Value {
     pub(crate) const fn to_ty(&self) -> ValueTy {
@@ -165,6 +178,7 @@ impl Value {
             Self::Int(_) => ValueTy::Int,
             Self::Imaginary(_, _) => ValueTy::Imaginary,
             Self::Array(_) => ValueTy::Array,
+            Self::Timestamp(_) => ValueTy::Timestamp
         }
     }
 
@@ -222,6 +236,9 @@ impl Value {
                     Self::Array(a) => {
                         res.extend(a.ser(version)?.iter());
                     }
+                    Self::Timestamp(t) => {
+                        res.extend(t.ser(version).iter());
+                    }
                 }
 
                 Ok(res)
@@ -249,6 +266,7 @@ impl Value {
                     0b100 => ValueTy::Int,
                     0b101 => ValueTy::Imaginary,
                     0b110 => ValueTy::Array,
+                    0b111 => ValueTy::Timestamp,
                     _ => return Err(ValueSerError::InvalidType(ty)),
                 };
 
@@ -263,14 +281,17 @@ impl Value {
                         Self::Imaginary(a, b)
                     }
                     ValueTy::Ch => {
-                        let ch =
-                            char::from_u32(Integer::deser(bytes, version)?.try_into()?)
-                                .ok_or(ValueSerError::InvalidCharacter)?;
+                        let ch = char::from_u32(Integer::deser(bytes, version)?.try_into()?)
+                            .ok_or(ValueSerError::InvalidCharacter)?;
                         Self::Ch(ch)
                     }
                     ValueTy::Array => {
                         let a = Array::deser(bytes, version)?;
                         Self::Array(a)
+                    }
+                    ValueTy::Timestamp => {
+                        let t = Timestamp::deser(bytes, version)?;
+                        Self::Timestamp(t)
                     }
                     ValueTy::String => {
                         let len: usize = Integer::deser(bytes, version)?.try_into()?;
@@ -282,9 +303,7 @@ impl Value {
                         let bytes = bytes.read(len).ok_or(ValueSerError::NotEnoughBytes)?.to_vec();
                         Self::Binary(bytes)
                     }
-                    ValueTy::Bool => {
-                        Self::Bool((byte & 0b000_11111) > 0)
-                    }
+                    ValueTy::Bool => Self::Bool((byte & 0b0000_0001) > 0),
                 })
             }
         }
