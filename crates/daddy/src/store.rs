@@ -136,7 +136,7 @@ impl Store {
                 res.push(0);
                 res.extend(Integer::usize(length).ser(self.version));
                 res.push(0);
-                
+
 
                 for (k, v) in &self.kvs {
                     let ser_key = k.ser(self.version)?;
@@ -145,7 +145,7 @@ impl Store {
                     res.extend(ser_key.iter());
                     res.extend(ser_value.iter());
                 }
-                
+
                 Ok(res)
             }
         }

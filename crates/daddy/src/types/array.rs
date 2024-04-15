@@ -4,11 +4,7 @@ use crate::{
     values::{Value, ValueSerError},
     version::Version,
 };
-use alloc::{
-    boxed::Box,
-    vec,
-    vec::Vec,
-};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]

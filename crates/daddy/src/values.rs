@@ -202,7 +202,7 @@ impl Value {
                     }
                     Self::String(s) => {
                         let bytes = s.as_bytes();
-                        
+
                         res.extend(Integer::usize(bytes.len()).ser(version).iter());
                         res.extend(bytes.iter());
                     }
@@ -223,7 +223,7 @@ impl Value {
                         res.extend(a.ser(version)?.iter());
                     }
                 }
-                
+
                 Ok(res)
             }
         }
