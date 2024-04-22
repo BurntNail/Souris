@@ -1,14 +1,27 @@
 use crate::{error::SourisError, state::SourisState};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
+use utoipa::ToSchema;
+use serde_json::json;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
+#[schema(example = json!({"name": "my database", "overwrite_existing": false}))]
 pub struct NewDB {
     name: String,
     overwrite_existing: bool,
 }
 
-pub async fn new_db(
+#[utoipa::path(
+    post,
+    path = "/v1/add_db",
+    request_body = NewDB,
+    responses(
+        (status = OK, description = "Found an existing database", body = ()),
+        (status = CREATED, description = "Created a new database")
+    )
+)]
+
+pub async fn add_db(
     State(state): State<SourisState>,
     Json(NewDB {
         name,
