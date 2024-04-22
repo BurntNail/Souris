@@ -2,13 +2,15 @@
 extern crate tracing;
 
 use tracing::Level;
+use tracing_subscriber::fmt::format::FmtSpan;
 use crate::state::State;
 
 mod state;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().with_max_level(Level::TRACE).init();
+    tracing_subscriber::fmt().with_max_level(Level::TRACE).with_span_events(FmtSpan::NEW | FmtSpan::CLOSE).init();
+    color_eyre::install().expect("unable to install color-eyre");
     
     if cfg!(debug_assertions) {
         const TO: &str = "full";
