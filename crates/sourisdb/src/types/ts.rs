@@ -1,10 +1,11 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use core::fmt::{Display, Formatter};
+use crate::{
+    types::integer::{Integer, IntegerSerError},
+    utilities::cursor::Cursor,
+    version::Version,
+};
+use alloc::{vec, vec::Vec};
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
-use crate::types::integer::{Integer, IntegerSerError};
-use crate::utilities::cursor::Cursor;
-use crate::version::Version;
+use core::fmt::{Display, Formatter};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub struct Timestamp(pub NaiveDateTime);
@@ -32,11 +33,10 @@ impl std::error::Error for TSError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             TSError::IntegerSerError(e) => Some(e),
-            _ => None,
+            TSError::InvalidDateOrTime => None,
         }
     }
 }
-
 
 impl Display for TSError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -48,7 +48,8 @@ impl Display for TSError {
 }
 
 impl Timestamp {
-    #[must_use] pub fn ser (&self, version: Version) -> Vec<u8> {
+    #[must_use]
+    pub fn ser(&self, version: Version) -> Vec<u8> {
         match version {
             Version::V0_1_0 => {
                 let date = self.0.date();
@@ -77,22 +78,24 @@ impl Timestamp {
         }
     }
 
-    pub fn deser (bytes: &mut Cursor<u8>, version: Version) -> Result<Self, TSError> {
+    pub fn deser(bytes: &mut Cursor<u8>, version: Version) -> Result<Self, TSError> {
         match version {
             Version::V0_1_0 => {
                 let year = Integer::deser(bytes, version)?.try_into()?;
                 let month = Integer::deser(bytes, version)?.try_into()?;
                 let day = Integer::deser(bytes, version)?.try_into()?;
-                
-                let date = NaiveDate::from_ymd_opt(year, month, day).ok_or(TSError::InvalidDateOrTime)?;
+
+                let date =
+                    NaiveDate::from_ymd_opt(year, month, day).ok_or(TSError::InvalidDateOrTime)?;
 
                 let hour = Integer::deser(bytes, version)?.try_into()?;
                 let min = Integer::deser(bytes, version)?.try_into()?;
                 let sec = Integer::deser(bytes, version)?.try_into()?;
                 let ns = Integer::deser(bytes, version)?.try_into()?;
-                
-                let time = NaiveTime::from_hms_nano_opt(hour, min, sec, ns).ok_or(TSError::InvalidDateOrTime)?;
-                
+
+                let time = NaiveTime::from_hms_nano_opt(hour, min, sec, ns)
+                    .ok_or(TSError::InvalidDateOrTime)?;
+
                 Ok(Self(NaiveDateTime::new(date, time)))
             }
         }

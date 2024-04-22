@@ -383,7 +383,7 @@ impl std::error::Error for IntegerSerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             IntegerSerError::IntegerParseError(e) => Some(e),
-            _ => None
+            _ => None,
         }
     }
 }

@@ -25,9 +25,7 @@ impl Display for VersionSerError {
 #[cfg(feature = "std")]
 impl std::error::Error for VersionSerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            _ => None,
-        }
+        None //not using the pre-made function to remind me not to forget this later
     }
 }
 

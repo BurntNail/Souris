@@ -1,12 +1,11 @@
-use std::collections::HashMap;
-use tokio::fs::{create_dir_all, File};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ErrorKind};
-use std::path::PathBuf;
-use dirs::data_dir;
-use sourisdb::store::Store;
 use color_eyre::eyre::bail;
-use sourisdb::values::Value;
-use sourisdb::types::array::Array;
+use dirs::data_dir;
+use sourisdb::{store::Store, types::array::Array, values::Value};
+use std::{collections::HashMap, path::PathBuf};
+use tokio::{
+    fs::{create_dir_all, File},
+    io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
+};
 
 const DIR: &str = "daddydb/";
 
@@ -24,15 +23,15 @@ pub struct State {
 }
 
 impl State {
-    pub async fn new () -> color_eyre::Result<Self> {
+    pub async fn new() -> color_eyre::Result<Self> {
         #[tracing::instrument(level = "trace")]
-        async fn get_store (location: PathBuf) -> color_eyre::Result<Store> {
+        async fn get_store(location: PathBuf) -> color_eyre::Result<Store> {
             let mut file = match File::open(&location).await {
                 Ok(f) => f,
                 Err(e) => {
                     return if e.kind() == ErrorKind::NotFound {
                         trace!(?location, "File not found, getting empty store.");
-                        return Ok(Store::default())
+                        return Ok(Store::default());
                     } else {
                         Err(e.into())
                     };
@@ -55,8 +54,13 @@ impl State {
         }
 
         #[tracing::instrument(level = "trace")]
-        async fn get_internal_stores (meta: &Store, base: PathBuf) -> Option<HashMap<String, Store>> {
-            let Some(Value::Array(Array(values))) = meta.get(&Value::String(DB_FILE_NAMES_KEY.into())) else {
+        async fn get_internal_stores(
+            meta: &Store,
+            base: PathBuf,
+        ) -> Option<HashMap<String, Store>> {
+            let Some(Value::Array(Array(values))) =
+                meta.get(&Value::String(DB_FILE_NAMES_KEY.into()))
+            else {
                 trace!("Unable to find existing databases - using none");
                 return None;
             };
@@ -72,14 +76,13 @@ impl State {
                 match get_store(base.join(file_name)).await {
                     Ok(s) => {
                         dbs.insert(file_name.to_owned(), s);
-                    },
+                    }
                     Err(e) => {
                         trace!(?e, ?file_name, "Error getting database");
                         continue;
                     }
                 }
             }
-
 
             Some(dbs)
         }
@@ -93,7 +96,10 @@ impl State {
         let dbs = match get_internal_stores(&meta, base_location.clone()).await {
             Some(dbs) => dbs,
             None => {
-                meta.insert(Value::String(DB_FILE_NAMES_KEY.into()), Value::Array(Array(vec![])));
+                meta.insert(
+                    Value::String(DB_FILE_NAMES_KEY.into()),
+                    Value::Array(Array(vec![])),
+                );
                 HashMap::default()
             }
         };
@@ -101,11 +107,11 @@ impl State {
         Ok(Self {
             base_location,
             meta,
-            dbs
+            dbs,
         })
     }
 
-    pub async fn save (&self) -> color_eyre::Result<()> {
+    pub async fn save(&self) -> color_eyre::Result<()> {
         let metadata = self.meta.ser()?;
         trace!(bytes=?metadata.len(), "Writing metadata to file");
 

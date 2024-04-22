@@ -1,13 +1,14 @@
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use clap::{Parser, Subcommand};
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
-use sourisdb::{
-    store::{Store, StoreError},
-    types::{array::Array, integer::Integer},
-    values::{Value, ValueTy},
-};
 use dialoguer::{
     theme::{ColorfulTheme, Theme},
     Confirm, Error as DError, FuzzySelect, Input,
+};
+use sourisdb::{
+    store::{Store, StoreError},
+    types::{array::Array, integer::Integer, ts::Timestamp},
+    values::{Value, ValueTy},
 };
 use std::{
     fmt::{Display, Formatter},
@@ -15,8 +16,6 @@ use std::{
     io::{Error as IOError, ErrorKind, Read, Write},
     path::PathBuf,
 };
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use sourisdb::types::ts::Timestamp;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -226,7 +225,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         ValueTy::Binary,
         ValueTy::Imaginary,
         ValueTy::Array,
-        ValueTy::Timestamp
+        ValueTy::Timestamp,
     ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
@@ -279,29 +278,22 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
             Value::Imaginary(a, b)
         }
         ValueTy::Timestamp => {
-            let ts: NaiveDateTime = if Confirm::with_theme(theme).with_prompt("Would you use the format?").interact()? {
+            let ts: NaiveDateTime = if Confirm::with_theme(theme)
+                .with_prompt("Would you use the format?")
+                .interact()?
+            {
                 Input::with_theme(theme)
                     .with_prompt("%Y-%m-%dT%H:%M:%S%.f")
                     .interact()?
             } else {
-                let y = Input::with_theme(theme)
-                    .with_prompt("Year?")
-                    .interact()?;
-                let m = Input::with_theme(theme)
-                    .with_prompt("Month?")
-                    .interact()?;
-                let d = Input::with_theme(theme)
-                    .with_prompt("Date?")
-                    .interact()?;
+                let y = Input::with_theme(theme).with_prompt("Year?").interact()?;
+                let m = Input::with_theme(theme).with_prompt("Month?").interact()?;
+                let d = Input::with_theme(theme).with_prompt("Date?").interact()?;
 
                 let date = NaiveDate::from_ymd_opt(y, m, d).ok_or(Error::InvalidDateOrTime)?;
 
-                let h = Input::with_theme(theme)
-                    .with_prompt("Hour?")
-                    .interact()?;
-                let m = Input::with_theme(theme)
-                    .with_prompt("Minute?")
-                    .interact()?;
+                let h = Input::with_theme(theme).with_prompt("Hour?").interact()?;
+                let m = Input::with_theme(theme).with_prompt("Minute?").interact()?;
                 let s = Input::with_theme(theme)
                     .with_prompt("Seconds?")
                     .interact()?;
@@ -309,7 +301,8 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                     .with_prompt("Milliseconds?")
                     .interact()?;
 
-                let time = NaiveTime::from_hms_milli_opt(h, m, s, ms).ok_or(Error::InvalidDateOrTime)?;
+                let time =
+                    NaiveTime::from_hms_milli_opt(h, m, s, ms).ok_or(Error::InvalidDateOrTime)?;
 
                 NaiveDateTime::new(date, time)
             };

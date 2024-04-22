@@ -2,6 +2,7 @@ use crate::{
     types::{
         array::{Array, ArraySerError},
         integer::{Integer, IntegerSerError},
+        ts::{TSError, Timestamp},
     },
     utilities::cursor::Cursor,
     version::Version,
@@ -13,7 +14,6 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::{Debug, Display, Formatter};
-use crate::types::ts::{Timestamp, TSError};
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Value {
@@ -24,7 +24,7 @@ pub enum Value {
     Int(Integer),
     Imaginary(Integer, Integer),
     Array(Array),
-    Timestamp(Timestamp)
+    Timestamp(Timestamp),
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -41,7 +41,7 @@ impl Debug for Value {
             Self::Int(i) => s.field("content", i),
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
             Self::Array(a) => s.field("content", &a),
-            Self::Timestamp(ndt) => s.field("content", &ndt)
+            Self::Timestamp(ndt) => s.field("content", &ndt),
         };
 
         s.finish()
@@ -189,7 +189,7 @@ impl Value {
             Self::Int(_) => ValueTy::Int,
             Self::Imaginary(_, _) => ValueTy::Imaginary,
             Self::Array(_) => ValueTy::Array,
-            Self::Timestamp(_) => ValueTy::Timestamp
+            Self::Timestamp(_) => ValueTy::Timestamp,
         }
     }
 
@@ -257,10 +257,7 @@ impl Value {
         }
     }
 
-    pub fn deserialise(
-        bytes: &mut Cursor<u8>,
-        version: Version,
-    ) -> Result<Self, ValueSerError> {
+    pub fn deserialise(bytes: &mut Cursor<u8>, version: Version) -> Result<Self, ValueSerError> {
         match version {
             Version::V0_1_0 => {
                 let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
@@ -306,12 +303,18 @@ impl Value {
                     }
                     ValueTy::String => {
                         let len: usize = Integer::deser(bytes, version)?.try_into()?;
-                        let str_bytes = bytes.read(len).ok_or(ValueSerError::NotEnoughBytes)?.to_vec();
+                        let str_bytes = bytes
+                            .read(len)
+                            .ok_or(ValueSerError::NotEnoughBytes)?
+                            .to_vec();
                         Self::String(String::from_utf8(str_bytes)?)
                     }
                     ValueTy::Binary => {
                         let len: usize = Integer::deser(bytes, version)?.try_into()?;
-                        let bytes = bytes.read(len).ok_or(ValueSerError::NotEnoughBytes)?.to_vec();
+                        let bytes = bytes
+                            .read(len)
+                            .ok_or(ValueSerError::NotEnoughBytes)?
+                            .to_vec();
                         Self::Binary(bytes)
                     }
                     ValueTy::Bool => Self::Bool((byte & 0b0000_0001) > 0),

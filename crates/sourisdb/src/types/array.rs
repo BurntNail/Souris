@@ -52,8 +52,8 @@ impl Array {
         match version {
             Version::V0_1_0 => {
                 let mut res: Vec<u8> = vec![];
-                
-                //TODO: checks for contiguous-ness 
+
+                //TODO: checks for contiguous-ness
 
                 res.extend(Integer::usize(self.0.len()).ser(version).iter());
 

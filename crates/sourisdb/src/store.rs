@@ -5,11 +5,13 @@ use crate::{
     version::{Version, VersionSerError},
 };
 use alloc::{
-    collections::{btree_map::IntoIter, BTreeMap},
+    collections::{
+        btree_map::{IntoIter, Keys, Values},
+        BTreeMap,
+    },
     vec,
     vec::Vec,
 };
-use alloc::collections::btree_map::{Keys, Values};
 use core::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
@@ -48,16 +50,17 @@ impl Store {
     pub fn size(&self) -> usize {
         self.kvs.len()
     }
-    
-    pub fn keys (&self) -> Keys<'_, Value, Value> {
+
+    pub fn keys(&self) -> Keys<'_, Value, Value> {
         self.kvs.keys()
     }
 
-    pub fn values (&self) -> Values<'_, Value, Value> {
+    pub fn values(&self) -> Values<'_, Value, Value> {
         self.kvs.values()
     }
 
-    #[must_use] pub fn get (&self, k: &Value) -> Option<&Value> {
+    #[must_use]
+    pub fn get(&self, k: &Value) -> Option<&Value> {
         self.kvs.get(k)
     }
 }
@@ -113,7 +116,7 @@ impl std::error::Error for StoreError {
             StoreError::ValueError(e) => Some(e),
             StoreError::IntegerError(e) => Some(e),
             StoreError::VersionError(e) => Some(e),
-            _ => None
+            StoreError::CouldntFindKey => None,
         }
     }
 }
@@ -162,7 +165,6 @@ impl Store {
                 res.extend(Integer::usize(length).ser(self.version));
                 res.push(0);
 
-
                 for (k, v) in &self.kvs {
                     let ser_key = k.ser(self.version)?;
                     let ser_value = v.ser(self.version)?;
@@ -197,7 +199,6 @@ impl Store {
                     let value = Value::deserialise(&mut bytes, version)?;
                     kvs.insert(key, value);
                 }
-
 
                 Ok(Self { version, kvs })
             }
