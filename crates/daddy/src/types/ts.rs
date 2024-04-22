@@ -27,6 +27,16 @@ impl From<IntegerSerError> for TSError {
     }
 }
 
+#[cfg(feature = "std")]
+impl std::error::Error for TSError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            TSError::IntegerSerError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 
 impl Display for TSError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {

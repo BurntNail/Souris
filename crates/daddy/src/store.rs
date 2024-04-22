@@ -9,6 +9,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use alloc::collections::btree_map::{Keys, Values};
 use core::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
@@ -46,6 +47,18 @@ impl Store {
     #[must_use]
     pub fn size(&self) -> usize {
         self.kvs.len()
+    }
+    
+    pub fn keys (&self) -> Keys<'_, Value, Value> {
+        self.kvs.keys()
+    }
+
+    pub fn values (&self) -> Values<'_, Value, Value> {
+        self.kvs.values()
+    }
+
+    #[must_use] pub fn get (&self, k: &Value) -> Option<&Value> {
+        self.kvs.get(k)
     }
 }
 
@@ -90,6 +103,18 @@ impl From<IntegerSerError> for StoreError {
 impl From<VersionSerError> for StoreError {
     fn from(value: VersionSerError) -> Self {
         Self::VersionError(value)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for StoreError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            StoreError::ValueError(e) => Some(e),
+            StoreError::IntegerError(e) => Some(e),
+            StoreError::VersionError(e) => Some(e),
+            _ => None
+        }
     }
 }
 

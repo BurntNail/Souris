@@ -1,3 +1,6 @@
 [workspace]
-members = [ "crates/dad","crates/daddy"]
+members = [ "crates/dad","crates/daddy", "crates/father"]
 resolver = "2"
+
+[profile.dev.package.backtrace]
+opt-level = 3

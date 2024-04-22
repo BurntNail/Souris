@@ -25,8 +25,6 @@ pub enum Value {
     Imaginary(Integer, Integer),
     Array(Array),
     Timestamp(Timestamp)
-    //TODO: Store
-    //TODO: Timestamp
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -165,6 +163,19 @@ impl From<ArraySerError> for ValueSerError {
 impl From<TSError> for ValueSerError {
     fn from(value: TSError) -> Self {
         Self::TSError(value)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ValueSerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ValueSerError::IntegerSerError(e) => Some(e),
+            ValueSerError::NonUTF8String(e) => Some(e),
+            ValueSerError::ArraySerError(e) => Some(e),
+            ValueSerError::TSError(e) => Some(e),
+            _ => None,
+        }
     }
 }
 

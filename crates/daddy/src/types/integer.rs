@@ -378,6 +378,16 @@ impl Display for IntegerSerError {
     }
 }
 
+#[cfg(feature = "std")]
+impl std::error::Error for IntegerSerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            IntegerSerError::IntegerParseError(e) => Some(e),
+            _ => None
+        }
+    }
+}
+
 impl Integer {
     #[must_use]
     pub fn ser(self, version: Version) -> Vec<u8> {

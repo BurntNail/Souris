@@ -37,6 +37,16 @@ impl Display for ArraySerError {
     }
 }
 
+#[cfg(feature = "std")]
+impl std::error::Error for ArraySerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ArraySerError::ValueSerError(e) => Some(e),
+            ArraySerError::IntegerSerError(e) => Some(e),
+        }
+    }
+}
+
 impl Array {
     pub fn ser(&self, version: Version) -> Result<Vec<u8>, ArraySerError> {
         match version {
