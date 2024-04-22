@@ -1302,6 +1302,7 @@ dependencies = [
  "chrono",
  "hashbrown",
  "proptest",
+ "serde_json",
 ]
 
 [[package]]

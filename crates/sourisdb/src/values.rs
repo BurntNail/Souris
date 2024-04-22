@@ -14,8 +14,10 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::{Debug, Display, Formatter};
+use serde_json::{Error as SJError, Value as SJValue};
+use std::hash::{Hash, Hasher};
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Value {
     Ch(char),
     String(String),
@@ -25,6 +27,33 @@ pub enum Value {
     Imaginary(Integer, Integer),
     Array(Array),
     Timestamp(Timestamp),
+    JSON(SJValue),
+}
+
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        //adapted from derive macro expansion
+        let tag = core::mem::discriminant(self);
+        tag.hash(state);
+
+        match self {
+            Value::Ch(v) => v.hash(state),
+            Value::String(v) => v.hash(state),
+            Value::Binary(v) => v.hash(state),
+            Value::Bool(v) => v.hash(state),
+            Value::Int(v) => v.hash(state),
+            Value::Imaginary(a, b) => {
+                a.hash(state);
+                b.hash(state);
+            }
+            Value::Array(v) => v.hash(state),
+            Value::Timestamp(v) => v.hash(state),
+            Value::JSON(j) => {
+                let str = j.to_string();
+                str.hash(state);
+            }
+        }
+    }
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -42,6 +71,7 @@ impl Debug for Value {
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
             Self::Array(a) => s.field("content", &a),
             Self::Timestamp(ndt) => s.field("content", &ndt),
+            Self::JSON(v) => s.field("json", &v),
         };
 
         s.finish()
@@ -67,6 +97,7 @@ impl Display for Value {
             }
             Self::Array(a) => write!(f, "{a}"),
             Self::Timestamp(ndt) => write!(f, "{ndt}"),
+            Self::JSON(v) => write!(f, "{v}"),
         }
     }
 }
@@ -97,20 +128,22 @@ pub enum ValueTy {
     Imaginary,
     Array,
     Timestamp,
+    JSON,
 }
 
 impl ValueTy {
     #[must_use]
     pub fn id(self) -> u8 {
         match self {
-            ValueTy::Ch => 0b000,
-            ValueTy::String => 0b001,
-            ValueTy::Binary => 0b010,
-            ValueTy::Bool => 0b011,
-            ValueTy::Int => 0b100,
-            ValueTy::Imaginary => 0b101,
-            ValueTy::Array => 0b110,
-            ValueTy::Timestamp => 0b111,
+            ValueTy::Ch => 0b0000,
+            ValueTy::String => 0b0001,
+            ValueTy::Binary => 0b0010,
+            ValueTy::Bool => 0b0011,
+            ValueTy::Int => 0b0100,
+            ValueTy::Imaginary => 0b0101,
+            ValueTy::Array => 0b0110,
+            ValueTy::Timestamp => 0b0111,
+            ValueTy::JSON => 0b1000,
         }
     }
 }
@@ -125,6 +158,7 @@ pub enum ValueSerError {
     NonUTF8String(FromUtf8Error),
     ArraySerError(ArraySerError),
     TSError(TSError),
+    SerdeJson(SJError),
 }
 
 impl Display for ValueSerError {
@@ -141,6 +175,7 @@ impl Display for ValueSerError {
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
             ValueSerError::ArraySerError(e) => write!(f, "Error de/ser-ing array: {e:?}"),
             ValueSerError::TSError(e) => write!(f, "Error de/ser-ing timestamp: {e:?}"),
+            ValueSerError::SerdeJson(e) => write!(f, "Error deserialising serde_json: {e:?}"),
         }
     }
 }
@@ -165,6 +200,11 @@ impl From<TSError> for ValueSerError {
         Self::TSError(value)
     }
 }
+impl From<SJError> for ValueSerError {
+    fn from(value: SJError) -> Self {
+        Self::SerdeJson(value)
+    }
+}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ValueSerError {
@@ -174,6 +214,7 @@ impl std::error::Error for ValueSerError {
             ValueSerError::NonUTF8String(e) => Some(e),
             ValueSerError::ArraySerError(e) => Some(e),
             ValueSerError::TSError(e) => Some(e),
+            ValueSerError::SerdeJson(e) => Some(e),
             _ => None,
         }
     }
@@ -190,25 +231,17 @@ impl Value {
             Self::Imaginary(_, _) => ValueTy::Imaginary,
             Self::Array(_) => ValueTy::Array,
             Self::Timestamp(_) => ValueTy::Timestamp,
+            Self::JSON(_) => ValueTy::JSON,
         }
     }
 
-    ///Structure of Value in DB:
-    ///
-    /// 3 bits: type
-    /// either:
-    ///     5 bits: niche
-    /// or:
-    ///     5 bits: zero
-    ///     length bytes: content
-    ///     4 bytes: end
     pub fn ser(&self, version: Version) -> Result<Vec<u8>, ValueSerError> {
         match version {
             Version::V0_1_0 => {
                 let mut res = vec![];
 
                 let vty = self.to_ty();
-                let ty = vty.id() << 5;
+                let ty = vty.id() << 4;
 
                 let niche = match &self {
                     Self::Bool(b) => Some(u8::from(*b)),
@@ -250,6 +283,13 @@ impl Value {
                     Self::Timestamp(t) => {
                         res.extend(t.ser(version).iter());
                     }
+                    Self::JSON(v) => {
+                        let str = v.to_string();
+                        let bytes = str.as_bytes();
+
+                        res.extend(Integer::usize(bytes.len()).ser(version).iter());
+                        res.extend(bytes.iter());
+                    }
                 }
 
                 Ok(res)
@@ -265,16 +305,17 @@ impl Value {
                 };
                 let byte = *byte;
 
-                let ty = byte >> 5;
+                let ty = byte >> 4;
                 let ty = match ty {
-                    0b000 => ValueTy::Ch,
-                    0b001 => ValueTy::String,
-                    0b010 => ValueTy::Binary,
-                    0b011 => ValueTy::Bool,
-                    0b100 => ValueTy::Int,
-                    0b101 => ValueTy::Imaginary,
-                    0b110 => ValueTy::Array,
-                    0b111 => ValueTy::Timestamp,
+                    0b0000 => ValueTy::Ch,
+                    0b0001 => ValueTy::String,
+                    0b0010 => ValueTy::Binary,
+                    0b0011 => ValueTy::Bool,
+                    0b0100 => ValueTy::Int,
+                    0b0101 => ValueTy::Imaginary,
+                    0b0110 => ValueTy::Array,
+                    0b0111 => ValueTy::Timestamp,
+                    0b1000 => ValueTy::JSON,
                     _ => return Err(ValueSerError::InvalidType(ty)),
                 };
 
@@ -308,6 +349,15 @@ impl Value {
                             .ok_or(ValueSerError::NotEnoughBytes)?
                             .to_vec();
                         Self::String(String::from_utf8(str_bytes)?)
+                    }
+                    ValueTy::JSON => {
+                        let len: usize = Integer::deser(bytes, version)?.try_into()?;
+                        let str_bytes = bytes
+                            .read(len)
+                            .ok_or(ValueSerError::NotEnoughBytes)?
+                            .to_vec();
+                        let value: SJValue = serde_json::from_slice(&str_bytes)?;
+                        Self::JSON(value)
                     }
                     ValueTy::Binary => {
                         let len: usize = Integer::deser(bytes, version)?.try_into()?;

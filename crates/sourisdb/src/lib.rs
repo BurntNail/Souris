@@ -6,6 +6,7 @@ extern crate alloc;
 
 pub use chrono;
 pub use hashbrown;
+pub use serde_json;
 
 pub mod store;
 pub mod types;

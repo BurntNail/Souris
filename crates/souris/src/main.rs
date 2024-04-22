@@ -6,6 +6,7 @@ use dialoguer::{
     Confirm, Error as DError, FuzzySelect, Input,
 };
 use sourisdb::{
+    serde_json::Value as SJValue,
     store::{Store, StoreError},
     types::{array::Array, integer::Integer, ts::Timestamp},
     values::{Value, ValueTy},
@@ -226,6 +227,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         ValueTy::Imaginary,
         ValueTy::Array,
         ValueTy::Timestamp,
+        ValueTy::JSON,
     ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
@@ -340,6 +342,12 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
             };
 
             Value::Array(Array(res))
+        }
+        ValueTy::JSON => {
+            let v: SJValue = Input::with_theme(theme)
+                .with_prompt("Enter the JSON?")
+                .interact()?;
+            Value::JSON(v)
         }
     })
 }
