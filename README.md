@@ -1,4 +1,4 @@
-# SourisDB
+# Souris
 
 A tiny `no_std` database designed to minimise size over all else.
 
