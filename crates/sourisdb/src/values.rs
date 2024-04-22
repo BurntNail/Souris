@@ -13,9 +13,11 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::fmt::{Debug, Display, Formatter};
+use core::{
+    fmt::{Debug, Display, Formatter},
+    hash::{Hash, Hasher},
+};
 use serde_json::{Error as SJError, Value as SJValue};
-use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum Value {

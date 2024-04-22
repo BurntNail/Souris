@@ -59,6 +59,15 @@ impl Store {
     pub fn get(&self, k: &Value) -> Option<&Value> {
         self.kvs.get(k)
     }
+
+    #[must_use]
+    pub fn get_mut(&mut self, k: &Value) -> Option<&mut Value> {
+        self.kvs.get_mut(k)
+    }
+
+    pub fn clear(&mut self) {
+        self.kvs.clear();
+    }
 }
 
 impl IntoIterator for Store {

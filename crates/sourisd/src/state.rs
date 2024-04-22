@@ -1,28 +1,74 @@
 use color_eyre::eyre::bail;
 use dirs::data_dir;
 use sourisdb::{store::Store, types::array::Array, values::Value};
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
+    sync::{Mutex, RwLock},
 };
 
-const DIR: &str = "daddydb/";
+const DIR: &str = "souris/";
 
 mod meta {
     pub const META_DB_FILE_NAME: &str = "meta.sdb";
     pub const DB_FILE_NAMES_KEY: &str = "existing_dbs";
 }
+use crate::error::SourisError;
 use meta::*;
 
 #[derive(Clone, Debug)]
-pub struct State {
+pub struct SourisState {
     base_location: PathBuf,
-    meta: Store,
-    dbs: HashMap<String, Store>,
+    meta: Arc<RwLock<Store>>,                //exists at runtime and stored
+    dbs: Arc<Mutex<HashMap<String, Store>>>, //only at runtime
 }
 
-impl State {
+impl SourisState {
+    ///returns whether the key already existed
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn new_db(&self, key: String) -> Result<bool, SourisError> {
+        let mut dbs = self.dbs.lock().await;
+
+        if dbs.contains_key(&key) {
+            trace!(
+                ?key,
+                "Tried to add new store, found existing store with name."
+            );
+            return Ok(true);
+        }
+
+        let mut meta = self.meta.write().await;
+        let Some(Value::Array(Array(vals))) =
+            meta.get_mut(&Value::String(DB_FILE_NAMES_KEY.into()))
+        else {
+            unreachable!("must exist, and must be array as init-ed that way");
+        };
+        vals.push(Value::String(key.clone()));
+        dbs.insert(key.clone(), Store::default());
+
+        let blank = Store::default().ser()?;
+        let file_name = self.base_location.join(format!("{key}.sdb"));
+        let mut file = File::create(&file_name).await?;
+        info!(?file_name, "Writing blank SDB");
+
+        file.write_all(&blank).await?;
+
+        Ok(false)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn clear_db(&self, key: String) {
+        let mut dbs = self.dbs.lock().await;
+        if let Some(store) = dbs.get_mut(&key) {
+            store.clear();
+        } else {
+            trace!("Unable to find store.");
+        }
+    }
+}
+
+impl SourisState {
     pub async fn new() -> color_eyre::Result<Self> {
         #[tracing::instrument(level = "trace")]
         async fn get_store(location: PathBuf) -> color_eyre::Result<Store> {
@@ -53,7 +99,7 @@ impl State {
             Ok(Store::deser(&contents)?)
         }
 
-        #[tracing::instrument(level = "trace")]
+        #[tracing::instrument(level = "trace", skip(meta))]
         async fn get_internal_stores(
             meta: &Store,
             base: PathBuf,
@@ -73,7 +119,7 @@ impl State {
                     continue;
                 };
 
-                match get_store(base.join(file_name)).await {
+                match get_store(base.join(file_name).join(".sdb")).await {
                     Ok(s) => {
                         dbs.insert(file_name.to_owned(), s);
                     }
@@ -104,15 +150,19 @@ impl State {
             }
         };
 
-        Ok(Self {
+        let s = Self {
             base_location,
-            meta,
-            dbs,
-        })
+            meta: Arc::new(RwLock::new(meta)),
+            dbs: Arc::new(Mutex::new(dbs)),
+        };
+
+        s.save().await?;
+
+        Ok(s)
     }
 
     pub async fn save(&self) -> color_eyre::Result<()> {
-        let metadata = self.meta.ser()?;
+        let metadata = self.meta.read().await.ser()?;
         trace!(bytes=?metadata.len(), "Writing metadata to file");
 
         let location = self.base_location.join(META_DB_FILE_NAME);
