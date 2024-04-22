@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
-use itsy_bitsy::{
+use sourisdb::{
     store::{Store, StoreError},
     types::{array::Array, integer::Integer},
     values::{Value, ValueTy},
@@ -16,7 +16,7 @@ use std::{
     path::PathBuf,
 };
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use itsy_bitsy::types::ts::Timestamp;
+use sourisdb::types::ts::Timestamp;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -404,7 +404,7 @@ fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
 
     let store = Store::new();
     file.write_all(&store.ser()?)?;
-    println!("Successfully created new DDB.");
+    println!("Successfully created new SourisDB.");
 
     Ok(store)
 }

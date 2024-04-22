@@ -204,19 +204,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
 
 [[package]]
-name = "bitsy"
-version = "0.1.0"
-dependencies = [
- "axum",
- "color-eyre",
- "dirs",
- "itsy_bitsy",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -676,26 +663,6 @@ name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
-
-[[package]]
-name = "itsy"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "clap",
- "comfy-table",
- "dialoguer",
- "itsy_bitsy",
-]
-
-[[package]]
-name = "itsy_bitsy"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "proptest",
-]
 
 [[package]]
 name = "js-sys"
@@ -1273,6 +1240,39 @@ checksum = "05ffd9c0a93b7543e062e759284fcf5f5e3b098501104bfbdde4d404db792871"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "souris"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "clap",
+ "comfy-table",
+ "dialoguer",
+ "sourisdb",
+]
+
+[[package]]
+name = "sourisd"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "color-eyre",
+ "dirs",
+ "sourisdb",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "sourisdb"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "proptest",
 ]
 
 [[package]]

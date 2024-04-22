@@ -3,15 +3,15 @@ use tokio::fs::{create_dir_all, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ErrorKind};
 use std::path::PathBuf;
 use dirs::data_dir;
-use itsy_bitsy::store::Store;
+use sourisdb::store::Store;
 use color_eyre::eyre::bail;
-use itsy_bitsy::values::Value;
-use itsy_bitsy::types::array::Array;
+use sourisdb::values::Value;
+use sourisdb::types::array::Array;
 
 const DIR: &str = "daddydb/";
 
 mod meta {
-    pub const META_DB_FILE_NAME: &str = "meta.ibdb";
+    pub const META_DB_FILE_NAME: &str = "meta.sdb";
     pub const DB_FILE_NAMES_KEY: &str = "existing_dbs";
 }
 use meta::*;

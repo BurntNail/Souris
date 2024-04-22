@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/itsy", "crates/itsy_bitsy", "crates/bitsy"]
+members = ["crates/souris", "crates/sourisdb", "crates/sourisd"]
 resolver = "2"
 
 [profile.dev.package.backtrace]
