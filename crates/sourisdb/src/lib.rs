@@ -4,6 +4,9 @@
 
 extern crate alloc;
 
+pub use chrono;
+pub use hashbrown;
+
 pub mod store;
 pub mod types;
 pub mod utilities;

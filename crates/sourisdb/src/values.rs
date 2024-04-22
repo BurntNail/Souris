@@ -15,7 +15,7 @@ use alloc::{
 };
 use core::fmt::{Debug, Display, Formatter};
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub enum Value {
     Ch(char),
     String(String),

@@ -4,23 +4,17 @@ use crate::{
     values::{Value, ValueSerError},
     version::{Version, VersionSerError},
 };
-use alloc::{
-    collections::{
-        btree_map::{IntoIter, Keys, Values},
-        BTreeMap,
-    },
-    vec,
-    vec::Vec,
-};
+use alloc::{vec, vec::Vec};
 use core::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
 };
+use hashbrown::hash_map::{HashMap, IntoIter, Keys, Values};
 
 #[derive(Debug, Clone)]
 pub struct Store {
     version: Version,
-    kvs: BTreeMap<Value, Value>,
+    kvs: HashMap<Value, Value>,
 }
 
 impl Store {
@@ -51,10 +45,12 @@ impl Store {
         self.kvs.len()
     }
 
+    #[must_use]
     pub fn keys(&self) -> Keys<'_, Value, Value> {
         self.kvs.keys()
     }
 
+    #[must_use]
     pub fn values(&self) -> Values<'_, Value, Value> {
         self.kvs.values()
     }
@@ -125,7 +121,7 @@ impl Default for Store {
     fn default() -> Self {
         Self {
             version: Version::V0_1_0,
-            kvs: BTreeMap::new(),
+            kvs: HashMap::new(),
         }
     }
 }
@@ -193,7 +189,7 @@ impl Store {
                 let length: usize = Integer::deser(&mut bytes, version)?.try_into()?;
                 bytes.seek(1); //\0
 
-                let mut kvs = BTreeMap::new();
+                let mut kvs = HashMap::new();
                 for _ in 0..length {
                     let key = Value::deserialise(&mut bytes, version)?;
                     let value = Value::deserialise(&mut bytes, version)?;

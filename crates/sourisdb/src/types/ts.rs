@@ -7,7 +7,7 @@ use alloc::{vec, vec::Vec};
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use core::fmt::{Display, Formatter};
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Timestamp(pub NaiveDateTime);
 
 impl Display for Timestamp {

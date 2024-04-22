@@ -7,7 +7,7 @@ use core::{
     str::FromStr,
 };
 
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Content {
     Small([u8; 1]),
     Smedium([u8; 2]),
@@ -15,14 +15,14 @@ pub enum Content {
     Large([u8; 8]),
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SignedState {
     Unsigned,
     SignedPositive,
     SignedNegative,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Integer {
     signed_state: SignedState,
     content: Content,

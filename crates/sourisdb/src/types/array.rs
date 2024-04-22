@@ -7,7 +7,7 @@ use crate::{
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Array(pub Vec<Value>);
 
 #[derive(Debug)]
