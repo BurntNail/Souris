@@ -204,6 +204,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
 
 [[package]]
+name = "bitsy"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "color-eyre",
+ "dirs",
+ "itsy_bitsy",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -390,26 +403,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dad"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "clap",
- "comfy-table",
- "daddy",
- "dialoguer",
-]
-
-[[package]]
-name = "daddy"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "proptest",
-]
-
-[[package]]
 name = "dialoguer"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -475,19 +468,6 @@ name = "fastrand"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "658bd65b1cf4c852a3cc96f18a8ce7b5640f6b703f905c7d74532294c2a63984"
-
-[[package]]
-name = "father"
-version = "0.1.0"
-dependencies = [
- "axum",
- "color-eyre",
- "daddy",
- "dirs",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "fnv"
@@ -696,6 +676,26 @@ name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
+
+[[package]]
+name = "itsy"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "clap",
+ "comfy-table",
+ "dialoguer",
+ "itsy_bitsy",
+]
+
+[[package]]
+name = "itsy_bitsy"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "proptest",
+]
 
 [[package]]
 name = "js-sys"

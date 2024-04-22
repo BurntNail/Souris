@@ -1,5 +1,5 @@
 [package]
-name = "dad"
+name = "itsy"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
 comfy-table = "7.1.1"
-daddy = {path = "../daddy"}
+itsy_bitsy = {path = "../itsy_bitsy" }
 dialoguer = { version = "0.11.0", features = ["fuzzy-matcher", "fuzzy-select", "history", "completion"] }
 chrono = "0.4"
 chrono-tz = "0.9"

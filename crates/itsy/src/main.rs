@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
-use daddy::{
+use itsy_bitsy::{
     store::{Store, StoreError},
     types::{array::Array, integer::Integer},
     values::{Value, ValueTy},
@@ -16,7 +16,7 @@ use std::{
     path::PathBuf,
 };
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use daddy::types::ts::Timestamp;
+use itsy_bitsy::types::ts::Timestamp;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]

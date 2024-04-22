@@ -1,5 +1,5 @@
 [package]
-name = "father"
+name = "bitsy"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 axum = "0.7.5"
 color-eyre = "0.6.3"
-daddy = {path = "../daddy", features = ["std"]}
+itsy_bitsy = {path = "../itsy_bitsy", features = ["std"]}
 dirs = "5.0.1"
 tokio = { version = "1.37.0", features = ["full"] }
 tracing = "0.1.40"

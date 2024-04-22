@@ -3,15 +3,15 @@ use tokio::fs::{create_dir_all, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ErrorKind};
 use std::path::PathBuf;
 use dirs::data_dir;
-use daddy::store::Store;
+use itsy_bitsy::store::Store;
 use color_eyre::eyre::bail;
-use daddy::values::Value;
-use daddy::types::array::Array;
+use itsy_bitsy::values::Value;
+use itsy_bitsy::types::array::Array;
 
 const DIR: &str = "daddydb/";
 
 mod meta {
-    pub const META_DB_FILE_NAME: &str = "db.ddb";
+    pub const META_DB_FILE_NAME: &str = "meta.ibdb";
     pub const DB_FILE_NAMES_KEY: &str = "existing_dbs";
 }
 use meta::*;
@@ -38,7 +38,7 @@ impl State {
                     };
                 }
             };
-            
+
             let mut contents = vec![];
             let mut tmp = [0_u8; 128];
 
