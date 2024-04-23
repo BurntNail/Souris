@@ -24,6 +24,8 @@ pub struct SourisState {
     dbs: Arc<Mutex<HashMap<String, Store>>>, //only at runtime
 }
 
+//TODO: remove the meta @ runtime
+
 impl SourisState {
     ///returns whether the key already existed
     #[tracing::instrument(level = "trace", skip(self))]
@@ -68,6 +70,35 @@ impl SourisState {
             trace!("Unable to find store.");
             false
         }
+    }
+
+    ///returns whether it removed a database
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn remove_db(&self, key: String) -> Result<bool, tokio::io::Error> {
+        let mut meta = self.meta.write().await;
+        let Some(Value::Array(Array(vals))) =
+            meta.get_mut(&Value::String(DB_FILE_NAMES_KEY.into()))
+        else {
+            unreachable!("must exist, and must be array as init-ed that way");
+        };
+
+        let key_as_value = Value::String(key.clone());
+        let Some(index) = vals.iter().position(|x| x == &key_as_value) else {
+            return Ok(false);
+        };
+
+        let mut dbs = self.dbs.lock().await;
+        if !dbs.contains_key(&key) {
+            return Ok(false);
+        }
+
+        vals.remove(index);
+        dbs.remove(&key);
+
+        let file_name = self.base_location.join(format!("{key}.sdb"));
+        tokio::fs::remove_file(file_name).await?;
+
+        Ok(true)
     }
 }
 

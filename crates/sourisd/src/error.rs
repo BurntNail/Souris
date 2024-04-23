@@ -6,8 +6,8 @@ use sourisdb::store::StoreError;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    io::Error as IOError,
 };
+use tokio::io::Error as IOError;
 
 #[derive(Debug)]
 pub enum SourisError {

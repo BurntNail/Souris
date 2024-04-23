@@ -64,3 +64,23 @@ pub async fn clear_db(
         StatusCode::NOT_FOUND
     }
 }
+
+#[utoipa::path(
+    post,
+    path = "/v1/rm_db",
+    request_body = DbByName,
+    responses(
+        (status = OK, description = "Found an existing database and deleted it"),
+        (status = NOT_FOUND, description = "Unable to find the database")
+    )
+)]
+pub async fn remove_db(
+    State(state): State<SourisState>,
+    Json(DbByName { name }): Json<DbByName>,
+) -> Result<StatusCode, SourisError> {
+    Ok(if state.remove_db(name).await? {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    })
+}

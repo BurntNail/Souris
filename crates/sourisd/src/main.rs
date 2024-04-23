@@ -4,7 +4,7 @@ extern crate tracing;
 use crate::{
     apidoc::ApiDoc,
     state::SourisState,
-    v1_routes::db::{add_db, clear_db},
+    v1_routes::db::{add_db, clear_db, remove_db},
 };
 use axum::{routing::post, Router};
 use tokio::{net::TcpListener, signal};
@@ -81,6 +81,7 @@ async fn main() {
 
     let v1_router = Router::new()
         .route("/add_db", post(add_db))
+        .route("/rm_db", post(remove_db))
         .route("/clear_db", post(clear_db));
 
     let router = Router::new()
