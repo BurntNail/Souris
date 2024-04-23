@@ -12,6 +12,7 @@ use core::{
 use hashbrown::hash_map::{HashMap, IntoIter, Keys, Values};
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Store {
     version: Version,
     kvs: HashMap<Value, Value>,

@@ -10,8 +10,9 @@ proptest = "1.4.0"
 chrono = "0.4"
 hashbrown = "0.14"
 serde_json = "1.0"
-
+serde = {version = "1.0", optional = true, features = ["derive"]}
 
 [features]
 default = []
 std = []
+serde = ["dep:serde", "chrono/serde"]

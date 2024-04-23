@@ -8,6 +8,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Array(pub Vec<Value>);
 
 #[derive(Debug)]

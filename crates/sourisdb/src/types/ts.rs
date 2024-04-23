@@ -8,6 +8,7 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use core::fmt::{Display, Formatter};
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Timestamp(pub NaiveDateTime);
 
 impl Display for Timestamp {

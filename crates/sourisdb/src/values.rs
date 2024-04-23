@@ -20,6 +20,7 @@ use core::{
 use serde_json::{Error as SJError, Value as SJValue};
 
 #[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Value {
     Ch(char),
     String(String),

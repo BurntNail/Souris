@@ -8,6 +8,7 @@ use core::{
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Content {
     Small([u8; 1]),
     Smedium([u8; 2]),
@@ -16,6 +17,7 @@ pub enum Content {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SignedState {
     Unsigned,
     SignedPositive,
@@ -23,6 +25,7 @@ pub enum SignedState {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Integer {
     signed_state: SignedState,
     content: Content,

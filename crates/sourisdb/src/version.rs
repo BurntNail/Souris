@@ -2,6 +2,7 @@ use crate::utilities::cursor::Cursor;
 use core::fmt::{Display, Formatter};
 
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Version {
     V0_1_0,
 }
