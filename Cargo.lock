@@ -270,6 +270,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-targets 0.52.5",
 ]
@@ -1491,6 +1492,7 @@ dependencies = [
  "chrono",
  "hashbrown",
  "proptest",
+ "serde",
  "serde_json",
 ]
 

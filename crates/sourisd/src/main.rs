@@ -1,20 +1,22 @@
 #[macro_use]
 extern crate tracing;
 
-use crate::{v1_routes::db::add_db, state::SourisState};
+use crate::{
+    apidoc::ApiDoc,
+    state::SourisState,
+    v1_routes::db::{add_db, clear_db},
+};
 use axum::{routing::post, Router};
 use tokio::{net::TcpListener, signal};
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use crate::apidoc::{ApiDoc};
-use crate::v1_routes::db::clear_db;
 
-mod error;
-mod v1_routes;
-mod state;
 mod apidoc;
+mod error;
+mod state;
+mod v1_routes;
 
 fn setup() {
     tracing_subscriber::fmt()
@@ -77,7 +79,9 @@ async fn main() {
     let state = SourisState::new().await.expect("unable to create state");
     info!("Found state {state:?}");
 
-    let v1_router = Router::new().route("/add_db", post(add_db)).route("/clear_db", post(clear_db));
+    let v1_router = Router::new()
+        .route("/add_db", post(add_db))
+        .route("/clear_db", post(clear_db));
 
     let router = Router::new()
         .nest("/v1_routes", v1_router)
