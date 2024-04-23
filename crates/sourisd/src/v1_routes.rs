@@ -1,1 +1,1 @@
-pub mod new_db;
+pub mod db;

@@ -57,13 +57,16 @@ impl SourisState {
         Ok(false)
     }
 
+    ///returns whether it cleared a database
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn clear_db(&self, key: String) {
+    pub async fn clear_db(&self, key: String) -> bool {
         let mut dbs = self.dbs.lock().await;
         if let Some(store) = dbs.get_mut(&key) {
             store.clear();
+            true
         } else {
             trace!("Unable to find store.");
+            false
         }
     }
 }

@@ -1,15 +1,15 @@
 #[macro_use]
 extern crate tracing;
 
-use crate::{v1_routes::new_db::add_db, state::SourisState};
+use crate::{v1_routes::db::add_db, state::SourisState};
 use axum::{routing::post, Router};
-use axum::routing::get;
 use tokio::{net::TcpListener, signal};
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use crate::apidoc::{ApiDoc, openapi};
+use crate::apidoc::{ApiDoc};
+use crate::v1_routes::db::clear_db;
 
 mod error;
 mod v1_routes;
@@ -77,11 +77,10 @@ async fn main() {
     let state = SourisState::new().await.expect("unable to create state");
     info!("Found state {state:?}");
 
-    let v1_router = Router::new().route("/add_db", post(add_db));
+    let v1_router = Router::new().route("/add_db", post(add_db)).route("/clear_db", post(clear_db));
 
     let router = Router::new()
         .nest("/v1_routes", v1_router)
-        .route("/openapi.json", get(openapi))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .with_state(state.clone());
 
