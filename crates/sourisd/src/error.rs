@@ -13,6 +13,7 @@ use tokio::io::Error as IOError;
 pub enum SourisError {
     StoreError(StoreError),
     IO(IOError),
+    DatabaseNotFound,
 }
 
 impl From<StoreError> for SourisError {
@@ -31,6 +32,7 @@ impl Error for SourisError {
         match self {
             Self::StoreError(e) => Some(e),
             Self::IO(e) => Some(e),
+            Self::DatabaseNotFound => None,
         }
     }
 }
@@ -40,6 +42,7 @@ impl Display for SourisError {
         match self {
             Self::StoreError(e) => write!(f, "Error with Souris Store: {e:?}"),
             Self::IO(e) => write!(f, "Error with IO: {e:?}"),
+            Self::DatabaseNotFound => write!(f, "Could not find database with name"),
         }
     }
 }
@@ -47,7 +50,10 @@ impl Display for SourisError {
 impl IntoResponse for SourisError {
     fn into_response(self) -> Response {
         error!(?self, "Returning error");
-        let code = StatusCode::INTERNAL_SERVER_ERROR;
+        let code = match self {
+            Self::IO(_) | Self::StoreError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::DatabaseNotFound => StatusCode::NOT_FOUND,
+        };
 
         (code, format!("{self:?}")).into_response()
     }

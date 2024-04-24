@@ -18,6 +18,8 @@ pub struct Store {
     kvs: HashMap<Value, Value>,
 }
 
+//TODO: consider bit twiddling tricks for runtime RAM cost
+
 impl Store {
     #[must_use]
     pub fn new() -> Self {

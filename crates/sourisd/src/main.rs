@@ -4,10 +4,19 @@ extern crate tracing;
 use crate::{
     apidoc::ApiDoc,
     state::SourisState,
-    v1_routes::db::{add_db, clear_db, remove_db},
+    v1_routes::db::{add_db, clear_db, get_db, remove_db},
 };
-use axum::{routing::post, Router};
-use tokio::{net::TcpListener, signal};
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use std::time::Duration;
+use tokio::{
+    net::TcpListener,
+    signal,
+    sync::mpsc::{unbounded_channel, UnboundedSender},
+    task::JoinHandle,
+};
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 use utoipa::OpenApi;
@@ -42,7 +51,7 @@ fn setup() {
 }
 
 //from https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs
-async fn shutdown_signal(state: SourisState) {
+async fn shutdown_signal(stop_signal: UnboundedSender<()>, saver: JoinHandle<()>) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -66,10 +75,8 @@ async fn shutdown_signal(state: SourisState) {
     };
 
     info!("Gracefully Exiting");
-
-    if let Err(e) = state.save().await {
-        error!(?e, "Error saving state.");
-    }
+    stop_signal.send(()).expect("unable to send stop signal");
+    saver.await.expect("unable to stop saver thread");
 }
 
 #[tokio::main]
@@ -79,20 +86,45 @@ async fn main() {
     let state = SourisState::new().await.expect("unable to create state");
     info!("Found state {state:?}");
 
+    let (stop_tx, mut stop_rx) = unbounded_channel();
+    let saver_state = state.clone();
+    let saver = tokio::task::spawn(async move {
+        let state = saver_state;
+        loop {
+            tokio::select! {
+                _ = stop_rx.recv() => {
+                    info!("Stop signal received for saver");
+                    break;
+                },
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                    if let Err(e) = state.save().await {
+                        error!(?e, "Error saving state");
+                    }
+                }
+            }
+        }
+
+        if let Err(e) = state.save().await {
+            error!(?e, "Error saving state");
+        }
+        info!("Exiting saver");
+    });
+
     let v1_router = Router::new()
+        .route("/get_db", get(get_db))
         .route("/add_db", post(add_db))
         .route("/rm_db", post(remove_db))
         .route("/clear_db", post(clear_db));
 
     let router = Router::new()
-        .nest("/v1_routes", v1_router)
+        .nest("/v1", v1_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .with_state(state.clone());
 
     let listener = TcpListener::bind("127.0.0.1:2256").await.unwrap();
 
     axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal(state))
+        .with_graceful_shutdown(shutdown_signal(stop_tx, saver))
         .await
         .unwrap();
 }

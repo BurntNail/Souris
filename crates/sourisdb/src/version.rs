@@ -1,13 +1,14 @@
 use crate::utilities::cursor::Cursor;
 use core::fmt::{Display, Formatter};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Version {
     V0_1_0,
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[allow(clippy::module_name_repetitions)]
 pub enum VersionSerError {
     Invalid,

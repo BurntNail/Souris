@@ -3,6 +3,7 @@
 #![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
 extern crate alloc;
+extern crate core;
 
 pub use chrono;
 pub use hashbrown;

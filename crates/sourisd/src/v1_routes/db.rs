@@ -1,7 +1,12 @@
 use crate::{error::SourisError, state::SourisState};
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
 use serde::Deserialize;
-use utoipa::ToSchema;
+use sourisdb::store::Store;
+use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, ToSchema)]
 #[schema(example = json!({"name": "my database", "overwrite_existing": false}))]
@@ -10,7 +15,7 @@ pub struct NewDB {
     overwrite_existing: bool,
 }
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema, IntoParams)]
 #[schema(example = json!({"name": "my database"}))]
 pub struct DbByName {
     name: String,
@@ -83,4 +88,24 @@ pub async fn remove_db(
     } else {
         StatusCode::NOT_FOUND
     })
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/get_db",
+    params(DbByName),
+    responses(
+        (status = OK, description = "Found database"),
+        (status = NOT_FOUND, description = "Unable to find database")
+    )
+)]
+#[axum::debug_handler]
+pub async fn get_db(
+    State(state): State<SourisState>,
+    Query(DbByName { name }): Query<DbByName>,
+) -> Result<Json<Store>, SourisError> {
+    match state.get_db(name).await {
+        Some(db) => Ok(Json(db)),
+        None => Err(SourisError::DatabaseNotFound),
+    }
 }

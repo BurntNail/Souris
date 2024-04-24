@@ -2,7 +2,7 @@ use crate::{utilities::cursor::Cursor, version::Version};
 use alloc::{string::ToString, vec::Vec};
 use core::{
     fmt::{Debug, Display, Formatter},
-    num::ParseIntError,
+    num::{IntErrorKind, ParseIntError},
     ops::Neg,
     str::FromStr,
 };
@@ -351,12 +351,12 @@ pub enum IntegerSerError {
     InvalidIntegerSizeDiscriminant(u8),
     NotEnoughBytes,
     WrongType,
-    IntegerParseError(ParseIntError),
+    IntegerParseError(IntErrorKind),
 }
 
 impl From<ParseIntError> for IntegerSerError {
     fn from(value: ParseIntError) -> Self {
-        Self::IntegerParseError(value)
+        Self::IntegerParseError(value.kind().clone())
     }
 }
 
@@ -385,7 +385,6 @@ impl Display for IntegerSerError {
 impl std::error::Error for IntegerSerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            IntegerSerError::IntegerParseError(e) => Some(e),
             _ => None,
         }
     }

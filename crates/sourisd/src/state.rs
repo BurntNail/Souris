@@ -32,6 +32,8 @@ impl SourisState {
     pub async fn new_db(&self, key: String) -> Result<bool, SourisError> {
         let mut dbs = self.dbs.lock().await;
 
+        println!("Here");
+
         if dbs.contains_key(&key) {
             trace!(
                 ?key,
@@ -99,6 +101,11 @@ impl SourisState {
         tokio::fs::remove_file(file_name).await?;
 
         Ok(true)
+    }
+
+    pub async fn get_db(&self, name: String) -> Option<Store> {
+        let dbs = self.dbs.lock().await;
+        dbs.get(&name).cloned()
     }
 }
 
@@ -197,7 +204,7 @@ impl SourisState {
 
     pub async fn save(&self) -> color_eyre::Result<()> {
         let metadata = self.meta.read().await.ser()?;
-        trace!(bytes=?metadata.len(), "Writing metadata to file");
+        debug!(bytes=?metadata.len(), "Writing metadata to file");
 
         let location = self.base_location.join(META_DB_FILE_NAME);
         let mut metadata_file = match File::create(&location).await {

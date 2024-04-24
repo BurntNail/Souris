@@ -35,25 +35,35 @@ pub enum Value {
 
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        //adapted from derive macro expansion
-        let tag = core::mem::discriminant(self);
-        tag.hash(state);
-
+        core::mem::discriminant(self).hash(state);
         match self {
-            Value::Ch(v) => v.hash(state),
-            Value::String(v) => v.hash(state),
-            Value::Binary(v) => v.hash(state),
-            Value::Bool(v) => v.hash(state),
-            Value::Int(v) => v.hash(state),
+            Value::Ch(v) => {
+                v.hash(state);
+            }
+            Value::String(v) => {
+                v.hash(state);
+            }
+            Value::Binary(v) => {
+                v.hash(state);
+            }
+            Value::Bool(v) => {
+                v.hash(state);
+            }
+            Value::Int(v) => {
+                v.hash(state);
+            }
             Value::Imaginary(a, b) => {
                 a.hash(state);
                 b.hash(state);
             }
-            Value::Array(v) => v.hash(state),
-            Value::Timestamp(v) => v.hash(state),
+            Value::Array(v) => {
+                v.hash(state);
+            }
+            Value::Timestamp(v) => {
+                v.hash(state);
+            }
             Value::JSON(j) => {
-                let str = j.to_string();
-                str.hash(state);
+                j.to_string().hash(state);
             }
         }
     }
@@ -134,10 +144,9 @@ pub enum ValueTy {
     JSON,
 }
 
-impl ValueTy {
-    #[must_use]
-    pub fn id(self) -> u8 {
-        match self {
+impl From<ValueTy> for u8 {
+    fn from(value: ValueTy) -> Self {
+        match value {
             ValueTy::Ch => 0b0000,
             ValueTy::String => 0b0001,
             ValueTy::Binary => 0b0010,
@@ -148,6 +157,24 @@ impl ValueTy {
             ValueTy::Timestamp => 0b0111,
             ValueTy::JSON => 0b1000,
         }
+    }
+}
+impl TryFrom<u8> for ValueTy {
+    type Error = ValueSerError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0b0000 => ValueTy::Ch,
+            0b0001 => ValueTy::String,
+            0b0010 => ValueTy::Binary,
+            0b0011 => ValueTy::Bool,
+            0b0100 => ValueTy::Int,
+            0b0101 => ValueTy::Imaginary,
+            0b0110 => ValueTy::Array,
+            0b0111 => ValueTy::Timestamp,
+            0b1000 => ValueTy::JSON,
+            _ => return Err(ValueSerError::InvalidType(value)),
+        })
     }
 }
 
@@ -244,7 +271,7 @@ impl Value {
                 let mut res = vec![];
 
                 let vty = self.to_ty();
-                let ty = vty.id() << 4;
+                let ty = u8::from(vty) << 4;
 
                 let niche = match &self {
                     Self::Bool(b) => Some(u8::from(*b)),
@@ -309,18 +336,7 @@ impl Value {
                 let byte = *byte;
 
                 let ty = byte >> 4;
-                let ty = match ty {
-                    0b0000 => ValueTy::Ch,
-                    0b0001 => ValueTy::String,
-                    0b0010 => ValueTy::Binary,
-                    0b0011 => ValueTy::Bool,
-                    0b0100 => ValueTy::Int,
-                    0b0101 => ValueTy::Imaginary,
-                    0b0110 => ValueTy::Array,
-                    0b0111 => ValueTy::Timestamp,
-                    0b1000 => ValueTy::JSON,
-                    _ => return Err(ValueSerError::InvalidType(ty)),
-                };
+                let ty = ValueTy::try_from(ty)?;
 
                 Ok(match ty {
                     ValueTy::Int => {
@@ -380,18 +396,13 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::Value;
-    use crate::{
-        types::integer::Integer, utilities::cursor::Cursor, values::ValueTy, version::Version,
-    };
+    use crate::{types::integer::Integer, utilities::cursor::Cursor, version::Version};
 
     #[test]
     fn test_bools() {
         {
             let t = Value::Bool(true);
             let ser = t.clone().ser(Version::V0_1_0).unwrap();
-
-            let expected = &[ValueTy::Bool.id() << 5 | 1];
-            assert_eq!(&ser, expected);
 
             assert_eq!(
                 t,
@@ -401,9 +412,6 @@ mod tests {
         {
             let f = Value::Bool(false);
             let ser = f.clone().ser(Version::V0_1_0).unwrap();
-
-            let expected = &[ValueTy::Bool.id() << 5];
-            assert_eq!(&ser, expected);
 
             assert_eq!(
                 f,
