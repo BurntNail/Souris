@@ -12,7 +12,6 @@ use sourisdb::{
     types::{array::Array, integer::Integer, ts::Timestamp},
     utilities::cursor::Cursor,
     values::{Value, ValueTy},
-    version::Version,
 };
 use std::{
     fmt::{Display, Formatter},
@@ -38,11 +37,14 @@ enum Commands {
     DebugViewAll,
     RemoveEntry,
     UpdateEntry,
+    CreateNewFromJSON {
+        json_location: PathBuf,
+    },
 }
 
 fn main() {
     if let Err(e) = fun_main(Args::parse()) {
-        eprintln!("Error running program: {e:?}");
+        eprintln!("Error running program: {e}");
         std::process::exit(1);
     }
 }
@@ -92,8 +94,6 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::ViewAll => {
             let store = view_all(path, &theme)?;
 
-            println!("Version: {:?}", store.version());
-
             let mut table = Table::new();
             table
                 .set_header(vec!["Key", "Value"])
@@ -110,6 +110,26 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::DebugViewAll => {
             let store = view_all(path, &theme)?;
             println!("{store:#?}");
+        }
+        Commands::CreateNewFromJSON { json_location } => {
+            let mut file = File::open(json_location)?;
+            let mut bytes = vec![];
+            let mut tmp = [0_u8; 128];
+            loop {
+                match file.read(&mut tmp)? {
+                    0 => break,
+                    n => {
+                        bytes.extend(&tmp[0..n]);
+                    }
+                }
+            }
+
+            let store = Store::from_json(&bytes)?;
+            let store_bytes = store.ser()?;
+            println!("Successfully parsed JSON");
+
+            let mut output = File::create(path)?;
+            output.write_all(&store_bytes)?;
         }
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
@@ -232,6 +252,8 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         ValueTy::Timestamp,
         ValueTy::JSON,
         ValueTy::Store,
+        ValueTy::Null,
+        ValueTy::Float,
     ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
@@ -392,7 +414,14 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                 map
             };
 
-            Value::Store(Store::from_version_and_map(Version::V0_1_0, map))
+            Value::Store(Store::new_map(map))
+        }
+        ValueTy::Null => Value::Null,
+        ValueTy::Float => {
+            let f: f64 = Input::with_theme(theme)
+                .with_prompt("What float?")
+                .interact()?;
+            Value::Float(f)
         }
     })
 }
@@ -423,7 +452,7 @@ fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
                 }
             }
 
-            println!("Read {} bytes.", contents.len()); //grammar: always != 1
+            eprintln!("Read {} bytes.", contents.len()); //grammar: always != 1
 
             let mut cursor = Cursor::new(&contents);
             let store = Store::deser(&mut cursor)?;
@@ -449,7 +478,7 @@ fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
         Ok(f) => f,
     };
 
-    let store = Store::new();
+    let store = Store::default();
     file.write_all(&store.ser()?)?;
     println!("Successfully created new SourisDB.");
 

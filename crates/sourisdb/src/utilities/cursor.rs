@@ -62,6 +62,19 @@ impl<'a, T> Cursor<'a, T> {
     }
 }
 
+impl<'a, T> core::iter::Iterator for Cursor<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos >= self.backing.len() {
+            return None;
+        }
+
+        self.pos += 1;
+        Some(&self.backing[self.pos - 1])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utilities::cursor::Cursor;

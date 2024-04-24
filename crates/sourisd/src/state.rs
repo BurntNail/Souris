@@ -198,7 +198,7 @@ impl SourisState {
             }
         }
 
-        let mut meta = Store::new();
+        let mut meta = Store::default();
         meta.insert(
             Value::String(DB_FILE_NAMES_KEY.to_string()),
             Value::Array(Array(names)),

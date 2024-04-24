@@ -2,7 +2,6 @@ use crate::{
     types::integer::{Integer, IntegerSerError},
     utilities::cursor::Cursor,
     values::{Value, ValueSerError},
-    version::Version,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
@@ -49,36 +48,26 @@ impl std::error::Error for ArraySerError {
 }
 
 impl Array {
-    pub fn ser(&self, version: Version) -> Result<Vec<u8>, ArraySerError> {
-        match version {
-            Version::V0_1_0 => {
-                let mut res: Vec<u8> = vec![];
+    pub fn ser(&self) -> Result<Vec<u8>, ArraySerError> {
+        let mut res: Vec<u8> = vec![];
 
-                //TODO: checks for contiguous-ness
+        res.extend(Integer::usize(self.0.len()).ser().iter());
 
-                res.extend(Integer::usize(self.0.len()).ser(version).iter());
-
-                for v in &self.0 {
-                    let bytes = v.ser(version)?;
-                    res.extend(bytes.iter());
-                }
-
-                Ok(res)
-            }
+        for v in &self.0 {
+            let bytes = v.ser()?;
+            res.extend(bytes.iter());
         }
+
+        Ok(res)
     }
 
-    pub fn deser(bytes: &mut Cursor<u8>, version: Version) -> Result<Self, ArraySerError> {
-        match version {
-            Version::V0_1_0 => {
-                let len: usize = Integer::deser(bytes, version)?.try_into()?;
-                let mut v = Vec::with_capacity(len);
-                for _ in 0..len {
-                    v.push(Value::deserialise(bytes, version)?);
-                }
-                Ok(Self(v)) //yes, could use FP and `map` etc, but this makes it easier to ensure no screwery with control flow
-            }
+    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ArraySerError> {
+        let len: usize = Integer::deser(bytes)?.try_into()?;
+        let mut v = Vec::with_capacity(len);
+        for _ in 0..len {
+            v.push(Value::deserialise(bytes)?);
         }
+        Ok(Self(v)) //yes, could use FP and `map` etc, but this makes it easier to ensure no screwery with control flow
     }
 }
 

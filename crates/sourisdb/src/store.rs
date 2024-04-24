@@ -1,80 +1,238 @@
 use crate::{
-    types::integer::{Integer, IntegerSerError},
+    types::{
+        array::{Array, ArraySerError},
+        integer::{Integer, IntegerSerError},
+    },
     utilities::cursor::Cursor,
     values::{Value, ValueSerError},
-    version::{Version, VersionSerError},
 };
-use alloc::{vec, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
 };
-use hashbrown::hash_map::{HashMap, IntoIter, Keys, Values};
+use hashbrown::hash_map::{HashMap, IntoIter};
+use serde_json::{Error as SJError, Value as SJValue};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Store {
-    version: Version,
-    kvs: HashMap<Value, Value>,
+pub enum Store {
+    Map { kvs: HashMap<Value, Value> },
+    Array { arr: Array },
 }
 
-//TODO: consider bit twiddling tricks for runtime RAM cost
+pub enum Version {
+    Map,
+    Array,
+}
+
+impl<'a> From<&'a Store> for Version {
+    fn from(value: &'a Store) -> Self {
+        match value {
+            Store::Map { .. } => Self::Map,
+            Store::Array { .. } => Self::Array,
+        }
+    }
+}
+
+impl From<Version> for u8 {
+    fn from(val: Version) -> u8 {
+        match val {
+            Version::Map => 0b0001,
+            Version::Array => 0b0010,
+        }
+    }
+}
+impl TryFrom<u8> for Version {
+    type Error = StoreError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0b0001 => Version::Map,
+            0b0010 => Version::Array,
+            _ => return Err(StoreError::InvalidVersion(value)),
+        })
+    }
+}
+
+impl Default for Store {
+    fn default() -> Self {
+        Self::Map {
+            kvs: HashMap::default(),
+        }
+    }
+}
+
+impl Display for Store {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Map { kvs } => {
+                writeln!(f, "{{")?;
+
+                for (k, v) in kvs {
+                    writeln!(f, "\t{k}: {v},")?;
+                }
+
+                writeln!(f, "}}")
+            }
+            Self::Array { arr } => {
+                writeln!(f, "[")?;
+
+                for i in &arr.0 {
+                    writeln!(f, "\t{i},")?;
+                }
+
+                writeln!(f, "]")
+            }
+        }
+    }
+}
 
 impl Store {
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new_map(kvs: HashMap<Value, Value>) -> Self {
+        Self::Map { kvs }
     }
 
     #[must_use]
-    pub fn from_version_and_map(version: Version, kvs: HashMap<Value, Value>) -> Self {
-        Self { version, kvs }
+    pub fn new_arr(arr: Array) -> Self {
+        Self::Array { arr }
     }
 
+    ///map: inserts normally
+    ///
+    ///arr: assumes k can be a usize, inserts at relevant index. else adds to end
     pub fn insert(&mut self, k: Value, v: Value) {
-        self.kvs.insert(k, v);
+        match self {
+            Self::Map { kvs } => {
+                kvs.insert(k, v);
+            }
+            Self::Array { arr } => {
+                if let Value::Int(i) = k {
+                    if let Ok(u) = usize::try_from(i) {
+                        let current_len = arr.0.len();
+
+                        if u < current_len {
+                            arr.0[u] = v;
+                        } else if u == current_len {
+                            arr.0.push(v);
+                        } else {
+                            arr.0.extend(vec![Value::Null; current_len - u]);
+                            arr.0.push(v);
+                        }
+                    }
+                } else {
+                    arr.0.push(v);
+                }
+            }
+        }
+    }
+
+    ///map: noop //TODO: what should this do?
+    ///arr: obvs
+    pub fn push(&mut self, v: Value) {
+        match self {
+            Self::Array { arr } => {
+                arr.0.push(v);
+            }
+            Self::Map { .. } => unimplemented!("push should be a noop if not an array"),
+        }
     }
 
     pub fn remove(&mut self, k: &Value) -> Option<Value> {
-        self.kvs.remove(k)
-    }
-
-    #[must_use]
-    pub fn version(&self) -> Version {
-        self.version
+        match self {
+            Self::Map { kvs } => kvs.remove(k),
+            Self::Array { arr } => {
+                if let Value::Int(i) = k {
+                    if let Ok(u) = usize::try_from(*i) {
+                        if u < arr.0.len() {
+                            return Some(arr.0.remove(u));
+                        }
+                    }
+                }
+                None
+            }
+        }
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.kvs.is_empty()
+        match self {
+            Self::Map { kvs } => kvs.is_empty(),
+            Self::Array { arr } => arr.0.is_empty(),
+        }
     }
     #[must_use]
-    pub fn size(&self) -> usize {
-        self.kvs.len()
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Map { kvs } => kvs.len(),
+            Self::Array { arr } => arr.0.len(),
+        }
     }
 
-    #[must_use]
-    pub fn keys(&self) -> Keys<'_, Value, Value> {
-        self.kvs.keys()
+    pub fn keys(&self) -> impl Iterator<Item = Value> {
+        match self {
+            Self::Map { kvs } => kvs.keys().cloned().collect::<Vec<_>>().into_iter(),
+            Self::Array { arr } => (0..arr.0.len())
+                .map(|x| Value::Int(x.into()))
+                .collect::<Vec<_>>()
+                .into_iter(),
+        }
     }
 
-    #[must_use]
-    pub fn values(&self) -> Values<'_, Value, Value> {
-        self.kvs.values()
+    pub fn values(&self) -> impl Iterator<Item = Value> {
+        match self {
+            Self::Map { kvs } => kvs.keys().cloned().collect::<Vec<_>>().into_iter(),
+            Self::Array { arr } => arr.0.clone().into_iter(),
+        }
     }
+    //TODO: clean up these horror shows as well as the IntoIter
 
     #[must_use]
     pub fn get(&self, k: &Value) -> Option<&Value> {
-        self.kvs.get(k)
+        match self {
+            Self::Map { kvs } => kvs.get(k),
+            Self::Array { arr } => {
+                if let Value::Int(i) = k {
+                    if let Ok(u) = usize::try_from(*i) {
+                        return arr.0.get(u);
+                    }
+                }
+
+                None
+            }
+        }
     }
 
     #[must_use]
     pub fn get_mut(&mut self, k: &Value) -> Option<&mut Value> {
-        self.kvs.get_mut(k)
+        match self {
+            Self::Map { kvs } => kvs.get_mut(k),
+            Self::Array { arr } => {
+                if let Value::Int(i) = k {
+                    if let Ok(u) = usize::try_from(*i) {
+                        return arr.0.get_mut(u);
+                    }
+                }
+
+                None
+            }
+        }
     }
 
     pub fn clear(&mut self) {
-        self.kvs.clear();
+        match self {
+            Self::Map { kvs } => {
+                kvs.clear();
+            }
+            Self::Array { arr } => {
+                arr.0.clear();
+            }
+        }
     }
 }
 
@@ -83,7 +241,14 @@ impl IntoIterator for Store {
     type IntoIter = IntoIter<Value, Value>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.kvs.into_iter()
+        match self {
+            Store::Map { kvs } => kvs.into_iter(),
+            Store::Array { arr } => (0..arr.0.len())
+                .map(|x| Value::Int(x.into()))
+                .zip(arr.0)
+                .collect::<HashMap<_, _>>()
+                .into_iter(),
+        }
     }
 }
 
@@ -92,16 +257,22 @@ impl IntoIterator for Store {
 pub enum StoreError {
     ValueError(ValueSerError),
     IntegerError(IntegerSerError),
-    VersionError(VersionSerError),
     CouldntFindKey,
+    SerdeJson(SJError),
+    InvalidVersion(u8),
+    NotEnoughBytes,
+    ArrayError(ArraySerError),
 }
 impl Display for StoreError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::ValueError(e) => write!(f, "Error de/ser-ing value: {e:?}"),
             Self::IntegerError(e) => write!(f, "Error de/ser-ing integer: {e:?}"),
-            Self::VersionError(e) => write!(f, "Error de/ser-ing version: {e:?}"),
+            Self::InvalidVersion(e) => write!(f, "Error de/ser-ing version: {e:#b}"),
             Self::CouldntFindKey => write!(f, "Could not find key"),
+            Self::SerdeJson(e) => write!(f, "Error de/ser-ing JSON: {e:?}"),
+            Self::NotEnoughBytes => write!(f, "Not enough bytes"),
+            Self::ArrayError(e) => write!(f, "Error de/ser-ing array: {e:?}"),
         }
     }
 }
@@ -116,9 +287,14 @@ impl From<IntegerSerError> for StoreError {
         Self::IntegerError(value)
     }
 }
-impl From<VersionSerError> for StoreError {
-    fn from(value: VersionSerError) -> Self {
-        Self::VersionError(value)
+impl From<SJError> for StoreError {
+    fn from(value: SJError) -> Self {
+        Self::SerdeJson(value)
+    }
+}
+impl From<ArraySerError> for StoreError {
+    fn from(value: ArraySerError) -> Self {
+        Self::ArrayError(value)
     }
 }
 
@@ -128,17 +304,9 @@ impl std::error::Error for StoreError {
         match self {
             StoreError::ValueError(e) => Some(e),
             StoreError::IntegerError(e) => Some(e),
-            StoreError::VersionError(e) => Some(e),
-            StoreError::CouldntFindKey => None,
-        }
-    }
-}
-
-impl Default for Store {
-    fn default() -> Self {
-        Self {
-            version: Version::V0_1_0,
-            kvs: HashMap::new(),
+            StoreError::SerdeJson(e) => Some(e),
+            StoreError::ArrayError(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -165,22 +333,23 @@ impl Store {
     ///     NB: same order as keys
     pub fn ser(&self) -> Result<Vec<u8>, StoreError> {
         let mut res = vec![];
-        res.extend(b"DADDYSTORE".iter());
+        res.extend(b"SourisDB".iter());
         res.push(0);
-        res.extend(self.version.to_bytes().iter());
+        let version: u8 = Version::from(self).into();
+        res.push(version);
         res.push(0);
 
-        match self.version {
-            Version::V0_1_0 => {
-                let length = self.kvs.len();
+        match self {
+            Store::Map { kvs } => {
+                let length = kvs.len();
                 res.extend(b"SIZE".iter());
                 res.push(0);
-                res.extend(Integer::usize(length).ser(self.version));
+                res.extend(Integer::usize(length).ser());
                 res.push(0);
 
-                for (k, v) in &self.kvs {
-                    let ser_key = k.ser(self.version)?;
-                    let ser_value = v.ser(self.version)?;
+                for (k, v) in kvs {
+                    let ser_key = k.ser()?;
+                    let ser_value = v.ser()?;
 
                     res.extend(ser_key.iter());
                     res.extend(ser_value.iter());
@@ -188,32 +357,68 @@ impl Store {
 
                 Ok(res)
             }
+            Store::Array { arr } => Ok(arr.ser()?),
         }
     }
 
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, StoreError> {
-        bytes.seek(10); //title
+        bytes.seek(8); //title
         bytes.seek(1); //\0
-        let version = Version::from_bytes(bytes)?;
+        let version = Version::try_from(bytes.next().copied().ok_or(StoreError::NotEnoughBytes)?)?;
         bytes.seek(1); //\0
 
         match version {
-            Version::V0_1_0 => {
+            Version::Map => {
                 bytes.seek(4); //size
                 bytes.seek(1); //\0
-                let length: usize = Integer::deser(bytes, version)?.try_into()?;
+                let length: usize = Integer::deser(bytes)?.try_into()?;
                 bytes.seek(1); //\0
 
                 let mut kvs = HashMap::new();
                 for _ in 0..length {
-                    let key = Value::deserialise(bytes, version)?;
-                    let value = Value::deserialise(bytes, version)?;
+                    let key = Value::deserialise(bytes)?;
+                    let value = Value::deserialise(bytes)?;
                     kvs.insert(key, value);
                 }
 
-                Ok(Self { version, kvs })
+                Ok(Self::Map { kvs })
             }
+            Version::Array => Ok(Self::Array {
+                arr: Array::deser(bytes)?,
+            }),
         }
+    }
+
+    pub fn from_json(bytes: &[u8]) -> Result<Self, StoreError> {
+        let json_value: SJValue = serde_json::from_slice(bytes)?;
+
+        let kvs = if let Some(map) = json_value.as_object() {
+            Self::from_json_map(map)
+        } else if let Some(arr) = json_value.as_array() {
+            return Ok(Self::new_arr(Array(
+                arr.iter().map(Value::from_serde_json_value).collect(),
+            )));
+        } else {
+            let item = Value::from_serde_json_value(&json_value);
+            let key = Value::String(String::from("JSON Contents"));
+
+            let mut map = HashMap::new();
+            map.insert(key, item);
+            map
+        };
+
+        Ok(Self::Map { kvs })
+    }
+
+    #[must_use]
+    pub fn from_json_map(sj_map: &serde_json::map::Map<String, SJValue>) -> HashMap<Value, Value> {
+        let mut map = HashMap::new();
+        for (k, v) in sj_map {
+            let key = Value::String(k.to_string());
+            let val = Value::from_serde_json_value(v);
+            map.insert(key, val);
+        }
+        map
     }
 }
 
@@ -221,13 +426,17 @@ impl Index<Value> for Store {
     type Output = Value;
 
     fn index(&self, index: Value) -> &Self::Output {
-        &self.kvs[&index]
+        match self.get(&index) {
+            Some(s) => s,
+            None => panic!("unable to find key {index:?}"),
+        }
     }
 }
 impl IndexMut<Value> for Store {
     fn index_mut(&mut self, index: Value) -> &mut Self::Output {
-        self.kvs
-            .get_mut(&index)
-            .unwrap_or_else(|| panic!("key not found"))
+        match self.get_mut(&index) {
+            Some(s) => s,
+            None => panic!("unable to find key {index:?}"),
+        }
     }
 }
