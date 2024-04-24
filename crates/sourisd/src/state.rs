@@ -1,11 +1,16 @@
 use color_eyre::eyre::bail;
 use dirs::data_dir;
 use sourisdb::{store::Store, types::array::Array, values::Value};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
-    sync::{Mutex, RwLock},
+    sync::Mutex,
 };
 
 const DIR: &str = "souris/";
@@ -21,11 +26,8 @@ use sourisdb::utilities::cursor::Cursor;
 #[derive(Clone, Debug)]
 pub struct SourisState {
     base_location: PathBuf,
-    meta: Arc<RwLock<Store>>,                //exists at runtime and stored
     dbs: Arc<Mutex<HashMap<String, Store>>>, //only at runtime
 }
-
-//TODO: remove the meta @ runtime
 
 impl SourisState {
     ///returns whether the key already existed
@@ -43,13 +45,6 @@ impl SourisState {
             return Ok(true);
         }
 
-        let mut meta = self.meta.write().await;
-        let Some(Value::Array(Array(vals))) =
-            meta.get_mut(&Value::String(DB_FILE_NAMES_KEY.into()))
-        else {
-            unreachable!("must exist, and must be array as init-ed that way");
-        };
-        vals.push(Value::String(key.clone()));
         dbs.insert(key.clone(), Store::default());
 
         let blank = Store::default().ser()?;
@@ -78,24 +73,11 @@ impl SourisState {
     ///returns whether it removed a database
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn remove_db(&self, key: String) -> Result<bool, tokio::io::Error> {
-        let mut meta = self.meta.write().await;
-        let Some(Value::Array(Array(vals))) =
-            meta.get_mut(&Value::String(DB_FILE_NAMES_KEY.into()))
-        else {
-            unreachable!("must exist, and must be array as init-ed that way");
-        };
-
-        let key_as_value = Value::String(key.clone());
-        let Some(index) = vals.iter().position(|x| x == &key_as_value) else {
-            return Ok(false);
-        };
-
         let mut dbs = self.dbs.lock().await;
         if !dbs.contains_key(&key) {
             return Ok(false);
         }
 
-        vals.remove(index);
         dbs.remove(&key);
 
         let file_name = self.base_location.join(format!("{key}.sdb"));
@@ -195,7 +177,6 @@ impl SourisState {
 
         let s = Self {
             base_location,
-            meta: Arc::new(RwLock::new(meta)),
             dbs: Arc::new(Mutex::new(dbs)),
         };
 
@@ -205,26 +186,52 @@ impl SourisState {
     }
 
     pub async fn save(&self) -> color_eyre::Result<()> {
-        let metadata = self.meta.read().await.ser()?;
-        debug!(bytes=?metadata.len(), "Writing metadata to file");
+        let mut names = vec![];
+        for (name, db) in self.dbs.lock().await.iter() {
+            let file_name = self.base_location.join(format!("{name}.sdb"));
+            let bytes = db.ser()?;
+            trace!(?file_name, "Writing out DB");
+            if let Err(e) = write_to_file(&bytes, file_name, &self.base_location).await {
+                error!(?e, "Error writing out database");
+            } else {
+                names.push(Value::String(name.to_string()));
+            }
+        }
+
+        let mut meta = Store::new();
+        meta.insert(
+            Value::String(DB_FILE_NAMES_KEY.to_string()),
+            Value::Array(Array(names)),
+        );
 
         let location = self.base_location.join(META_DB_FILE_NAME);
-        let mut metadata_file = match File::create(&location).await {
-            Ok(f) => f,
-            Err(e) => {
-                if e.kind() == ErrorKind::NotFound {
-                    //folder must not exist
-                    trace!(?location, "Unable to find folder, creating");
-
-                    create_dir_all(&self.base_location).await?;
-                    File::create(&location).await?
-                } else {
-                    return Err(e.into());
-                }
-            }
-        };
-
-        metadata_file.write_all(&metadata).await?;
-        Ok(())
+        let meta = meta.ser()?;
+        debug!(bytes=?meta.len(), "Writing metadata to file");
+        write_to_file(&meta, location, &self.base_location).await
     }
+}
+
+async fn write_to_file(
+    bytes: &[u8],
+    path: impl AsRef<Path> + Debug,
+    base_location: impl AsRef<Path> + Debug,
+) -> color_eyre::Result<()> {
+    let mut metadata_file = match File::create(&path).await {
+        Ok(f) => f,
+        Err(e) => {
+            if e.kind() == ErrorKind::NotFound {
+                //folder must not exist
+                trace!(?path, ?base_location, "Unable to find folder, creating");
+
+                create_dir_all(&base_location).await?;
+                File::create(path).await?
+            } else {
+                return Err(e.into());
+            }
+        }
+    };
+
+    metadata_file.write_all(bytes).await?;
+
+    Ok(())
 }
