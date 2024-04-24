@@ -6,10 +6,13 @@ use dialoguer::{
     Confirm, Error as DError, FuzzySelect, Input,
 };
 use sourisdb::{
+    hashbrown::HashMap,
     serde_json::Value as SJValue,
     store::{Store, StoreError},
     types::{array::Array, integer::Integer, ts::Timestamp},
+    utilities::cursor::Cursor,
     values::{Value, ValueTy},
+    version::Version,
 };
 use std::{
     fmt::{Display, Formatter},
@@ -228,6 +231,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         ValueTy::Array,
         ValueTy::Timestamp,
         ValueTy::JSON,
+        ValueTy::Store,
     ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Which type?")
@@ -349,6 +353,47 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                 .interact()?;
             Value::JSON(v)
         }
+        ValueTy::Store => {
+            let map = if Confirm::with_theme(theme)
+                .with_prompt("Do you know how long the array is?")
+                .interact()?
+            {
+                let length: usize = Input::with_theme(theme)
+                    .with_prompt("How long?")
+                    .interact()?;
+
+                let mut map = HashMap::new();
+
+                for _ in 0..length {
+                    let key = get_value_from_stdin("Please enter a key", theme)?;
+                    let value = get_value_from_stdin("Please enter a value", theme)?;
+
+                    map.insert(key, value);
+                }
+
+                map
+            } else {
+                let mut map = HashMap::new();
+
+                loop {
+                    if Confirm::with_theme(theme)
+                        .with_prompt("Is that all the keys & values?")
+                        .interact()?
+                    {
+                        break;
+                    }
+
+                    let key = get_value_from_stdin("Please enter a key", theme)?;
+                    let value = get_value_from_stdin("Please enter a value", theme)?;
+
+                    map.insert(key, value);
+                }
+
+                map
+            };
+
+            Value::Store(Store::from_version_and_map(Version::V0_1_0, map))
+        }
     })
 }
 
@@ -380,7 +425,8 @@ fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
 
             println!("Read {} bytes.", contents.len()); //grammar: always != 1
 
-            let store = Store::deser(&contents)?;
+            let mut cursor = Cursor::new(&contents);
+            let store = Store::deser(&mut cursor)?;
             Ok(store)
         }
     }

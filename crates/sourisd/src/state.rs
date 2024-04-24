@@ -16,6 +16,7 @@ mod meta {
 }
 use crate::error::SourisError;
 use meta::*;
+use sourisdb::utilities::cursor::Cursor;
 
 #[derive(Clone, Debug)]
 pub struct SourisState {
@@ -137,7 +138,8 @@ impl SourisState {
                 }
             }
 
-            Ok(Store::deser(&contents)?)
+            let mut cursor = Cursor::new(&contents);
+            Ok(Store::deser(&mut cursor)?)
         }
 
         #[tracing::instrument(level = "trace", skip(meta))]

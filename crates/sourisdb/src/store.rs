@@ -11,7 +11,7 @@ use core::{
 };
 use hashbrown::hash_map::{HashMap, IntoIter, Keys, Values};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Store {
     version: Version,
@@ -24,6 +24,11 @@ impl Store {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[must_use]
+    pub fn from_version_and_map(version: Version, kvs: HashMap<Value, Value>) -> Self {
+        Self { version, kvs }
     }
 
     pub fn insert(&mut self, k: Value, v: Value) {
@@ -186,25 +191,23 @@ impl Store {
         }
     }
 
-    pub fn deser(bytes: &[u8]) -> Result<Self, StoreError> {
-        let mut bytes = Cursor::new(&bytes);
-
+    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, StoreError> {
         bytes.seek(10); //title
         bytes.seek(1); //\0
-        let version = Version::from_bytes(&mut bytes)?;
+        let version = Version::from_bytes(bytes)?;
         bytes.seek(1); //\0
 
         match version {
             Version::V0_1_0 => {
                 bytes.seek(4); //size
                 bytes.seek(1); //\0
-                let length: usize = Integer::deser(&mut bytes, version)?.try_into()?;
+                let length: usize = Integer::deser(bytes, version)?.try_into()?;
                 bytes.seek(1); //\0
 
                 let mut kvs = HashMap::new();
                 for _ in 0..length {
-                    let key = Value::deserialise(&mut bytes, version)?;
-                    let value = Value::deserialise(&mut bytes, version)?;
+                    let key = Value::deserialise(bytes, version)?;
+                    let value = Value::deserialise(bytes, version)?;
                     kvs.insert(key, value);
                 }
 

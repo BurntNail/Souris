@@ -1,4 +1,5 @@
 use crate::{
+    store::{Store, StoreError},
     types::{
         array::{Array, ArraySerError},
         integer::{Integer, IntegerSerError},
@@ -8,6 +9,7 @@ use crate::{
     version::Version,
 };
 use alloc::{
+    boxed::Box,
     format,
     string::{FromUtf8Error, String, ToString},
     vec,
@@ -31,6 +33,7 @@ pub enum Value {
     Array(Array),
     Timestamp(Timestamp),
     JSON(SJValue),
+    Store(Store),
 }
 
 impl Hash for Value {
@@ -65,6 +68,15 @@ impl Hash for Value {
             Value::JSON(j) => {
                 j.to_string().hash(state);
             }
+            Value::Store(s) => {
+                s.version().hash(state);
+                for k in s.keys() {
+                    k.hash(state);
+                }
+                for v in s.values() {
+                    v.hash(state);
+                }
+            }
         }
     }
 }
@@ -82,9 +94,10 @@ impl Debug for Value {
             Self::Bool(b) => s.field("content", b),
             Self::Int(i) => s.field("content", i),
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
-            Self::Array(a) => s.field("content", &a),
-            Self::Timestamp(ndt) => s.field("content", &ndt),
-            Self::JSON(v) => s.field("json", &v),
+            Self::Array(a) => s.field("content", a),
+            Self::Timestamp(ndt) => s.field("content", ndt),
+            Self::JSON(v) => s.field("content", v),
+            Self::Store(store) => s.field("content", store),
         };
 
         s.finish()
@@ -111,6 +124,7 @@ impl Display for Value {
             Self::Array(a) => write!(f, "{a}"),
             Self::Timestamp(ndt) => write!(f, "{ndt}"),
             Self::JSON(v) => write!(f, "{v}"),
+            Self::Store(s) => write!(f, "{s:?}"),
         }
     }
 }
@@ -142,6 +156,7 @@ pub enum ValueTy {
     Array,
     Timestamp,
     JSON,
+    Store,
 }
 
 impl From<ValueTy> for u8 {
@@ -156,6 +171,7 @@ impl From<ValueTy> for u8 {
             ValueTy::Array => 0b0110,
             ValueTy::Timestamp => 0b0111,
             ValueTy::JSON => 0b1000,
+            ValueTy::Store => 0b1001,
         }
     }
 }
@@ -173,6 +189,7 @@ impl TryFrom<u8> for ValueTy {
             0b0110 => ValueTy::Array,
             0b0111 => ValueTy::Timestamp,
             0b1000 => ValueTy::JSON,
+            0b1001 => ValueTy::Store,
             _ => return Err(ValueSerError::InvalidType(value)),
         })
     }
@@ -189,6 +206,7 @@ pub enum ValueSerError {
     ArraySerError(ArraySerError),
     TSError(TSError),
     SerdeJson(SJError),
+    StoreError(Box<StoreError>),
 }
 
 impl Display for ValueSerError {
@@ -205,7 +223,8 @@ impl Display for ValueSerError {
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
             ValueSerError::ArraySerError(e) => write!(f, "Error de/ser-ing array: {e:?}"),
             ValueSerError::TSError(e) => write!(f, "Error de/ser-ing timestamp: {e:?}"),
-            ValueSerError::SerdeJson(e) => write!(f, "Error deserialising serde_json: {e:?}"),
+            ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e:?}"),
+            ValueSerError::StoreError(e) => write!(f, "Error de/ser-ing souris store: {e:?}"),
         }
     }
 }
@@ -235,6 +254,11 @@ impl From<SJError> for ValueSerError {
         Self::SerdeJson(value)
     }
 }
+impl From<StoreError> for ValueSerError {
+    fn from(value: StoreError) -> Self {
+        Self::StoreError(Box::new(value))
+    }
+}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ValueSerError {
@@ -245,6 +269,7 @@ impl std::error::Error for ValueSerError {
             ValueSerError::ArraySerError(e) => Some(e),
             ValueSerError::TSError(e) => Some(e),
             ValueSerError::SerdeJson(e) => Some(e),
+            ValueSerError::StoreError(e) => Some(e),
             _ => None,
         }
     }
@@ -262,6 +287,7 @@ impl Value {
             Self::Array(_) => ValueTy::Array,
             Self::Timestamp(_) => ValueTy::Timestamp,
             Self::JSON(_) => ValueTy::JSON,
+            Self::Store(_) => ValueTy::Store,
         }
     }
 
@@ -319,6 +345,9 @@ impl Value {
 
                         res.extend(Integer::usize(bytes.len()).ser(version).iter());
                         res.extend(bytes.iter());
+                    }
+                    Self::Store(s) => {
+                        res.extend(s.ser()?);
                     }
                 }
 
@@ -387,6 +416,7 @@ impl Value {
                         Self::Binary(bytes)
                     }
                     ValueTy::Bool => Self::Bool((byte & 0b0000_0001) > 0),
+                    ValueTy::Store => Self::Store(Store::deser(bytes)?),
                 })
             }
         }
