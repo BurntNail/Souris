@@ -1,7 +1,5 @@
 use crate::{
-    types::{
-        integer::{Integer, IntegerSerError},
-    },
+    types::integer::{Integer, IntegerSerError},
     utilities::cursor::Cursor,
     values::{Value, ValueSerError},
 };
@@ -378,13 +376,13 @@ impl Store {
             }
             Store::Array { arr } => {
                 res.extend(Integer::usize(arr.len()).ser());
-                
+
                 for v in arr {
                     res.extend(v.ser()?);
                 }
-            },
+            }
         }
-        
+
         Ok(res)
     }
 
@@ -412,13 +410,13 @@ impl Store {
             }
             Version::Array => {
                 let len: usize = Integer::deser(bytes)?.try_into()?;
-                
+
                 let mut arr = Vec::with_capacity(len);
                 for _ in 0..len {
                     arr.push(Value::deserialise(bytes)?);
                 }
-                
-                Ok(Self::Array {arr})
+
+                Ok(Self::Array { arr })
             }
         }
     }

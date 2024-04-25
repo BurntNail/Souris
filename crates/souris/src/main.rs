@@ -343,7 +343,12 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
             Value::JSON(v)
         }
         ValueTy::Store => {
-            if FuzzySelect::with_theme(theme).with_prompt("Array or Map?").items(&["Array", "Map"]).interact()? == 0 {
+            if FuzzySelect::with_theme(theme)
+                .with_prompt("Array or Map?")
+                .items(&["Array", "Map"])
+                .interact()?
+                == 0
+            {
                 let res = if Confirm::with_theme(theme)
                     .with_prompt("Do you know how long the array is?")
                     .interact()?
@@ -353,7 +358,9 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                         .interact()?;
 
                     (0..length)
-                        .map(|i| get_value_from_stdin(format!("Please enter item {}", i + 1), theme))
+                        .map(|i| {
+                            get_value_from_stdin(format!("Please enter item {}", i + 1), theme)
+                        })
                         .collect::<Result<Vec<_>, _>>()?
                 } else {
                     let mut res = vec![];
@@ -372,7 +379,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                     }
                     res
                 };
-                
+
                 Value::Store(Store::new_arr(res))
             } else {
                 let map = if Confirm::with_theme(theme)

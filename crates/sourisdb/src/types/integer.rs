@@ -41,7 +41,7 @@ impl Neg for Integer {
 }
 
 impl Integer {
-    fn unsigned_bits (&self) -> u32 {
+    fn unsigned_bits(&self) -> u32 {
         let x = u128::from_le_bytes(self.content);
         if x == 0 {
             0
@@ -49,7 +49,7 @@ impl Integer {
             x.ilog2()
         }
     }
-    
+
     ///NB: always <= 8
     fn min_bytes_needed(&self) -> usize {
         ((self.unsigned_bits() / 8) + 1) as usize
@@ -71,7 +71,7 @@ impl Display for Integer {
         match self.signed_state {
             SignedState::SignedNegative => {
                 write!(f, "{}", -i128::from_le_bytes(self.content))
-            },
+            }
             _ => {
                 write!(f, "{}", u128::from_le_bytes(self.content))
             }
@@ -125,12 +125,17 @@ macro_rules! new_x {
                 if i.unsigned_bits() > <$t>::BITS {
                     return Err(IntegerSerError::WrongType);
                 }
-                
+
                 let mut out = [0_u8; (<$t>::BITS / 8) as usize];
-                for (i, b) in i.content.into_iter().enumerate().take((<$t>::BITS / 8) as usize) {
+                for (i, b) in i
+                    .content
+                    .into_iter()
+                    .enumerate()
+                    .take((<$t>::BITS / 8) as usize)
+                {
                     out[i] = b;
                 }
-                
+
                 Ok(<$t>::from_le_bytes(out))
             }
         }
@@ -148,7 +153,7 @@ macro_rules! new_x {
                 if n == 0 {
                     Self {
                         signed_state: SignedState::Unsigned,
-                        content: [0; INTEGER_MAX_SIZE]
+                        content: [0; INTEGER_MAX_SIZE],
                     }
                 } else if n < 0 {
                     let mut content = [0_u8; INTEGER_MAX_SIZE];
@@ -163,7 +168,7 @@ macro_rules! new_x {
                     let mut content = [0_u8; INTEGER_MAX_SIZE];
                     for (i, b) in n.to_le_bytes().into_iter().enumerate() {
                         content[i] = b;
-                    }   
+                    }
                     Self {
                         signed_state: SignedState::SignedPositive,
                         content,
@@ -178,18 +183,23 @@ macro_rules! new_x {
             fn try_from(i: Integer) -> Result<Self, Self::Error> {
                 let multiplier = match i.signed_state {
                     SignedState::SignedNegative => -1,
-                    _ => 1
+                    _ => 1,
                 };
 
                 if i.unsigned_bits() > <$t>::BITS {
                     return Err(IntegerSerError::WrongType);
                 }
-                
+
                 let mut out = [0_u8; (<$t>::BITS / 8) as usize];
-                for (i, b) in i.content.into_iter().enumerate().take((<$t>::BITS / 8) as usize) {
+                for (i, b) in i
+                    .content
+                    .into_iter()
+                    .enumerate()
+                    .take((<$t>::BITS / 8) as usize)
+                {
                     out[i] = b;
                 }
-                
+
                 Ok(<$t>::from_le_bytes(out) * multiplier)
             }
         }
@@ -232,11 +242,10 @@ impl FromStr for Integer {
         };
 
         let content: u128 = s.parse()?;
-        
 
         Ok(Self {
             signed_state,
-            content: content.to_le_bytes()
+            content: content.to_le_bytes(),
         })
     }
 }
@@ -315,10 +324,10 @@ impl Integer {
     pub fn ser(self) -> Vec<u8> {
         let stored_size = self.min_bytes_needed();
         let bytes = self.content;
-        
+
         let mut res = Vec::with_capacity(1 + stored_size);
-        let discriminant: u8 = (u8::from(self.signed_state) << 6)
-            | ((stored_size as u8) << (8 - 2 - INTEGER_BITS));
+        let discriminant: u8 =
+            (u8::from(self.signed_state) << 6) | ((stored_size as u8) << (8 - 2 - INTEGER_BITS));
         res.push(discriminant);
         res.extend(&bytes[0..stored_size]);
 
@@ -332,23 +341,28 @@ impl Integer {
             };
             let discriminant = *discriminant;
             let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-          
+
             #[allow(clippy::items_after_statements)]
             const STORED_MASK: u8 = ((1 << (INTEGER_BITS)) - 1) << (8 - 2 - INTEGER_BITS);
             let stored = usize::from((discriminant & STORED_MASK) >> (8 - 2 - INTEGER_BITS));
 
             (signed_state, stored)
         };
-        
+
         let mut content = [0_u8; INTEGER_MAX_SIZE];
-        for (i,b) in reader
+        for (i, b) in reader
             .read(stored)
-            .ok_or(IntegerSerError::NotEnoughBytes)?.iter().copied().enumerate() {
+            .ok_or(IntegerSerError::NotEnoughBytes)?
+            .iter()
+            .copied()
+            .enumerate()
+        {
             content[i] = b;
         }
-        
+
         Ok(Self {
-            signed_state, content
+            signed_state,
+            content,
         })
     }
 }
@@ -384,7 +398,7 @@ mod tests {
 
             prop_assert_eq!(i128::try_from(got_back).unwrap(), i);
         }
-        
+
         #[test]
         fn back_to_original_other_size (i in any::<u16>()) {
             let s = i.to_string();
