@@ -1,6 +1,6 @@
 use color_eyre::eyre::bail;
 use dirs::data_dir;
-use sourisdb::{store::Store, types::array::Array, values::Value};
+use sourisdb::{store::Store, values::Value};
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -129,7 +129,7 @@ impl SourisState {
             meta: &Store,
             base: PathBuf,
         ) -> Option<HashMap<String, Store>> {
-            let Some(Value::Array(Array(values))) =
+            let Some(Value::Store(Store::Array{arr: values})) =
                 meta.get(&Value::String(DB_FILE_NAMES_KEY.into()))
             else {
                 trace!("Unable to find existing databases - using none");
@@ -169,7 +169,7 @@ impl SourisState {
             None => {
                 meta.insert(
                     Value::String(DB_FILE_NAMES_KEY.into()),
-                    Value::Array(Array(vec![])),
+                    Value::Store(Store::Array {arr: vec![]}),
                 );
                 HashMap::default()
             }
@@ -201,7 +201,7 @@ impl SourisState {
         let mut meta = Store::default();
         meta.insert(
             Value::String(DB_FILE_NAMES_KEY.to_string()),
-            Value::Array(Array(names)),
+            Value::Store(Store::Array {arr: names}),
         );
 
         let location = self.base_location.join(META_DB_FILE_NAME);

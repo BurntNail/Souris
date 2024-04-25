@@ -1,7 +1,6 @@
 use crate::{
     store::{Store, StoreError},
     types::{
-        array::{Array, ArraySerError},
         integer::{Integer, IntegerSerError},
         ts::{TSError, Timestamp},
     },
@@ -30,7 +29,6 @@ pub enum Value {
     Bool(bool),
     Int(Integer),
     Imaginary(Integer, Integer),
-    Array(Array),
     Timestamp(Timestamp),
     JSON(SJValue),
     Store(Store),
@@ -51,7 +49,6 @@ impl PartialEq for Value {
             (Self::Bool(b), Self::Bool(b2)) => b.eq(b2),
             (Self::Int(i), Self::Int(i2)) => i.eq(i2),
             (Self::Imaginary(a, b), Self::Imaginary(a2, b2)) => a.eq(a2) && b.eq(b2),
-            (Self::Array(a), Self::Array(a2)) => a.eq(a2),
             (Self::Timestamp(t), Self::Timestamp(t2)) => t.eq(t2),
             (Self::JSON(j), Self::JSON(j2)) => j.eq(j2),
             (Self::Store(s), Self::Store(s2)) => s.eq(s2),
@@ -86,9 +83,6 @@ impl Hash for Value {
             Value::Imaginary(a, b) => {
                 a.hash(state);
                 b.hash(state);
-            }
-            Value::Array(v) => {
-                v.hash(state);
             }
             Value::Timestamp(v) => {
                 v.hash(state);
@@ -133,7 +127,6 @@ impl Debug for Value {
             Self::Bool(b) => s.field("content", b),
             Self::Int(i) => s.field("content", i),
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
-            Self::Array(a) => s.field("content", a),
             Self::Timestamp(ndt) => s.field("content", ndt),
             Self::JSON(v) => s.field("content", v),
             Self::Store(store) => s.field("content", store),
@@ -162,7 +155,6 @@ impl Display for Value {
                     write!(f, "{a}+{b}i")
                 }
             }
-            Self::Array(a) => write!(f, "{a}"),
             Self::Timestamp(ndt) => write!(f, "{ndt}"),
             Self::JSON(v) => write!(f, "{v}"),
             Self::Store(s) => write!(f, "{s}"),
@@ -196,7 +188,6 @@ pub enum ValueTy {
     Bool,
     Int,
     Imaginary,
-    Array,
     Timestamp,
     JSON,
     Store,
@@ -213,7 +204,7 @@ impl From<ValueTy> for u8 {
             ValueTy::Bool => 0b0011,
             ValueTy::Int => 0b0100,
             ValueTy::Imaginary => 0b0101,
-            ValueTy::Array => 0b0110,
+            // ValueTy::Array => 0b0110,
             ValueTy::Timestamp => 0b0111,
             ValueTy::JSON => 0b1000,
             ValueTy::Store => 0b1001,
@@ -233,7 +224,7 @@ impl TryFrom<u8> for ValueTy {
             0b0011 => ValueTy::Bool,
             0b0100 => ValueTy::Int,
             0b0101 => ValueTy::Imaginary,
-            0b0110 => ValueTy::Array,
+            // 0b0110 => ValueTy::Array,
             0b0111 => ValueTy::Timestamp,
             0b1000 => ValueTy::JSON,
             0b1001 => ValueTy::Store,
@@ -252,7 +243,6 @@ pub enum ValueSerError {
     NotEnoughBytes,
     InvalidCharacter,
     NonUTF8String(FromUtf8Error),
-    ArraySerError(ArraySerError),
     TSError(TSError),
     SerdeJson(SJError),
     StoreError(Box<StoreError>),
@@ -270,7 +260,6 @@ impl Display for ValueSerError {
             ValueSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
-            ValueSerError::ArraySerError(e) => write!(f, "Error de/ser-ing array: {e:?}"),
             ValueSerError::TSError(e) => write!(f, "Error de/ser-ing timestamp: {e:?}"),
             ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e:?}"),
             ValueSerError::StoreError(e) => write!(f, "Error de/ser-ing souris store: {e:?}"),
@@ -286,11 +275,6 @@ impl From<IntegerSerError> for ValueSerError {
 impl From<FromUtf8Error> for ValueSerError {
     fn from(value: FromUtf8Error) -> Self {
         Self::NonUTF8String(value)
-    }
-}
-impl From<ArraySerError> for ValueSerError {
-    fn from(value: ArraySerError) -> Self {
-        Self::ArraySerError(value)
     }
 }
 impl From<TSError> for ValueSerError {
@@ -315,7 +299,6 @@ impl std::error::Error for ValueSerError {
         match self {
             ValueSerError::IntegerSerError(e) => Some(e),
             ValueSerError::NonUTF8String(e) => Some(e),
-            ValueSerError::ArraySerError(e) => Some(e),
             ValueSerError::TSError(e) => Some(e),
             ValueSerError::SerdeJson(e) => Some(e),
             ValueSerError::StoreError(e) => Some(e),
@@ -342,8 +325,7 @@ impl From<SJValue> for Value {
             }
             SJValue::String(s) => Value::String(s.to_string()),
             SJValue::Array(a) => {
-                let a = a.into_iter().map(Self::from).collect();
-                Value::Array(Array(a))
+                Value::Store(Store::new_arr(a.into_iter().map(Self::from).collect()))
             }
             SJValue::Object(o) => Value::Store(Store::from(o)),
         }
@@ -359,7 +341,6 @@ impl Value {
             Self::Bool(_) => ValueTy::Bool,
             Self::Int(_) => ValueTy::Int,
             Self::Imaginary(_, _) => ValueTy::Imaginary,
-            Self::Array(_) => ValueTy::Array,
             Self::Timestamp(_) => ValueTy::Timestamp,
             Self::JSON(_) => ValueTy::JSON,
             Self::Store(_) => ValueTy::Store,
@@ -408,9 +389,6 @@ impl Value {
                 res.extend(a.ser().iter());
                 res.extend(b.ser().iter());
             }
-            Self::Array(a) => {
-                res.extend(a.ser()?.iter());
-            }
             Self::Timestamp(t) => {
                 res.extend(t.ser().iter());
             }
@@ -457,10 +435,6 @@ impl Value {
                 let ch = char::from_u32(Integer::deser(bytes)?.try_into()?)
                     .ok_or(ValueSerError::InvalidCharacter)?;
                 Self::Ch(ch)
-            }
-            ValueTy::Array => {
-                let a = Array::deser(bytes)?;
-                Self::Array(a)
             }
             ValueTy::Timestamp => {
                 let t = Timestamp::deser(bytes)?;

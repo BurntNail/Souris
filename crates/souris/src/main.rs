@@ -9,7 +9,7 @@ use sourisdb::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
     store::{Store, StoreError},
-    types::{array::Array, integer::Integer, ts::Timestamp},
+    types::{integer::Integer, ts::Timestamp},
     utilities::cursor::Cursor,
     values::{Value, ValueTy},
 };
@@ -248,7 +248,6 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         ValueTy::String,
         ValueTy::Binary,
         ValueTy::Imaginary,
-        ValueTy::Array,
         ValueTy::Timestamp,
         ValueTy::JSON,
         ValueTy::Store,
@@ -337,38 +336,6 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
 
             Value::Timestamp(Timestamp(ts))
         }
-        ValueTy::Array => {
-            let res = if Confirm::with_theme(theme)
-                .with_prompt("Do you know how long the array is?")
-                .interact()?
-            {
-                let length: usize = Input::with_theme(theme)
-                    .with_prompt("How long?")
-                    .interact()?;
-
-                (0..length)
-                    .map(|i| get_value_from_stdin(format!("Please enter item {}", i + 1), theme))
-                    .collect::<Result<Vec<_>, _>>()?
-            } else {
-                let mut res = vec![];
-                let mut i = 1;
-                loop {
-                    let item = get_value_from_stdin(format!("Please enter item {i}"), theme)?;
-                    res.push(item);
-                    i += 1;
-
-                    if Confirm::with_theme(theme)
-                        .with_prompt("Is that everything?")
-                        .interact()?
-                    {
-                        break;
-                    }
-                }
-                res
-            };
-
-            Value::Array(Array(res))
-        }
         ValueTy::JSON => {
             let v: SJValue = Input::with_theme(theme)
                 .with_prompt("Enter the JSON?")
@@ -376,45 +343,78 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
             Value::JSON(v)
         }
         ValueTy::Store => {
-            let map = if Confirm::with_theme(theme)
-                .with_prompt("Do you know how long the array is?")
-                .interact()?
-            {
-                let length: usize = Input::with_theme(theme)
-                    .with_prompt("How long?")
-                    .interact()?;
+            if FuzzySelect::with_theme(theme).with_prompt("Array or Map?").items(&["Array", "Map"]).interact()? == 0 {
+                let res = if Confirm::with_theme(theme)
+                    .with_prompt("Do you know how long the array is?")
+                    .interact()?
+                {
+                    let length: usize = Input::with_theme(theme)
+                        .with_prompt("How long?")
+                        .interact()?;
 
-                let mut map = HashMap::new();
+                    (0..length)
+                        .map(|i| get_value_from_stdin(format!("Please enter item {}", i + 1), theme))
+                        .collect::<Result<Vec<_>, _>>()?
+                } else {
+                    let mut res = vec![];
+                    let mut i = 1;
+                    loop {
+                        let item = get_value_from_stdin(format!("Please enter item {i}"), theme)?;
+                        res.push(item);
+                        i += 1;
 
-                for _ in 0..length {
-                    let key = get_value_from_stdin("Please enter a key", theme)?;
-                    let value = get_value_from_stdin("Please enter a value", theme)?;
-
-                    map.insert(key, value);
-                }
-
-                map
+                        if Confirm::with_theme(theme)
+                            .with_prompt("Is that everything?")
+                            .interact()?
+                        {
+                            break;
+                        }
+                    }
+                    res
+                };
+                
+                Value::Store(Store::new_arr(res))
             } else {
-                let mut map = HashMap::new();
+                let map = if Confirm::with_theme(theme)
+                    .with_prompt("Do you know how long the store is?")
+                    .interact()?
+                {
+                    let length: usize = Input::with_theme(theme)
+                        .with_prompt("How long?")
+                        .interact()?;
 
-                loop {
-                    if Confirm::with_theme(theme)
-                        .with_prompt("Is that all the keys & values?")
-                        .interact()?
-                    {
-                        break;
+                    let mut map = HashMap::new();
+
+                    for _ in 0..length {
+                        let key = get_value_from_stdin("Please enter a key", theme)?;
+                        let value = get_value_from_stdin("Please enter a value", theme)?;
+
+                        map.insert(key, value);
                     }
 
-                    let key = get_value_from_stdin("Please enter a key", theme)?;
-                    let value = get_value_from_stdin("Please enter a value", theme)?;
+                    map
+                } else {
+                    let mut map = HashMap::new();
 
-                    map.insert(key, value);
-                }
+                    loop {
+                        if Confirm::with_theme(theme)
+                            .with_prompt("Is that all the keys & values?")
+                            .interact()?
+                        {
+                            break;
+                        }
 
-                map
-            };
+                        let key = get_value_from_stdin("Please enter a key", theme)?;
+                        let value = get_value_from_stdin("Please enter a value", theme)?;
 
-            Value::Store(Store::new_map(map))
+                        map.insert(key, value);
+                    }
+
+                    map
+                };
+
+                Value::Store(Store::new_map(map))
+            }
         }
         ValueTy::Null => Value::Null,
         ValueTy::Float => {

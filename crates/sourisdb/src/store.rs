@@ -1,6 +1,5 @@
 use crate::{
     types::{
-        array::{Array, ArraySerError},
         integer::{Integer, IntegerSerError},
     },
     utilities::cursor::Cursor,
@@ -22,7 +21,7 @@ use serde_json::{Error as SJError, Map, Value as SJValue};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Store {
     Map { kvs: HashMap<Value, Value> },
-    Array { arr: Array },
+    Array { arr: Vec<Value> },
 }
 
 pub enum Version {
@@ -82,7 +81,7 @@ impl Display for Store {
             Self::Array { arr } => {
                 writeln!(f, "[")?;
 
-                for i in &arr.0 {
+                for i in arr {
                     writeln!(f, "\t{i},")?;
                 }
 
@@ -99,7 +98,7 @@ impl Store {
     }
 
     #[must_use]
-    pub fn new_arr(arr: Array) -> Self {
+    pub fn new_arr(arr: Vec<Value>) -> Self {
         Self::Array { arr }
     }
 
@@ -114,19 +113,19 @@ impl Store {
             Self::Array { arr } => {
                 if let Value::Int(i) = k {
                     if let Ok(u) = usize::try_from(i) {
-                        let current_len = arr.0.len();
+                        let current_len = arr.len();
 
                         if u < current_len {
-                            arr.0[u] = v;
+                            arr[u] = v;
                         } else if u == current_len {
-                            arr.0.push(v);
+                            arr.push(v);
                         } else {
-                            arr.0.extend(vec![Value::Null; current_len - u]);
-                            arr.0.push(v);
+                            arr.extend(vec![Value::Null; current_len - u]);
+                            arr.push(v);
                         }
                     }
                 } else {
-                    arr.0.push(v);
+                    arr.push(v);
                 }
             }
         }
@@ -137,7 +136,7 @@ impl Store {
     pub fn push(&mut self, v: Value) {
         match self {
             Self::Array { arr } => {
-                arr.0.push(v);
+                arr.push(v);
             }
             Self::Map { .. } => unimplemented!("push should be a noop if not an array"),
         }
@@ -149,8 +148,8 @@ impl Store {
             Self::Array { arr } => {
                 if let Value::Int(i) = k {
                     if let Ok(u) = usize::try_from(*i) {
-                        if u < arr.0.len() {
-                            return Some(arr.0.remove(u));
+                        if u < arr.len() {
+                            return Some(arr.remove(u));
                         }
                     }
                 }
@@ -163,21 +162,21 @@ impl Store {
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Map { kvs } => kvs.is_empty(),
-            Self::Array { arr } => arr.0.is_empty(),
+            Self::Array { arr } => arr.is_empty(),
         }
     }
     #[must_use]
     pub fn len(&self) -> usize {
         match self {
             Self::Map { kvs } => kvs.len(),
-            Self::Array { arr } => arr.0.len(),
+            Self::Array { arr } => arr.len(),
         }
     }
 
     pub fn keys(&self) -> impl Iterator<Item = Value> {
         match self {
             Self::Map { kvs } => kvs.keys().cloned().collect::<Vec<_>>().into_iter(),
-            Self::Array { arr } => (0..arr.0.len())
+            Self::Array { arr } => (0..arr.len())
                 .map(|x| Value::Int(x.into()))
                 .collect::<Vec<_>>()
                 .into_iter(),
@@ -187,7 +186,7 @@ impl Store {
     pub fn values(&self) -> impl Iterator<Item = Value> {
         match self {
             Self::Map { kvs } => kvs.keys().cloned().collect::<Vec<_>>().into_iter(),
-            Self::Array { arr } => arr.0.clone().into_iter(),
+            Self::Array { arr } => arr.clone().into_iter(),
         }
     }
 
@@ -198,7 +197,7 @@ impl Store {
             Self::Array { arr } => {
                 if let Value::Int(i) = k {
                     if let Ok(u) = usize::try_from(*i) {
-                        return arr.0.get(u);
+                        return arr.get(u);
                     }
                 }
 
@@ -214,7 +213,7 @@ impl Store {
             Self::Array { arr } => {
                 if let Value::Int(i) = k {
                     if let Ok(u) = usize::try_from(*i) {
-                        return arr.0.get_mut(u);
+                        return arr.get_mut(u);
                     }
                 }
 
@@ -229,7 +228,7 @@ impl Store {
                 kvs.clear();
             }
             Self::Array { arr } => {
-                arr.0.clear();
+                arr.clear();
             }
         }
     }
@@ -242,9 +241,9 @@ impl IntoIterator for Store {
     fn into_iter(self) -> Self::IntoIter {
         match self {
             Store::Map { kvs } => kvs.into_iter(),
-            Store::Array { arr } => (0..arr.0.len())
+            Store::Array { arr } => (0..arr.len())
                 .map(|x| Value::Int(x.into()))
-                .zip(arr.0)
+                .zip(arr)
                 .collect::<HashMap<_, _>>()
                 .into_iter(),
         }
@@ -260,7 +259,6 @@ pub enum StoreError {
     SerdeJson(SJError),
     InvalidVersion(u8),
     NotEnoughBytes,
-    ArrayError(ArraySerError),
 }
 impl Display for StoreError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -271,7 +269,6 @@ impl Display for StoreError {
             Self::CouldntFindKey => write!(f, "Could not find key"),
             Self::SerdeJson(e) => write!(f, "Error de/ser-ing JSON: {e:?}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes"),
-            Self::ArrayError(e) => write!(f, "Error de/ser-ing array: {e:?}"),
         }
     }
 }
@@ -291,11 +288,6 @@ impl From<SJError> for StoreError {
         Self::SerdeJson(value)
     }
 }
-impl From<ArraySerError> for StoreError {
-    fn from(value: ArraySerError) -> Self {
-        Self::ArrayError(value)
-    }
-}
 
 #[cfg(feature = "std")]
 impl std::error::Error for StoreError {
@@ -304,7 +296,6 @@ impl std::error::Error for StoreError {
             StoreError::ValueError(e) => Some(e),
             StoreError::IntegerError(e) => Some(e),
             StoreError::SerdeJson(e) => Some(e),
-            StoreError::ArrayError(e) => Some(e),
             _ => None,
         }
     }
@@ -314,8 +305,8 @@ impl From<SJValue> for Store {
     fn from(value: SJValue) -> Self {
         match value {
             SJValue::Array(v) => {
-                let a = v.into_iter().map(Value::from).collect();
-                Self::Array { arr: Array(a) }
+                let arr = v.into_iter().map(Value::from).collect();
+                Self::Array { arr }
             }
             SJValue::Object(o) => Self::from(o),
             _ => {
@@ -384,11 +375,17 @@ impl Store {
                     res.extend(ser_key.iter());
                     res.extend(ser_value.iter());
                 }
-
-                Ok(res)
             }
-            Store::Array { arr } => Ok(arr.ser()?),
+            Store::Array { arr } => {
+                res.extend(Integer::usize(arr.len()).ser());
+                
+                for v in arr {
+                    res.extend(v.ser()?);
+                }
+            },
         }
+        
+        Ok(res)
     }
 
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, StoreError> {
@@ -413,9 +410,16 @@ impl Store {
 
                 Ok(Self::Map { kvs })
             }
-            Version::Array => Ok(Self::Array {
-                arr: Array::deser(bytes)?,
-            }),
+            Version::Array => {
+                let len: usize = Integer::deser(bytes)?.try_into()?;
+                
+                let mut arr = Vec::with_capacity(len);
+                for _ in 0..len {
+                    arr.push(Value::deserialise(bytes)?);
+                }
+                
+                Ok(Self::Array {arr})
+            }
         }
     }
 
