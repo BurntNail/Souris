@@ -7,14 +7,6 @@ use core::{
     str::FromStr,
 };
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Content {
-    Small([u8; 1]),
-    Smedium([u8; 2]),
-    Medium([u8; 4]),
-    Large([u8; 8]),
-}
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -24,11 +16,14 @@ pub enum SignedState {
     SignedNegative,
 }
 
+const INTEGER_MAX_SIZE: usize = 8;
+const INTEGER_BITS: usize = 4;
+
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Integer {
     signed_state: SignedState,
-    content: Content,
+    content: [u8; INTEGER_MAX_SIZE],
 }
 
 impl Neg for Integer {
@@ -47,24 +42,13 @@ impl Neg for Integer {
 }
 
 impl Integer {
-    fn as_disc(&self) -> IntegerDiscriminant {
-        match &self.content {
-            Content::Small(_) => IntegerDiscriminant::Small,
-            Content::Smedium(_) => IntegerDiscriminant::Smedium,
-            Content::Medium(_) => IntegerDiscriminant::Medium,
-            Content::Large(_) => IntegerDiscriminant::Large,
-        }
+    fn unsigned_bits (&self) -> u32 {
+        u64::from_le_bytes(self.content).ilog2()
     }
-
-    #[must_use]
-    pub fn is_zero(&self) -> bool {
-        match &self.content {
-            Content::Small(s) => s.iter(),
-            Content::Smedium(sm) => sm.iter(),
-            Content::Medium(m) => m.iter(),
-            Content::Large(l) => l.iter(),
-        }
-        .all(|b| *b == 0)
+    
+    ///NB: always <= 8
+    fn min_bytes_needed(&self) -> usize {
+        ((self.unsigned_bits() / 8) + 1) as usize
     }
 
     #[must_use]
@@ -80,23 +64,13 @@ impl Integer {
 
 impl Display for Integer {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match (&self.content, self.signed_state) {
-            (Content::Small(b), SignedState::SignedNegative) => {
-                write!(f, "{}", -i8::from_le_bytes(*b))
+        match self.signed_state {
+            SignedState::SignedNegative => {
+                write!(f, "{}", -i64::from_le_bytes(self.content))
+            },
+            _ => {
+                write!(f, "{}", u64::from_le_bytes(self.content))
             }
-            (Content::Small(b), _) => write!(f, "{}", u8::from_le_bytes(*b)),
-            (Content::Smedium(b), SignedState::SignedNegative) => {
-                write!(f, "{}", -i16::from_le_bytes(*b))
-            }
-            (Content::Smedium(b), _) => write!(f, "{}", u16::from_le_bytes(*b)),
-            (Content::Medium(b), SignedState::SignedNegative) => {
-                write!(f, "{}", -i32::from_le_bytes(*b))
-            }
-            (Content::Medium(b), _) => write!(f, "{}", u32::from_le_bytes(*b)),
-            (Content::Large(b), SignedState::SignedNegative) => {
-                write!(f, "{}", -i64::from_le_bytes(*b))
-            }
-            (Content::Large(b), _) => write!(f, "{}", u64::from_le_bytes(*b)),
         }
     }
 }
@@ -108,43 +82,9 @@ impl Debug for Integer {
         let signed_state = self.signed_state;
 
         f.debug_struct("Integer")
-            .field("variant", &self.as_disc())
             .field("signed_state", &signed_state)
             .field("value", &displayed)
             .finish()
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub(super) enum IntegerDiscriminant {
-    Small,
-    Smedium,
-    Medium,
-    Large,
-}
-
-impl IntegerDiscriminant {
-    pub const fn bytes(self) -> usize {
-        match self {
-            IntegerDiscriminant::Small => 1,
-            IntegerDiscriminant::Smedium => 2,
-            IntegerDiscriminant::Medium => 4,
-            IntegerDiscriminant::Large => 8,
-        }
-    }
-
-    pub fn ilog2_to_size(
-        ilog2: u32
-    ) -> Self {
-        if ilog2 < 9 {
-            IntegerDiscriminant::Small
-        } else if ilog2 < 17 {
-            IntegerDiscriminant::Smedium
-        } else if ilog2 < 33 {
-            IntegerDiscriminant::Medium
-        } else {
-            IntegerDiscriminant::Large
-        }
     }
 }
 
@@ -159,10 +99,13 @@ macro_rules! new_x {
 
         impl From<$t> for Integer {
             fn from(n: $t) -> Self {
-                let arr = n.to_le_bytes();
+                let mut content = [0_u8; INTEGER_MAX_SIZE];
+                for (i, b) in n.to_le_bytes().into_iter().enumerate() {
+                    content[i] = b;
+                }
                 Self {
                     signed_state: SignedState::Unsigned,
-                    content: Content::$disc(arr),
+                    content,
                 }
             }
         }
@@ -175,10 +118,16 @@ macro_rules! new_x {
                     return Err(IntegerSerError::WrongType);
                 }
 
-                match i.content {
-                    Content::$disc(bytes) => Ok(<$t>::from_le_bytes(bytes)),
-                    _ => Err(IntegerSerError::WrongType),
+                if i.unsigned_bits() > <$t>::BITS {
+                    return Err(IntegerSerError::WrongType);
                 }
+                
+                let mut out = [0_u8; (<$t>::BITS / 8) as usize];
+                for (i, b) in i.content.into_iter().enumerate().take((<$t>::BITS / 8) as usize) {
+                    out[i] = b;
+                }
+                
+                Ok(<$t>::from_le_bytes(out))
             }
         }
     };
@@ -193,16 +142,22 @@ macro_rules! new_x {
         impl From<$t> for Integer {
             fn from(n: $t) -> Self {
                 if n < 0 {
-                    let arr = (-n).to_le_bytes();
+                    let mut content = [0_u8; INTEGER_MAX_SIZE];
+                    for (i, b) in (-n).to_le_bytes().into_iter().enumerate() {
+                        content[i] = b;
+                    }
                     Self {
                         signed_state: SignedState::SignedNegative,
-                        content: Content::$disc(arr),
+                        content,
                     }
                 } else {
-                    let arr = n.to_le_bytes();
+                    let mut content = [0_u8; INTEGER_MAX_SIZE];
+                    for (i, b) in n.to_le_bytes().into_iter().enumerate() {
+                        content[i] = b;
+                    }   
                     Self {
                         signed_state: SignedState::SignedPositive,
-                        content: Content::$disc(arr),
+                        content,
                     }
                 }
             }
@@ -212,16 +167,21 @@ macro_rules! new_x {
             type Error = IntegerSerError;
 
             fn try_from(i: Integer) -> Result<Self, Self::Error> {
-                let raw_n = match i.content {
-                    Content::$disc(bytes) => <$t>::from_le_bytes(bytes),
-                    _ => return Err(IntegerSerError::WrongType),
+                let multiplier = match i.signed_state {
+                    SignedState::SignedNegative => -1,
+                    _ => 1
                 };
 
-                Ok(if i.signed_state == SignedState::SignedNegative {
-                    -raw_n
-                } else {
-                    raw_n
-                })
+                if i.unsigned_bits() > <$t>::BITS {
+                    return Err(IntegerSerError::WrongType);
+                }
+                
+                let mut out = [0_u8; (<$t>::BITS / 8) as usize];
+                for (i, b) in i.content.into_iter().enumerate().take((<$t>::BITS / 8) as usize) {
+                    out[i] = b;
+                }
+                
+                Ok(<$t>::from_le_bytes(out) * multiplier)
             }
         }
     };
@@ -250,7 +210,7 @@ impl FromStr for Integer {
         if s == "0" {
             return Ok(Self {
                 signed_state: SignedState::Unsigned,
-                content: Content::Small([0]),
+                content: [0; 8],
             });
         }
 
@@ -260,57 +220,14 @@ impl FromStr for Integer {
             (s, SignedState::Unsigned)
         };
 
-        let biggest: u64 = s.parse()?;
-        let biggest_bytes = biggest.to_le_bytes();
+        let content: u64 = s.parse()?;
         
         //TODO: use ilog2
 
-        Ok(if biggest < 1 << 8 {
-            Self {
-                signed_state,
-                content: Content::Small((biggest as u8).to_le_bytes()),
-            }
-        } else if biggest < 1 << 16 {
-            Self {
-                signed_state,
-                content: Content::Smedium((biggest as u16).to_le_bytes()),
-            }
-        } else if biggest < 1 << 32 {
-            Self {
-                signed_state,
-                content: Content::Medium((biggest as u32).to_le_bytes()),
-            }
-        } else {
-            Self {
-                signed_state,
-                content: Content::Large(biggest_bytes),
-            }
+        Ok(Self {
+            signed_state,
+            content: content.to_le_bytes()
         })
-    }
-}
-
-impl From<IntegerDiscriminant> for u8 {
-    fn from(value: IntegerDiscriminant) -> Self {
-        match value {
-            IntegerDiscriminant::Small => 0b001,
-            IntegerDiscriminant::Smedium => 0b010,
-            IntegerDiscriminant::Medium => 0b011,
-            IntegerDiscriminant::Large => 0b100,
-        }
-    }
-}
-
-impl TryFrom<u8> for IntegerDiscriminant {
-    type Error = IntegerSerError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0b001 => Ok(Self::Small),
-            0b010 => Ok(Self::Smedium),
-            0b011 => Ok(Self::Medium),
-            0b100 => Ok(Self::Large),
-            _ => Err(IntegerSerError::InvalidIntegerSizeDiscriminant(value)),
-        }
     }
 }
 
@@ -388,108 +305,42 @@ impl Integer {
     pub fn ser(self) -> Vec<u8> {
         //disc structure:
         //2 bit: signed state
-        //3 bits: original size
-        //3 bits: stored size
-        
+        //3 
         //TODO: use ilog2
 
-        let original_size = self.as_disc();
-        let mut at_max = [0_u8; 8];
-        let stored_size = match self.content {
-            Content::Small([b]) => {
-                at_max[0] = b;
-                IntegerDiscriminant::Small
-            }
-            Content::Smedium(b) => {
-                for (i, b) in b.iter().enumerate() {
-                    at_max[i] = *b;
-                }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 2)
-            }
-            Content::Medium(b) => {
-                for (i, b) in b.iter().enumerate() {
-                    at_max[i] = *b;
-                }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 4)
-            }
-            Content::Large(b) => {
-                for (i, b) in b.iter().enumerate() {
-                    at_max[i] = *b;
-                }
-                IntegerDiscriminant::iterator_to_size_can_fit_in(b.into_iter(), 8)
-            }
-        };
-
-        let mut res = Vec::with_capacity(1 + stored_size.bytes());
+        let stored_size = self.min_bytes_needed();
+        let bytes = self.content;
+        
+        let mut res = Vec::with_capacity(1 + stored_size);
         let discriminant: u8 = (u8::from(self.signed_state) << 6)
-            | (u8::from(original_size) << 3)
-            | u8::from(stored_size);
+            | ((stored_size as u8) << (8 - 2 - INTEGER_BITS));
         res.push(discriminant);
-        res.extend(&at_max[0..stored_size.bytes()]);
+        res.extend(&bytes[0..stored_size]);
 
         res
     }
 
     pub fn deser(reader: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
-        let (signed_state, original, stored) = {
+        let (signed_state, stored) = {
             let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)? else {
                 unreachable!("didn't get just one byte back")
             };
             let discriminant = *discriminant;
             let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-            let original = IntegerDiscriminant::try_from((discriminant & 0b0011_1000) >> 3)?;
-            let stored = IntegerDiscriminant::try_from(discriminant & 0b0000_0111)?;
+            let stored = usize::from((discriminant & 0b0011_1100) >> (8 - 2 - INTEGER_BITS));
 
-            (signed_state, original, stored)
+            (signed_state, stored)
         };
-
-        let read_bytes = reader
-            .read(stored.bytes())
-            .ok_or(IntegerSerError::NotEnoughBytes)?;
         
-        //TODO: you guessed it, ilog2
-
-        Ok(match original {
-            IntegerDiscriminant::Small => {
-                let mut bytes = [0_u8; 1];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Small(bytes),
-                }
-            }
-            IntegerDiscriminant::Smedium => {
-                let mut bytes = [0_u8; 2];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Smedium(bytes),
-                }
-            }
-            IntegerDiscriminant::Medium => {
-                let mut bytes = [0_u8; 4];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Medium(bytes),
-                }
-            }
-            IntegerDiscriminant::Large => {
-                let mut bytes = [0_u8; 8];
-                for (i, b) in read_bytes.iter().copied().enumerate() {
-                    bytes[i] = b;
-                }
-                Self {
-                    signed_state,
-                    content: Content::Large(bytes),
-                }
-            }
+        let mut content = [0_u8; INTEGER_MAX_SIZE];
+        for (i,b) in reader
+            .read(stored)
+            .ok_or(IntegerSerError::NotEnoughBytes)?.iter().copied().enumerate() {
+            content[i] = b;
+        }
+        
+        Ok(Self {
+            signed_state, content
         })
     }
 }
@@ -524,6 +375,19 @@ mod tests {
             prop_assert_eq!(parsed, got_back);
 
             prop_assert_eq!(i64::try_from(got_back).unwrap(), i);
+        }
+        
+        #[test]
+        fn back_to_original_other_size (i in any::<u16>()) {
+            let s = i.to_string();
+
+            let parsed = Integer::from_str(&s).unwrap();
+
+            let sered = parsed.ser();
+            let got_back = Integer::deser(&mut Cursor::new(&sered)).unwrap();
+            prop_assert_eq!(parsed, got_back);
+
+            prop_assert_eq!(u32::try_from(got_back).unwrap(), u32::from(i));
         }
     }
 }
