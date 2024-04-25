@@ -324,6 +324,32 @@ impl std::error::Error for ValueSerError {
     }
 }
 
+impl From<SJValue> for Value {
+    fn from(v: SJValue) -> Self {
+        match v {
+            SJValue::Null => Value::Null,
+            SJValue::Bool(b) => Value::Bool(b),
+            SJValue::Number(n) => {
+                if let Some(neg) = n.as_i64() {
+                    Value::Int(Integer::i64(neg))
+                } else if let Some(pos) = n.as_u64() {
+                    Value::Int(Integer::u64(pos))
+                } else if let Some(float) = n.as_f64() {
+                    Value::Float(float)
+                } else {
+                    unreachable!("must be one of the three JSON integer types")
+                }
+            }
+            SJValue::String(s) => Value::String(s.to_string()),
+            SJValue::Array(a) => {
+                let a = a.into_iter().map(Self::from).collect();
+                Value::Array(Array(a))
+            }
+            SJValue::Object(o) => Value::Store(Store::from(o)),
+        }
+    }
+}
+
 impl Value {
     pub(crate) const fn to_ty(&self) -> ValueTy {
         match self {
@@ -480,31 +506,6 @@ impl Value {
             }
         })
     }
-
-    //TODO: move to `From` impl
-    pub fn from_serde_json_value(v: &SJValue) -> Value {
-        match v {
-            SJValue::Null => Value::Null,
-            SJValue::Bool(b) => Value::Bool(*b),
-            SJValue::Number(n) => {
-                if let Some(neg) = n.as_i64() {
-                    Value::Int(Integer::i64(neg))
-                } else if let Some(pos) = n.as_u64() {
-                    Value::Int(Integer::u64(pos))
-                } else if let Some(float) = n.as_f64() {
-                    Value::Float(float)
-                } else {
-                    unreachable!("must be one of the three JSON integer types")
-                }
-            }
-            SJValue::String(s) => Value::String(s.to_string()),
-            SJValue::Array(a) => {
-                let a = a.iter().map(Self::from_serde_json_value).collect();
-                Value::Array(Array(a))
-            }
-            SJValue::Object(o) => Value::Store(Store::new_map(Store::from_json_map(o))),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -518,19 +519,13 @@ mod tests {
             let t = Value::Bool(true);
             let ser = t.clone().ser().unwrap();
 
-            assert_eq!(
-                t,
-                Value::deserialise(&mut Cursor::new(&ser)).unwrap()
-            );
+            assert_eq!(t, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
         }
         {
             let f = Value::Bool(false);
             let ser = f.clone().ser().unwrap();
 
-            assert_eq!(
-                f,
-                Value::deserialise(&mut Cursor::new(&ser)).unwrap()
-            );
+            assert_eq!(f, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
         }
     }
 
@@ -540,19 +535,13 @@ mod tests {
             let neg = Value::Int(Integer::i8(-15));
             let ser = neg.clone().ser().unwrap();
 
-            assert_eq!(
-                neg,
-                Value::deserialise(&mut Cursor::new(&ser)).unwrap()
-            );
+            assert_eq!(neg, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
         }
         {
             let big = Value::Int(Integer::usize(123_456_789));
             let ser = big.clone().ser().unwrap();
 
-            assert_eq!(
-                big,
-                Value::deserialise(&mut Cursor::new(&ser)).unwrap()
-            );
+            assert_eq!(big, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
         }
     }
 }

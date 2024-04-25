@@ -16,7 +16,7 @@ use core::{
     ops::{Index, IndexMut},
 };
 use hashbrown::hash_map::{HashMap, IntoIter};
-use serde_json::{Error as SJError, Value as SJValue};
+use serde_json::{Error as SJError, Map, Value as SJValue};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -190,7 +190,6 @@ impl Store {
             Self::Array { arr } => arr.0.clone().into_iter(),
         }
     }
-    //TODO: clean up these horror shows as well as the IntoIter
 
     #[must_use]
     pub fn get(&self, k: &Value) -> Option<&Value> {
@@ -311,6 +310,37 @@ impl std::error::Error for StoreError {
     }
 }
 
+impl From<SJValue> for Store {
+    fn from(value: SJValue) -> Self {
+        match value {
+            SJValue::Array(v) => {
+                let a = v.into_iter().map(Value::from).collect();
+                Self::Array { arr: Array(a) }
+            }
+            SJValue::Object(o) => Self::from(o),
+            _ => {
+                let item = Value::from(value);
+                let key = Value::String(String::from("JSON Contents"));
+
+                let mut map = HashMap::new();
+                map.insert(key, item);
+                Self::Map { kvs: map }
+            }
+        }
+    }
+}
+impl From<Map<String, SJValue>> for Store {
+    fn from(o: Map<String, SJValue>) -> Self {
+        let mut map = HashMap::new();
+        for (k, v) in o {
+            let key = Value::String(k.to_string());
+            let val = Value::from(v);
+            map.insert(key, val);
+        }
+        Self::Map { kvs: map }
+    }
+}
+
 impl Store {
     ///format:
     ///
@@ -390,35 +420,8 @@ impl Store {
     }
 
     pub fn from_json(bytes: &[u8]) -> Result<Self, StoreError> {
-        let json_value: SJValue = serde_json::from_slice(bytes)?;
-
-        let kvs = if let Some(map) = json_value.as_object() {
-            Self::from_json_map(map)
-        } else if let Some(arr) = json_value.as_array() {
-            return Ok(Self::new_arr(Array(
-                arr.iter().map(Value::from_serde_json_value).collect(),
-            )));
-        } else {
-            let item = Value::from_serde_json_value(&json_value);
-            let key = Value::String(String::from("JSON Contents"));
-
-            let mut map = HashMap::new();
-            map.insert(key, item);
-            map
-        };
-
-        Ok(Self::Map { kvs })
-    }
-
-    #[must_use]
-    pub fn from_json_map(sj_map: &serde_json::map::Map<String, SJValue>) -> HashMap<Value, Value> {
-        let mut map = HashMap::new();
-        for (k, v) in sj_map {
-            let key = Value::String(k.to_string());
-            let val = Value::from_serde_json_value(v);
-            map.insert(key, val);
-        }
-        map
+        let sjv: SJValue = serde_json::from_slice(bytes)?;
+        Ok(Self::from(sjv))
     }
 }
 
