@@ -7,7 +7,6 @@ use core::{
     str::FromStr,
 };
 
-
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SignedState {
@@ -16,8 +15,8 @@ pub enum SignedState {
     SignedNegative,
 }
 
-const INTEGER_MAX_SIZE: usize = 8;
-const INTEGER_BITS: usize = 4;
+const INTEGER_MAX_SIZE: usize = 16;
+const INTEGER_BITS: usize = 5;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -43,7 +42,12 @@ impl Neg for Integer {
 
 impl Integer {
     fn unsigned_bits (&self) -> u32 {
-        u64::from_le_bytes(self.content).ilog2()
+        let x = u128::from_le_bytes(self.content);
+        if x == 0 {
+            0
+        } else {
+            x.ilog2()
+        }
     }
     
     ///NB: always <= 8
@@ -66,10 +70,10 @@ impl Display for Integer {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.signed_state {
             SignedState::SignedNegative => {
-                write!(f, "{}", -i64::from_le_bytes(self.content))
+                write!(f, "{}", -i128::from_le_bytes(self.content))
             },
             _ => {
-                write!(f, "{}", u64::from_le_bytes(self.content))
+                write!(f, "{}", u128::from_le_bytes(self.content))
             }
         }
     }
@@ -89,7 +93,7 @@ impl Debug for Integer {
 }
 
 macro_rules! new_x {
-    ($t:ty => $name:ident, $disc:ident) => {
+    ($t:ty => $name:ident) => {
         impl Integer {
             #[must_use]
             pub fn $name(n: $t) -> Self {
@@ -131,7 +135,7 @@ macro_rules! new_x {
             }
         }
     };
-    ($t:ty =>> $name:ident, $disc:ident) => {
+    ($t:ty =>> $name:ident) => {
         impl Integer {
             #[must_use]
             pub fn $name(n: $t) -> Self {
@@ -141,7 +145,12 @@ macro_rules! new_x {
 
         impl From<$t> for Integer {
             fn from(n: $t) -> Self {
-                if n < 0 {
+                if n == 0 {
+                    Self {
+                        signed_state: SignedState::Unsigned,
+                        content: [0; INTEGER_MAX_SIZE]
+                    }
+                } else if n < 0 {
                     let mut content = [0_u8; INTEGER_MAX_SIZE];
                     for (i, b) in (-n).to_le_bytes().into_iter().enumerate() {
                         content[i] = b;
@@ -187,16 +196,18 @@ macro_rules! new_x {
     };
 }
 
-new_x!(u8 => u8, Small);
-new_x!(i8 =>> i8, Small);
-new_x!(u16 => u16, Smedium);
-new_x!(i16 =>> i16, Smedium);
-new_x!(u32 => u32, Medium);
-new_x!(i32 =>> i32, Medium);
-new_x!(usize => usize, Large);
-new_x!(isize =>> isize, Large);
-new_x!(u64 => u64, Large);
-new_x!(i64 =>> i64, Large);
+new_x!(u8 => u8);
+new_x!(i8 =>> i8);
+new_x!(u16 => u16);
+new_x!(i16 =>> i16);
+new_x!(u32 => u32);
+new_x!(i32 =>> i32);
+new_x!(usize => usize);
+new_x!(isize =>> isize);
+new_x!(u64 => u64);
+new_x!(i64 =>> i64);
+new_x!(u128 => u128);
+new_x!(i128 =>> i128);
 
 impl FromStr for Integer {
     type Err = IntegerSerError;
@@ -210,7 +221,7 @@ impl FromStr for Integer {
         if s == "0" {
             return Ok(Self {
                 signed_state: SignedState::Unsigned,
-                content: [0; 8],
+                content: [0; INTEGER_MAX_SIZE],
             });
         }
 
@@ -220,9 +231,8 @@ impl FromStr for Integer {
             (s, SignedState::Unsigned)
         };
 
-        let content: u64 = s.parse()?;
+        let content: u128 = s.parse()?;
         
-        //TODO: use ilog2
 
         Ok(Self {
             signed_state,
@@ -303,11 +313,6 @@ impl std::error::Error for IntegerSerError {
 impl Integer {
     #[must_use]
     pub fn ser(self) -> Vec<u8> {
-        //disc structure:
-        //2 bit: signed state
-        //3 
-        //TODO: use ilog2
-
         let stored_size = self.min_bytes_needed();
         let bytes = self.content;
         
@@ -327,7 +332,10 @@ impl Integer {
             };
             let discriminant = *discriminant;
             let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-            let stored = usize::from((discriminant & 0b0011_1100) >> (8 - 2 - INTEGER_BITS));
+          
+            #[allow(clippy::items_after_statements)]
+            const STORED_MASK: u8 = ((1 << (INTEGER_BITS)) - 1) << (8 - 2 - INTEGER_BITS);
+            let stored = usize::from((discriminant & STORED_MASK) >> (8 - 2 - INTEGER_BITS));
 
             (signed_state, stored)
         };
@@ -365,7 +373,7 @@ mod tests {
         }
 
         #[test]
-        fn back_to_original (i in any::<i64>()) {
+        fn back_to_original (i in any::<i128>()) {
             let s = i.to_string();
 
             let parsed = Integer::from_str(&s).unwrap();
@@ -374,7 +382,7 @@ mod tests {
             let got_back = Integer::deser(&mut Cursor::new(&sered)).unwrap();
             prop_assert_eq!(parsed, got_back);
 
-            prop_assert_eq!(i64::try_from(got_back).unwrap(), i);
+            prop_assert_eq!(i128::try_from(got_back).unwrap(), i);
         }
         
         #[test]
