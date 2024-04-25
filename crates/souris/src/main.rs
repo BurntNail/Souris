@@ -134,7 +134,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
 
-            let key = get_value_from_stdin("Please enter the key:", &theme)?;
+            let key = Input::with_theme(&theme).with_prompt("Please enter the key: ").interact()?;
             let value = get_value_from_stdin("Please enter the value:", &theme)?;
 
             println!();
@@ -209,7 +209,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 .with_prompt("Select key to update value of:")
                 .items(&keys)
                 .interact()?;
-            let key = keys.swap_remove(key); //idc if it gets swapped as we drop it next
+            let key = keys.swap_remove(key); //idc if it gets swapped as we drop keys next and swapping is faster
             drop(keys);
 
             if !Confirm::with_theme(&theme)
@@ -220,7 +220,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 std::process::exit(0);
             }
 
-            let existing = &store[key.clone()];
+            let existing = &store[&key];
             let new = get_value_from_stdin("Enter the new value: ", &theme)?;
             if !Confirm::with_theme(&theme)
                 .with_prompt(format!("Confirm replace value {existing} with {new}?"))
@@ -393,7 +393,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                     let mut map = HashMap::new();
 
                     for _ in 0..length {
-                        let key = get_value_from_stdin("Please enter a key", theme)?;
+                        let key: String = Input::with_theme(theme).with_prompt("Please enter the key: ").interact()?;
                         let value = get_value_from_stdin("Please enter a value", theme)?;
 
                         map.insert(key, value);
@@ -411,7 +411,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                             break;
                         }
 
-                        let key = get_value_from_stdin("Please enter a key", theme)?;
+                        let key: String = Input::with_theme(theme).with_prompt("Please enter the key: ").interact()?;
                         let value = get_value_from_stdin("Please enter a value", theme)?;
 
                         map.insert(key, value);

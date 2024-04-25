@@ -90,6 +90,32 @@ impl SourisState {
         let dbs = self.dbs.lock().await;
         dbs.get(&name).cloned()
     }
+
+    ///returns whether we had to create a new DB
+    pub async fn add_key_value_pair (&self, db: String, k: String, v: Value) -> bool {
+        let mut dbs = self.dbs.lock().await;
+        
+        let mut had_to_create = false;
+        let db = dbs.entry(db).or_insert_with(|| {
+            had_to_create = true;
+            Store::default()
+        });
+        
+        db.insert(k, v);
+        
+        had_to_create
+    }
+
+    pub async fn get_value (&self, db: String, k: &String) -> Result<Value, SourisError> {
+        let dbs = self.dbs.lock().await;
+        let Some(db) = dbs.get(&db) else {
+            return Err(SourisError::DatabaseNotFound);
+        };
+        let Some(key) = db.get(k).cloned() else {
+            return Err(SourisError::KeyNotFound);
+        };
+        Ok(key)
+    }
 }
 
 impl SourisState {
@@ -130,7 +156,7 @@ impl SourisState {
             base: PathBuf,
         ) -> Option<HashMap<String, Store>> {
             let Some(Value::Store(Store::Array { arr: values })) =
-                meta.get(&Value::String(DB_FILE_NAMES_KEY.into()))
+                meta.get(&DB_FILE_NAMES_KEY.into())
             else {
                 trace!("Unable to find existing databases - using none");
                 return None;
@@ -144,7 +170,7 @@ impl SourisState {
                     continue;
                 };
 
-                match get_store(base.join(file_name).join(".sdb")).await {
+                match get_store(base.join(format!("{file_name}.sdb"))).await {
                     Ok(s) => {
                         dbs.insert(file_name.to_owned(), s);
                     }
@@ -168,7 +194,7 @@ impl SourisState {
             Some(dbs) => dbs,
             None => {
                 meta.insert(
-                    Value::String(DB_FILE_NAMES_KEY.into()),
+                    DB_FILE_NAMES_KEY.into(),
                     Value::Store(Store::Array { arr: vec![] }),
                 );
                 HashMap::default()
@@ -179,9 +205,7 @@ impl SourisState {
             base_location,
             dbs: Arc::new(Mutex::new(dbs)),
         };
-
-        s.save().await?;
-
+        
         Ok(s)
     }
 
@@ -190,7 +214,6 @@ impl SourisState {
         for (name, db) in self.dbs.lock().await.iter() {
             let file_name = self.base_location.join(format!("{name}.sdb"));
             let bytes = db.ser()?;
-            trace!(?file_name, "Writing out DB");
             if let Err(e) = write_to_file(&bytes, file_name, &self.base_location).await {
                 error!(?e, "Error writing out database");
             } else {
@@ -200,13 +223,12 @@ impl SourisState {
 
         let mut meta = Store::default();
         meta.insert(
-            Value::String(DB_FILE_NAMES_KEY.to_string()),
+            DB_FILE_NAMES_KEY.into(),
             Value::Store(Store::Array { arr: names }),
         );
 
         let location = self.base_location.join(META_DB_FILE_NAME);
         let meta = meta.ser()?;
-        debug!(bytes=?meta.len(), "Writing metadata to file");
         write_to_file(&meta, location, &self.base_location).await
     }
 }

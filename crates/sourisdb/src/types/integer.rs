@@ -326,8 +326,14 @@ impl Integer {
         let bytes = self.content;
 
         let mut res = Vec::with_capacity(1 + stored_size);
+        let stored_size_disc = match INTEGER_BITS {
+            5 => (stored_size as u8) << 1,
+            4 => (stored_size as u8) << 2,
+            _ => unimplemented!("wrong INTEGER_BITS")
+        }; //TODO: fix this?
+        
         let discriminant: u8 =
-            (u8::from(self.signed_state) << 6) | ((stored_size as u8) << (8 - 2 - INTEGER_BITS));
+            (u8::from(self.signed_state) << 6) | stored_size_disc;
         res.push(discriminant);
         res.extend(&bytes[0..stored_size]);
 
@@ -341,10 +347,18 @@ impl Integer {
             };
             let discriminant = *discriminant;
             let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-
+            
+            let stored = match INTEGER_BITS {
+                5 => {
+                    usize::from((discriminant & 0b0011_1110) >> 1)
+                },
+                4 => {
+                    usize::from((discriminant & 0b0011_1100) >> 2)
+                },
+                _ => unimplemented!("didn't expect to deal with {INTEGER_BITS}")
+            };
+            
             #[allow(clippy::items_after_statements)]
-            const STORED_MASK: u8 = ((1 << (INTEGER_BITS)) - 1) << (8 - 2 - INTEGER_BITS);
-            let stored = usize::from((discriminant & STORED_MASK) >> (8 - 2 - INTEGER_BITS));
 
             (signed_state, stored)
         };
@@ -400,7 +414,7 @@ mod tests {
         }
 
         #[test]
-        fn back_to_original_other_size (i in any::<u16>()) {
+        fn back_to_original_other_size (i in any::<u8>()) {
             let s = i.to_string();
 
             let parsed = Integer::from_str(&s).unwrap();

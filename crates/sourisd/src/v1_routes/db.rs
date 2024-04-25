@@ -5,21 +5,23 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use sourisdb::store::Store;
 use utoipa::{IntoParams, ToSchema};
+use sourisdb::store::Store;
 
 #[derive(Deserialize, ToSchema)]
 #[schema(example = json!({"name": "my database", "overwrite_existing": false}))]
 pub struct NewDB {
-    name: String,
-    overwrite_existing: bool,
+    pub name: String,
+    pub overwrite_existing: bool,
 }
 
 #[derive(Deserialize, ToSchema, IntoParams)]
 #[schema(example = json!({"name": "my database"}))]
 pub struct DbByName {
-    name: String,
+    pub name: String,
 }
+
+
 
 #[utoipa::path(
     post,
@@ -105,7 +107,9 @@ pub async fn get_db(
     Query(DbByName { name }): Query<DbByName>,
 ) -> Result<Json<Store>, SourisError> {
     match state.get_db(name).await {
-        Some(db) => Ok(Json(db)),
+        Some(db) => {
+            Ok(Json(db))
+        },
         None => Err(SourisError::DatabaseNotFound),
     }
 }

@@ -412,7 +412,7 @@ impl Value {
         Ok(res)
     }
 
-    pub fn deserialise(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
+    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
         let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
             unreachable!("didn't get just one byte back")
         };
@@ -493,13 +493,13 @@ mod tests {
             let t = Value::Bool(true);
             let ser = t.clone().ser().unwrap();
 
-            assert_eq!(t, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
+            assert_eq!(t, Value::deser(&mut Cursor::new(&ser)).unwrap());
         }
         {
             let f = Value::Bool(false);
             let ser = f.clone().ser().unwrap();
 
-            assert_eq!(f, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
+            assert_eq!(f, Value::deser(&mut Cursor::new(&ser)).unwrap());
         }
     }
 
@@ -509,13 +509,13 @@ mod tests {
             let neg = Value::Int(Integer::i8(-15));
             let ser = neg.clone().ser().unwrap();
 
-            assert_eq!(neg, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
+            assert_eq!(neg, Value::deser(&mut Cursor::new(&ser)).unwrap());
         }
         {
             let big = Value::Int(Integer::usize(123_456_789));
             let ser = big.clone().ser().unwrap();
 
-            assert_eq!(big, Value::deserialise(&mut Cursor::new(&ser)).unwrap());
+            assert_eq!(big, Value::deser(&mut Cursor::new(&ser)).unwrap());
         }
     }
 }

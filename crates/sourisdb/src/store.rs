@@ -8,6 +8,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use alloc::string::FromUtf8Error;
 use core::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
@@ -18,7 +19,7 @@ use serde_json::{Error as SJError, Map, Value as SJValue};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Store {
-    Map { kvs: HashMap<Value, Value> },
+    Map { kvs: HashMap<String, Value> },
     Array { arr: Vec<Value> },
 }
 
@@ -68,19 +69,19 @@ impl Display for Store {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Map { kvs } => {
-                writeln!(f, "{{")?;
+                write!(f, "{{")?;
 
                 for (k, v) in kvs {
-                    writeln!(f, "\t{k}: {v},")?;
+                    write!(f, "\t{k}: {v},")?; //TODO: fix first/last element etc
                 }
 
                 writeln!(f, "}}")
             }
             Self::Array { arr } => {
-                writeln!(f, "[")?;
+                write!(f, "[")?;
 
                 for i in arr {
-                    writeln!(f, "\t{i},")?;
+                    write!(f, "\t{i},")?;
                 }
 
                 writeln!(f, "]")
@@ -91,7 +92,7 @@ impl Display for Store {
 
 impl Store {
     #[must_use]
-    pub fn new_map(kvs: HashMap<Value, Value>) -> Self {
+    pub fn new_map(kvs: HashMap<String, Value>) -> Self {
         Self::Map { kvs }
     }
 
@@ -102,55 +103,41 @@ impl Store {
 
     ///map: inserts normally
     ///
-    ///arr: assumes k can be a usize, inserts at relevant index. else adds to end
-    pub fn insert(&mut self, k: Value, v: Value) {
+    ///arr: pushes to end
+    pub fn insert(&mut self, k: String, v: Value) {
         match self {
             Self::Map { kvs } => {
                 kvs.insert(k, v);
             }
             Self::Array { arr } => {
-                if let Value::Int(i) = k {
-                    if let Ok(u) = usize::try_from(i) {
-                        let current_len = arr.len();
-
-                        if u < current_len {
-                            arr[u] = v;
-                        } else if u == current_len {
-                            arr.push(v);
-                        } else {
-                            arr.extend(vec![Value::Null; current_len - u]);
-                            arr.push(v);
-                        }
-                    }
-                } else {
-                    arr.push(v);
-                }
+                arr.push(v);
             }
         }
     }
 
-    ///map: noop //TODO: what should this do?
+    ///map: adds to array value
     ///arr: obvs
     pub fn push(&mut self, v: Value) {
         match self {
             Self::Array { arr } => {
                 arr.push(v);
             }
-            Self::Map { .. } => unimplemented!("push should be a noop if not an array"),
+            Self::Map {kvs} => {
+                //TODO: ensure that this key can only be an array
+                let internal_array = kvs.entry("Array".into()).or_insert_with(|| Value::Store(Store::Array {arr: vec![]}));
+                let Value::Store(Store::Array {arr}) = internal_array else {
+                    return;
+                };
+                arr.push(v);
+            }
         }
     }
 
-    pub fn remove(&mut self, k: &Value) -> Option<Value> {
+    ///noop for Array //TODO: should this be a noop?
+    pub fn remove(&mut self, k: &String) -> Option<Value> {
         match self {
             Self::Map { kvs } => kvs.remove(k),
-            Self::Array { arr } => {
-                if let Value::Int(i) = k {
-                    if let Ok(u) = usize::try_from(*i) {
-                        if u < arr.len() {
-                            return Some(arr.remove(u));
-                        }
-                    }
-                }
+            Self::Array { arr: _ } => {
                 None
             }
         }
@@ -171,11 +158,11 @@ impl Store {
         }
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = Value> {
+    pub fn keys(&self) -> impl Iterator<Item = String> {
         match self {
             Self::Map { kvs } => kvs.keys().cloned().collect::<Vec<_>>().into_iter(),
             Self::Array { arr } => (0..arr.len())
-                .map(|x| Value::Int(x.into()))
+                .map(|x| x.to_string())
                 .collect::<Vec<_>>()
                 .into_iter(),
         }
@@ -183,39 +170,27 @@ impl Store {
 
     pub fn values(&self) -> impl Iterator<Item = Value> {
         match self {
-            Self::Map { kvs } => kvs.keys().cloned().collect::<Vec<_>>().into_iter(),
+            Self::Map { kvs } => kvs.values().cloned().collect::<Vec<_>>().into_iter(),
             Self::Array { arr } => arr.clone().into_iter(),
         }
     }
 
     #[must_use]
-    pub fn get(&self, k: &Value) -> Option<&Value> {
+    pub fn get(&self, k: &String) -> Option<&Value> {
         match self {
             Self::Map { kvs } => kvs.get(k),
-            Self::Array { arr } => {
-                if let Value::Int(i) = k {
-                    if let Ok(u) = usize::try_from(*i) {
-                        return arr.get(u);
-                    }
-                }
-
-                None
+            Self::Array { arr: _ } => {
+                None //TODO: should this be a noop as well?
             }
         }
     }
 
     #[must_use]
-    pub fn get_mut(&mut self, k: &Value) -> Option<&mut Value> {
+    pub fn get_mut(&mut self, k: &String) -> Option<&mut Value> {
         match self {
             Self::Map { kvs } => kvs.get_mut(k),
-            Self::Array { arr } => {
-                if let Value::Int(i) = k {
-                    if let Ok(u) = usize::try_from(*i) {
-                        return arr.get_mut(u);
-                    }
-                }
-
-                None
+            Self::Array { arr: _ } => {
+                None //TODO: and this?
             }
         }
     }
@@ -233,14 +208,14 @@ impl Store {
 }
 
 impl IntoIterator for Store {
-    type Item = (Value, Value);
-    type IntoIter = IntoIter<Value, Value>;
+    type Item = (String, Value);
+    type IntoIter = IntoIter<String, Value>;
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
             Store::Map { kvs } => kvs.into_iter(),
             Store::Array { arr } => (0..arr.len())
-                .map(|x| Value::Int(x.into()))
+                .map(|x| x.to_string())
                 .zip(arr)
                 .collect::<HashMap<_, _>>()
                 .into_iter(),
@@ -257,6 +232,7 @@ pub enum StoreError {
     SerdeJson(SJError),
     InvalidVersion(u8),
     NotEnoughBytes,
+    StringEncoding(FromUtf8Error),
 }
 impl Display for StoreError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -267,6 +243,7 @@ impl Display for StoreError {
             Self::CouldntFindKey => write!(f, "Could not find key"),
             Self::SerdeJson(e) => write!(f, "Error de/ser-ing JSON: {e:?}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes"),
+            Self::StringEncoding(e) => write!(f, "Error with UTF-8 encoding: {e:?}")
         }
     }
 }
@@ -284,6 +261,11 @@ impl From<IntegerSerError> for StoreError {
 impl From<SJError> for StoreError {
     fn from(value: SJError) -> Self {
         Self::SerdeJson(value)
+    }
+}
+impl From<FromUtf8Error> for StoreError {
+    fn from(value: FromUtf8Error) -> Self {
+        Self::StringEncoding(value)
     }
 }
 
@@ -309,7 +291,7 @@ impl From<SJValue> for Store {
             SJValue::Object(o) => Self::from(o),
             _ => {
                 let item = Value::from(value);
-                let key = Value::String(String::from("JSON Contents"));
+                let key = String::from("JSON Array");
 
                 let mut map = HashMap::new();
                 map.insert(key, item);
@@ -322,9 +304,8 @@ impl From<Map<String, SJValue>> for Store {
     fn from(o: Map<String, SJValue>) -> Self {
         let mut map = HashMap::new();
         for (k, v) in o {
-            let key = Value::String(k.to_string());
             let val = Value::from(v);
-            map.insert(key, val);
+            map.insert(k, val);
         }
         Self::Map { kvs: map }
     }
@@ -367,10 +348,10 @@ impl Store {
                 res.push(0);
 
                 for (k, v) in kvs {
-                    let ser_key = k.ser()?;
-                    let ser_value = v.ser()?;
+                    res.extend(Integer::usize(k.len()).ser());
+                    res.extend(k.as_bytes());
 
-                    res.extend(ser_key.iter());
+                    let ser_value = v.ser()?;
                     res.extend(ser_value.iter());
                 }
             }
@@ -401,8 +382,13 @@ impl Store {
 
                 let mut kvs = HashMap::new();
                 for _ in 0..length {
-                    let key = Value::deserialise(bytes)?;
-                    let value = Value::deserialise(bytes)?;
+                    let key_len: usize = Integer::deser(bytes)?.try_into()?;
+                    let Some(key) = bytes.read(key_len) else {
+                        return Err(StoreError::NotEnoughBytes);
+                    };
+                    let key = String::from_utf8(key.to_vec())?;
+
+                    let value = Value::deser(bytes)?;
                     kvs.insert(key, value);
                 }
 
@@ -413,7 +399,7 @@ impl Store {
 
                 let mut arr = Vec::with_capacity(len);
                 for _ in 0..len {
-                    arr.push(Value::deserialise(bytes)?);
+                    arr.push(Value::deser(bytes)?);
                 }
 
                 Ok(Self::Array { arr })
@@ -427,19 +413,19 @@ impl Store {
     }
 }
 
-impl Index<Value> for Store {
+impl Index<&String> for Store {
     type Output = Value;
 
-    fn index(&self, index: Value) -> &Self::Output {
-        match self.get(&index) {
+    fn index(&self, index: &String) -> &Self::Output {
+        match self.get(index) { //TODO: can I use something other than specifically a borrowed owned string?
             Some(s) => s,
             None => panic!("unable to find key {index:?}"),
         }
     }
 }
-impl IndexMut<Value> for Store {
-    fn index_mut(&mut self, index: Value) -> &mut Self::Output {
-        match self.get_mut(&index) {
+impl IndexMut<&String> for Store {
+    fn index_mut(&mut self, index: &String) -> &mut Self::Output {
+        match self.get_mut(index) {
             Some(s) => s,
             None => panic!("unable to find key {index:?}"),
         }

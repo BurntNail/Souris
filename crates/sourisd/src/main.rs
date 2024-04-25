@@ -11,16 +11,19 @@ use axum::{
     Router,
 };
 use std::time::Duration;
+use axum::routing::put;
 use tokio::{
     net::TcpListener,
     signal,
     sync::mpsc::{unbounded_channel, UnboundedSender},
     task::JoinHandle,
 };
+use tower_http::trace::TraceLayer;
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use crate::v1_routes::value::{add_kv, get_value};
 
 mod apidoc;
 mod error;
@@ -114,11 +117,14 @@ async fn main() {
         .route("/get_db", get(get_db))
         .route("/add_db", post(add_db))
         .route("/rm_db", post(remove_db))
-        .route("/clear_db", post(clear_db));
+        .route("/clear_db", post(clear_db))
+        .route("/add_kv", put(add_kv))
+        .route("/get_value", get(get_value));
 
     let router = Router::new()
         .nest("/v1", v1_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .layer(TraceLayer::new_for_http())
         .with_state(state.clone());
 
     let listener = TcpListener::bind("127.0.0.1:2256").await.unwrap();

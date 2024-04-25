@@ -14,6 +14,7 @@ pub enum SourisError {
     StoreError(StoreError),
     IO(IOError),
     DatabaseNotFound,
+    KeyNotFound,
 }
 
 impl From<StoreError> for SourisError {
@@ -32,7 +33,7 @@ impl Error for SourisError {
         match self {
             Self::StoreError(e) => Some(e),
             Self::IO(e) => Some(e),
-            Self::DatabaseNotFound => None,
+            _ => None
         }
     }
 }
@@ -43,6 +44,7 @@ impl Display for SourisError {
             Self::StoreError(e) => write!(f, "Error with Souris Store: {e:?}"),
             Self::IO(e) => write!(f, "Error with IO: {e:?}"),
             Self::DatabaseNotFound => write!(f, "Could not find database with name"),
+            Self::KeyNotFound => write!(f, "Could not find value with name in database provided")
         }
     }
 }
@@ -50,9 +52,10 @@ impl Display for SourisError {
 impl IntoResponse for SourisError {
     fn into_response(self) -> Response {
         error!(?self, "Returning error");
+        
         let code = match self {
             Self::IO(_) | Self::StoreError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::DatabaseNotFound => StatusCode::NOT_FOUND,
+            Self::DatabaseNotFound | Self::KeyNotFound => StatusCode::NOT_FOUND,
         };
 
         (code, format!("{self:?}")).into_response()
