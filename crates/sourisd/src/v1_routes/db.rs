@@ -5,33 +5,19 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use utoipa::{IntoParams, ToSchema};
 use sourisdb::store::Store;
 
-#[derive(Deserialize, ToSchema)]
-#[schema(example = json!({"name": "my database", "overwrite_existing": false}))]
+#[derive(Deserialize)]
 pub struct NewDB {
     pub name: String,
     pub overwrite_existing: bool,
 }
 
-#[derive(Deserialize, ToSchema, IntoParams)]
-#[schema(example = json!({"name": "my database"}))]
+#[derive(Deserialize)]
 pub struct DbByName {
     pub name: String,
 }
 
-
-
-#[utoipa::path(
-    post,
-    path = "/v1/add_db",
-    request_body = NewDB,
-    responses(
-        (status = OK, description = "Found an existing database"),
-        (status = CREATED, description = "Created a new database")
-    )
-)]
 pub async fn add_db(
     State(state): State<SourisState>,
     Json(NewDB {
@@ -52,15 +38,6 @@ pub async fn add_db(
     })
 }
 
-#[utoipa::path(
-    post,
-    path = "/v1/clear_db",
-    request_body = DbByName,
-    responses(
-        (status = OK, description = "Found an existing database and cleared it"),
-        (status = NOT_FOUND, description = "Unable to find the database")
-    )
-)]
 pub async fn clear_db(
     State(state): State<SourisState>,
     Json(DbByName { name }): Json<DbByName>,
@@ -72,15 +49,6 @@ pub async fn clear_db(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/v1/rm_db",
-    request_body = DbByName,
-    responses(
-        (status = OK, description = "Found an existing database and deleted it"),
-        (status = NOT_FOUND, description = "Unable to find the database")
-    )
-)]
 pub async fn remove_db(
     State(state): State<SourisState>,
     Json(DbByName { name }): Json<DbByName>,
@@ -92,24 +60,13 @@ pub async fn remove_db(
     })
 }
 
-#[utoipa::path(
-    get,
-    path = "/v1/get_db",
-    params(DbByName),
-    responses(
-        (status = OK, description = "Found database"),
-        (status = NOT_FOUND, description = "Unable to find database")
-    )
-)]
 #[axum::debug_handler]
 pub async fn get_db(
     State(state): State<SourisState>,
     Query(DbByName { name }): Query<DbByName>,
 ) -> Result<Json<Store>, SourisError> {
     match state.get_db(name).await {
-        Some(db) => {
-            Ok(Json(db))
-        },
+        Some(db) => Ok(Json(db)),
         None => Err(SourisError::DatabaseNotFound),
     }
 }

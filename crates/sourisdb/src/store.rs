@@ -4,11 +4,10 @@ use crate::{
     values::{Value, ValueSerError},
 };
 use alloc::{
-    string::{String, ToString},
+    string::{FromUtf8Error, String, ToString},
     vec,
     vec::Vec,
 };
-use alloc::string::FromUtf8Error;
 use core::{
     fmt::{Display, Formatter},
     ops::{Index, IndexMut},
@@ -122,10 +121,12 @@ impl Store {
             Self::Array { arr } => {
                 arr.push(v);
             }
-            Self::Map {kvs} => {
+            Self::Map { kvs } => {
                 //TODO: ensure that this key can only be an array
-                let internal_array = kvs.entry("Array".into()).or_insert_with(|| Value::Store(Store::Array {arr: vec![]}));
-                let Value::Store(Store::Array {arr}) = internal_array else {
+                let internal_array = kvs
+                    .entry("Array".into())
+                    .or_insert_with(|| Value::Store(Store::Array { arr: vec![] }));
+                let Value::Store(Store::Array { arr }) = internal_array else {
                     return;
                 };
                 arr.push(v);
@@ -137,9 +138,7 @@ impl Store {
     pub fn remove(&mut self, k: &String) -> Option<Value> {
         match self {
             Self::Map { kvs } => kvs.remove(k),
-            Self::Array { arr: _ } => {
-                None
-            }
+            Self::Array { arr: _ } => None,
         }
     }
 
@@ -243,7 +242,7 @@ impl Display for StoreError {
             Self::CouldntFindKey => write!(f, "Could not find key"),
             Self::SerdeJson(e) => write!(f, "Error de/ser-ing JSON: {e:?}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes"),
-            Self::StringEncoding(e) => write!(f, "Error with UTF-8 encoding: {e:?}")
+            Self::StringEncoding(e) => write!(f, "Error with UTF-8 encoding: {e:?}"),
         }
     }
 }
@@ -417,7 +416,8 @@ impl Index<&String> for Store {
     type Output = Value;
 
     fn index(&self, index: &String) -> &Self::Output {
-        match self.get(index) { //TODO: can I use something other than specifically a borrowed owned string?
+        match self.get(index) {
+            //TODO: can I use something other than specifically a borrowed owned string?
             Some(s) => s,
             None => panic!("unable to find key {index:?}"),
         }

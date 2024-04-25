@@ -2,16 +2,17 @@
 extern crate tracing;
 
 use crate::{
-    apidoc::ApiDoc,
     state::SourisState,
-    v1_routes::db::{add_db, clear_db, get_db, remove_db},
+    v1_routes::{
+        db::{add_db, clear_db, get_db, remove_db},
+        value::{add_kv, get_value},
+    },
 };
 use axum::{
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use std::time::Duration;
-use axum::routing::put;
 use tokio::{
     net::TcpListener,
     signal,
@@ -21,11 +22,7 @@ use tokio::{
 use tower_http::trace::TraceLayer;
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
-use crate::v1_routes::value::{add_kv, get_value};
 
-mod apidoc;
 mod error;
 mod state;
 mod v1_routes;
@@ -123,7 +120,6 @@ async fn main() {
 
     let router = Router::new()
         .nest("/v1", v1_router)
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(TraceLayer::new_for_http())
         .with_state(state.clone());
 

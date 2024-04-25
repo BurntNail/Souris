@@ -92,21 +92,21 @@ impl SourisState {
     }
 
     ///returns whether we had to create a new DB
-    pub async fn add_key_value_pair (&self, db: String, k: String, v: Value) -> bool {
+    pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) -> bool {
         let mut dbs = self.dbs.lock().await;
-        
+
         let mut had_to_create = false;
         let db = dbs.entry(db).or_insert_with(|| {
             had_to_create = true;
             Store::default()
         });
-        
+
         db.insert(k, v);
-        
+
         had_to_create
     }
 
-    pub async fn get_value (&self, db: String, k: &String) -> Result<Value, SourisError> {
+    pub async fn get_value(&self, db: String, k: &String) -> Result<Value, SourisError> {
         let dbs = self.dbs.lock().await;
         let Some(db) = dbs.get(&db) else {
             return Err(SourisError::DatabaseNotFound);
@@ -205,7 +205,7 @@ impl SourisState {
             base_location,
             dbs: Arc::new(Mutex::new(dbs)),
         };
-        
+
         Ok(s)
     }
 

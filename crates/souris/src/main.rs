@@ -134,7 +134,9 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
 
-            let key = Input::with_theme(&theme).with_prompt("Please enter the key: ").interact()?;
+            let key = Input::with_theme(&theme)
+                .with_prompt("Please enter the key: ")
+                .interact()?;
             let value = get_value_from_stdin("Please enter the value:", &theme)?;
 
             println!();
@@ -393,7 +395,9 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                     let mut map = HashMap::new();
 
                     for _ in 0..length {
-                        let key: String = Input::with_theme(theme).with_prompt("Please enter the key: ").interact()?;
+                        let key: String = Input::with_theme(theme)
+                            .with_prompt("Please enter the key: ")
+                            .interact()?;
                         let value = get_value_from_stdin("Please enter a value", theme)?;
 
                         map.insert(key, value);
@@ -411,7 +415,9 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                             break;
                         }
 
-                        let key: String = Input::with_theme(theme).with_prompt("Please enter the key: ").interact()?;
+                        let key: String = Input::with_theme(theme)
+                            .with_prompt("Please enter the key: ")
+                            .interact()?;
                         let value = get_value_from_stdin("Please enter a value", theme)?;
 
                         map.insert(key, value);

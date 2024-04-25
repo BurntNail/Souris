@@ -329,11 +329,10 @@ impl Integer {
         let stored_size_disc = match INTEGER_BITS {
             5 => (stored_size as u8) << 1,
             4 => (stored_size as u8) << 2,
-            _ => unimplemented!("wrong INTEGER_BITS")
+            _ => unimplemented!("wrong INTEGER_BITS"),
         }; //TODO: fix this?
-        
-        let discriminant: u8 =
-            (u8::from(self.signed_state) << 6) | stored_size_disc;
+
+        let discriminant: u8 = (u8::from(self.signed_state) << 6) | stored_size_disc;
         res.push(discriminant);
         res.extend(&bytes[0..stored_size]);
 
@@ -347,19 +346,14 @@ impl Integer {
             };
             let discriminant = *discriminant;
             let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-            
-            let stored = match INTEGER_BITS {
-                5 => {
-                    usize::from((discriminant & 0b0011_1110) >> 1)
-                },
-                4 => {
-                    usize::from((discriminant & 0b0011_1100) >> 2)
-                },
-                _ => unimplemented!("didn't expect to deal with {INTEGER_BITS}")
-            };
-            
-            #[allow(clippy::items_after_statements)]
 
+            let stored = match INTEGER_BITS {
+                5 => usize::from((discriminant & 0b0011_1110) >> 1),
+                4 => usize::from((discriminant & 0b0011_1100) >> 2),
+                _ => unimplemented!("didn't expect to deal with {INTEGER_BITS}"),
+            };
+
+            #[allow(clippy::items_after_statements)]
             (signed_state, stored)
         };
 
