@@ -133,24 +133,14 @@ impl IntegerDiscriminant {
         }
     }
 
-    pub fn iterator_to_size_can_fit_in(
-        iter: impl Iterator<Item = u8> + DoubleEndedIterator + ExactSizeIterator,
-        iter_len: usize,
+    pub fn ilog2_to_size(
+        ilog2: u32
     ) -> Self {
-        let mut last_zeroed = iter_len;
-        for (i, b) in iter.enumerate().rev() {
-            if b != 0 {
-                break;
-            }
-
-            last_zeroed = i;
-        }
-
-        if last_zeroed < 2 {
+        if ilog2 < 9 {
             IntegerDiscriminant::Small
-        } else if last_zeroed < 3 {
+        } else if ilog2 < 17 {
             IntegerDiscriminant::Smedium
-        } else if last_zeroed < 5 {
+        } else if ilog2 < 33 {
             IntegerDiscriminant::Medium
         } else {
             IntegerDiscriminant::Large
@@ -272,6 +262,8 @@ impl FromStr for Integer {
 
         let biggest: u64 = s.parse()?;
         let biggest_bytes = biggest.to_le_bytes();
+        
+        //TODO: use ilog2
 
         Ok(if biggest < 1 << 8 {
             Self {
@@ -398,6 +390,8 @@ impl Integer {
         //2 bit: signed state
         //3 bits: original size
         //3 bits: stored size
+        
+        //TODO: use ilog2
 
         let original_size = self.as_disc();
         let mut at_max = [0_u8; 8];
@@ -452,6 +446,8 @@ impl Integer {
         let read_bytes = reader
             .read(stored.bytes())
             .ok_or(IntegerSerError::NotEnoughBytes)?;
+        
+        //TODO: you guessed it, ilog2
 
         Ok(match original {
             IntegerDiscriminant::Small => {
