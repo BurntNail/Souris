@@ -18,9 +18,9 @@ pub enum SignedState {
 ///size of the backing integer
 type BiggestInt = u128;
 type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
-///# of bytes for storing one BiggestInt
+///# of bytes for storing one `BiggestInt`
 const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated and this is clearer
-///# of bits to store a number from 0 to INTEGER_MAX_SIZE in the discriminant
+///# of bits to store a number from 0 to `INTEGER_MAX_SIZE` in the discriminant
 const INTEGER_DISCRIMINANT_BITS: usize = INTEGER_MAX_SIZE.ilog2() as usize + 1;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -343,8 +343,7 @@ impl Integer {
     pub fn deser(reader: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
         const fn discriminant_mask() -> u8 {
             let base: u8 = (1 << INTEGER_DISCRIMINANT_BITS) - 1; //construct INTEGER_BITS bits at the end
-            let moved = base << (8 - (INTEGER_DISCRIMINANT_BITS + 2)); //move them forward until there's only two bits left at the front
-            moved
+            base << (8 - (INTEGER_DISCRIMINANT_BITS + 2)) //move them forward until there's only two bits left at the front
         }
 
         let (signed_state, stored) = {
