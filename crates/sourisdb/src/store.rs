@@ -68,19 +68,37 @@ impl Display for Store {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Map { kvs } => {
-                write!(f, "{{")?;
+                if kvs.is_empty() {
+                    return writeln!(f, "{{}}");
+                }
 
-                for (k, v) in kvs {
-                    write!(f, "\t{k}: {v},")?; //TODO: fix first/last element etc
+                write!(f, "{{")?;
+                let len = kvs.len();
+
+                for (i, (k, v)) in kvs.into_iter().enumerate() {
+                    if i == len - 1 {
+                        write!(f, "{k}: {v}")?;
+                    } else {
+                        write!(f, "{k}: {v},")?;
+                    }
                 }
 
                 writeln!(f, "}}")
             }
             Self::Array { arr } => {
-                write!(f, "[")?;
+                if arr.is_empty() {
+                    return writeln!(f, "[]");
+                }
 
-                for i in arr {
-                    write!(f, "\t{i},")?;
+                write!(f, "[")?;
+                let len = arr.len();
+
+                for (i, v) in arr.into_iter().enumerate() {
+                    if i == len - 1 {
+                        write!(f, "{v}")?;
+                    } else {
+                        write!(f, "{v},")?;
+                    }
                 }
 
                 writeln!(f, "]")
