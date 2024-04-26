@@ -15,8 +15,13 @@ pub enum SignedState {
     SignedNegative,
 }
 
-const INTEGER_MAX_SIZE: usize = 16;
-const INTEGER_BITS: usize = 5;
+///size of the backing integer
+type BiggestInt = u128;
+type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
+///# of bytes for storing one BiggestInt
+const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated and this is clearer
+///# of bits to store a number from 0 to INTEGER_MAX_SIZE in the discriminant
+const INTEGER_DISCRIMINANT_BITS: usize = INTEGER_MAX_SIZE.ilog2() as usize + 1;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -42,7 +47,7 @@ impl Neg for Integer {
 
 impl Integer {
     fn unsigned_bits(&self) -> u32 {
-        let x = u128::from_le_bytes(self.content);
+        let x = BiggestInt::from_le_bytes(self.content);
         if x == 0 {
             0
         } else {
@@ -70,10 +75,10 @@ impl Display for Integer {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.signed_state {
             SignedState::SignedNegative => {
-                write!(f, "{}", -i128::from_le_bytes(self.content))
+                write!(f, "{}", -BiggestIntButSigned::from_le_bytes(self.content))
             }
             _ => {
-                write!(f, "{}", u128::from_le_bytes(self.content))
+                write!(f, "{}", BiggestInt::from_le_bytes(self.content))
             }
         }
     }
@@ -241,7 +246,7 @@ impl FromStr for Integer {
             (s, SignedState::Unsigned)
         };
 
-        let content: u128 = s.parse()?;
+        let content: BiggestInt = s.parse()?;
 
         Ok(Self {
             signed_state,
@@ -326,11 +331,7 @@ impl Integer {
         let bytes = self.content;
 
         let mut res = Vec::with_capacity(1 + stored_size);
-        let stored_size_disc = match INTEGER_BITS {
-            5 => (stored_size as u8) << 1,
-            4 => (stored_size as u8) << 2,
-            _ => unimplemented!("wrong INTEGER_BITS"),
-        }; //TODO: fix this?
+        let stored_size_disc = (stored_size as u8) << (8 - (2 + INTEGER_DISCRIMINANT_BITS));
 
         let discriminant: u8 = (u8::from(self.signed_state) << 6) | stored_size_disc;
         res.push(discriminant);
@@ -340,18 +341,20 @@ impl Integer {
     }
 
     pub fn deser(reader: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
+        const fn discriminant_mask() -> u8 {
+            let base: u8 = (1 << INTEGER_DISCRIMINANT_BITS) - 1; //construct INTEGER_BITS bits at the end
+            let moved = base << (8 - (INTEGER_DISCRIMINANT_BITS + 2)); //move them forward until there's only two bits left at the front
+            moved
+        }
+
         let (signed_state, stored) = {
             let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)? else {
                 unreachable!("didn't get just one byte back")
             };
             let discriminant = *discriminant;
             let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-
-            let stored = match INTEGER_BITS {
-                5 => usize::from((discriminant & 0b0011_1110) >> 1),
-                4 => usize::from((discriminant & 0b0011_1100) >> 2),
-                _ => unimplemented!("didn't expect to deal with {INTEGER_BITS}"),
-            };
+            let stored =
+                usize::from((discriminant & discriminant_mask()) >> (8 - (2 + INTEGER_DISCRIMINANT_BITS)));
 
             #[allow(clippy::items_after_statements)]
             (signed_state, stored)
