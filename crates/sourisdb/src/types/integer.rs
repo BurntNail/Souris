@@ -352,8 +352,9 @@ impl Integer {
             };
             let discriminant = *discriminant;
             let signed_state = SignedState::try_from((discriminant & 0b1100_0000) >> 6)?;
-            let stored =
-                usize::from((discriminant & discriminant_mask()) >> (8 - (2 + INTEGER_DISCRIMINANT_BITS)));
+            let stored = usize::from(
+                (discriminant & discriminant_mask()) >> (8 - (2 + INTEGER_DISCRIMINANT_BITS)),
+            );
 
             #[allow(clippy::items_after_statements)]
             (signed_state, stored)

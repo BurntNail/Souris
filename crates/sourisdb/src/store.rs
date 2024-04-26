@@ -111,12 +111,11 @@ const ARRAY_KEY: &str = "Array";
 
 impl Store {
     pub fn new_map(kvs: HashMap<String, Value>) -> Result<Self, StoreError> {
-        fn validate_store (store: &Store) -> bool {
+        fn validate_store(store: &Store) -> bool {
             for v in store.values() {
                 if let Value::Store(s) = v {
-
                     if let Some(a) = s.get(&ARRAY_KEY.to_string()) {
-                        let Value::Store(Store::Array {arr: _arr}) = a else {
+                        let Value::Store(Store::Array { arr: _arr }) = a else {
                             return false;
                         };
                     }
@@ -153,11 +152,14 @@ impl Store {
                     let internal_array = kvs
                         .entry(ARRAY_KEY.into())
                         .or_insert_with(|| Value::Store(Store::Array { arr: vec![] }));
-                    let Value::Store(Store::Array { arr: internal_array }) = internal_array else {
+                    let Value::Store(Store::Array {
+                        arr: internal_array,
+                    }) = internal_array
+                    else {
                         unreachable!("this should always be an array");
                     };
 
-                    if let Value::Store(Store::Array {arr}) = v {
+                    if let Value::Store(Store::Array { arr }) = v {
                         internal_array.extend(arr);
                     } else {
                         internal_array.push(v);
@@ -289,7 +291,7 @@ pub enum StoreError {
     InvalidVersion(u8),
     NotEnoughBytes,
     StringEncoding(FromUtf8Error),
-    FoundArrayKeyThatWasntArray
+    FoundArrayKeyThatWasntArray,
 }
 impl Display for StoreError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -301,7 +303,10 @@ impl Display for StoreError {
             Self::SerdeJson(e) => write!(f, "Error de/ser-ing JSON: {e:?}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes"),
             Self::StringEncoding(e) => write!(f, "Error with UTF-8 encoding: {e:?}"),
-            Self::FoundArrayKeyThatWasntArray => write!(f, "Found key named {ARRAY_KEY:?} that did not contain an array")
+            Self::FoundArrayKeyThatWasntArray => write!(
+                f,
+                "Found key named {ARRAY_KEY:?} that did not contain an array"
+            ),
         }
     }
 }
