@@ -426,7 +426,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                     map
                 };
 
-                Value::Store(Store::new_map(map))
+                Value::Store(Store::new_map(map)?)
             }
         }
         ValueTy::Null => Value::Null,

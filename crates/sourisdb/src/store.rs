@@ -93,7 +93,7 @@ impl Display for Store {
                 write!(f, "[")?;
                 let len = arr.len();
 
-                for (i, v) in arr.into_iter().enumerate() {
+                for (i, v) in arr.iter().enumerate() {
                     if i == len - 1 {
                         write!(f, "{v}")?;
                     } else {
@@ -107,10 +107,35 @@ impl Display for Store {
     }
 }
 
+const ARRAY_KEY: &str = "Array";
+
 impl Store {
-    #[must_use]
-    pub fn new_map(kvs: HashMap<String, Value>) -> Self {
-        Self::Map { kvs }
+    pub fn new_map(kvs: HashMap<String, Value>) -> Result<Self, StoreError> {
+        fn validate_store (store: &Store) -> bool {
+            for v in store.values() {
+                if let Value::Store(s) = v {
+
+                    if let Some(a) = s.get(&ARRAY_KEY.to_string()) {
+                        let Value::Store(Store::Array {arr: _arr}) = a else {
+                            return false;
+                        };
+                    }
+
+                    if !validate_store(&s) {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        }
+
+        let trial = Self::Map { kvs };
+        if validate_store(&trial) {
+            Ok(trial)
+        } else {
+            Err(StoreError::FoundArrayKeyThatWasntArray)
+        }
     }
 
     #[must_use]
@@ -124,7 +149,22 @@ impl Store {
     pub fn insert(&mut self, k: String, v: Value) {
         match self {
             Self::Map { kvs } => {
-                kvs.insert(k, v);
+                if k == ARRAY_KEY {
+                    let internal_array = kvs
+                        .entry(ARRAY_KEY.into())
+                        .or_insert_with(|| Value::Store(Store::Array { arr: vec![] }));
+                    let Value::Store(Store::Array { arr: internal_array }) = internal_array else {
+                        unreachable!("this should always be an array");
+                    };
+
+                    if let Value::Store(Store::Array {arr}) = v {
+                        internal_array.extend(arr);
+                    } else {
+                        internal_array.push(v);
+                    }
+                } else {
+                    kvs.insert(k, v);
+                }
             }
             Self::Array { arr } => {
                 arr.push(v);
@@ -140,12 +180,11 @@ impl Store {
                 arr.push(v);
             }
             Self::Map { kvs } => {
-                //TODO: ensure that this key can only be an array
                 let internal_array = kvs
-                    .entry("Array".into())
+                    .entry(ARRAY_KEY.into())
                     .or_insert_with(|| Value::Store(Store::Array { arr: vec![] }));
                 let Value::Store(Store::Array { arr }) = internal_array else {
-                    return;
+                    unreachable!("this should always be an array");
                 };
                 arr.push(v);
             }
@@ -250,6 +289,7 @@ pub enum StoreError {
     InvalidVersion(u8),
     NotEnoughBytes,
     StringEncoding(FromUtf8Error),
+    FoundArrayKeyThatWasntArray
 }
 impl Display for StoreError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -261,6 +301,7 @@ impl Display for StoreError {
             Self::SerdeJson(e) => write!(f, "Error de/ser-ing JSON: {e:?}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes"),
             Self::StringEncoding(e) => write!(f, "Error with UTF-8 encoding: {e:?}"),
+            Self::FoundArrayKeyThatWasntArray => write!(f, "Found key named {ARRAY_KEY:?} that did not contain an array")
         }
     }
 }
