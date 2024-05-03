@@ -22,6 +22,7 @@ use serde_json::{Error as SJError, Value as SJValue};
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(untagged))]
 pub enum Value {
     Ch(char),
     String(String),
@@ -32,7 +33,7 @@ pub enum Value {
     Timestamp(Timestamp),
     JSON(SJValue),
     Store(Store),
-    Null,
+    Null(Option<()>),
     Float(f64), //TODO: optimise storage?
 }
 
@@ -52,7 +53,7 @@ impl PartialEq for Value {
             (Self::Timestamp(t), Self::Timestamp(t2)) => t.eq(t2),
             (Self::JSON(j), Self::JSON(j2)) => j.eq(j2),
             (Self::Store(s), Self::Store(s2)) => s.eq(s2),
-            (Self::Null, Self::Null) => true,
+            (Self::Null(_), Self::Null(_)) => true,
             (Self::Float(f), Self::Float(f2)) => f.eq(f2),
             _ => unreachable!("already checked ty equality"),
         }
@@ -109,7 +110,7 @@ impl Hash for Value {
                 .hash(state);
                 f.to_le_bytes().hash(state);
             }
-            Value::Null => {}
+            Value::Null(_) => {}
         }
     }
 }
@@ -131,7 +132,7 @@ impl Debug for Value {
             Self::JSON(v) => s.field("content", v),
             Self::Store(store) => s.field("content", store),
             Self::Float(f) => s.field("content", f),
-            Self::Null => s.field("content", &Option::<()>::None),
+            Self::Null(o) => s.field("content", &o),
         };
 
         s.finish()
@@ -159,7 +160,7 @@ impl Display for Value {
             Self::JSON(v) => write!(f, "{v}"),
             Self::Store(s) => write!(f, "{s}"),
             Self::Float(fl) => write!(f, "{fl:?}"),
-            Self::Null => write!(f, "{:?}", Option::<()>::None),
+            Self::Null(o) => write!(f, "{:?}", o),
         }
     }
 }
@@ -310,7 +311,7 @@ impl std::error::Error for ValueSerError {
 impl From<SJValue> for Value {
     fn from(v: SJValue) -> Self {
         match v {
-            SJValue::Null => Value::Null,
+            SJValue::Null => Value::Null(None),
             SJValue::Bool(b) => Value::Bool(b),
             SJValue::Number(n) => {
                 if let Some(neg) = n.as_i64() {
@@ -345,7 +346,7 @@ impl Value {
             Self::JSON(_) => ValueTy::JSON,
             Self::Store(_) => ValueTy::Store,
             Self::Float(_) => ValueTy::Float,
-            Self::Null => ValueTy::Null,
+            Self::Null(_) => ValueTy::Null,
         }
     }
 
@@ -402,7 +403,7 @@ impl Value {
             Self::Store(s) => {
                 res.extend(s.ser()?);
             }
-            Self::Null => {}
+            Self::Null(_) => {}
             Self::Float(f) => {
                 let bytes = f.to_le_bytes();
                 res.extend(bytes.iter()); //TODO: optimise this
@@ -467,7 +468,7 @@ impl Value {
             }
             ValueTy::Bool => Self::Bool((byte & 0b0000_0001) > 0),
             ValueTy::Store => Self::Store(Store::deser(bytes)?),
-            ValueTy::Null => Self::Null,
+            ValueTy::Null => Self::Null(None),
             ValueTy::Float => {
                 let bytes: [u8; 8] = match bytes.read(8).map(TryInto::try_into) {
                     None => return Err(ValueSerError::NotEnoughBytes),

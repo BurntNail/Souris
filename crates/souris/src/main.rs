@@ -429,7 +429,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                 Value::Store(Store::new_map(map)?)
             }
         }
-        ValueTy::Null => Value::Null,
+        ValueTy::Null => Value::Null(None),
         ValueTy::Float => {
             let f: f64 = Input::with_theme(theme)
                 .with_prompt("What float?")
