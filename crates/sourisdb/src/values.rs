@@ -160,7 +160,7 @@ impl Display for Value {
             Self::JSON(v) => write!(f, "{v}"),
             Self::Store(s) => write!(f, "{s}"),
             Self::Float(fl) => write!(f, "{fl:?}"),
-            Self::Null(o) => write!(f, "{:?}", o),
+            Self::Null(o) => write!(f, "{o:?}"),
         }
     }
 }

@@ -8,6 +8,8 @@ use core::{
     num::ParseIntError,
     str::FromStr,
 };
+use core::ops::{Add, Mul, Sub, Div};
+use num_traits::{Bounded, ConstOne, ConstZero, NumCast, One, ToPrimitive, Zero};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SignedState {
@@ -31,109 +33,6 @@ pub struct Integer {
     content: [u8; INTEGER_MAX_SIZE],
 }
 
-#[cfg(feature = "serde")]
-impl serde::Serialize for Integer {
-    fn serialize<S>(&self, serialiser: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let s = *self;
-        if self.signed_state == SignedState::Positive {
-            serialiser.serialize_u128(s.try_into().map_err(serde::ser::Error::custom)?)
-        } else {
-            serialiser.serialize_i128(s.try_into().map_err(serde::ser::Error::custom)?)
-        }
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for Integer {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::Error;
-        struct IntegerVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for IntegerVisitor {
-            type Value = Integer;
-
-            fn expecting(&self, f: &mut Formatter) -> core::fmt::Result {
-                write!(
-                    f,
-                    "An integer between {} and {}",
-                    BiggestInt::MAX,
-                    BiggestIntButSigned::MIN
-                )
-            }
-
-            fn visit_i8<E>(self, v: i8) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_i16<E>(self, v: i16) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_i128<E>(self, v: i128) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-
-            fn visit_u8<E>(self, v: u8) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-            fn visit_u128<E>(self, v: u128) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Ok(Integer::from(v))
-            }
-        }
-
-        deserializer.deserialize_any(IntegerVisitor)
-    }
-}
-
 impl Integer {
     fn unsigned_bits(&self) -> u32 {
         let x = BiggestInt::from_le_bytes(self.content);
@@ -144,7 +43,7 @@ impl Integer {
         }
     }
 
-    ///NB: always <= INTEGER_MAX_SIZE
+    ///NB: always <= `INTEGER_MAX_SIZE`
     fn min_bytes_needed(&self) -> usize {
         ((self.unsigned_bits() / 8) + 1) as usize
     }
@@ -166,7 +65,7 @@ impl Display for Integer {
             SignedState::Negative => {
                 write!(f, "{}", -BiggestIntButSigned::from_le_bytes(self.content))
             }
-            _ => {
+            SignedState::Positive => {
                 write!(f, "{}", BiggestInt::from_le_bytes(self.content))
             }
         }
@@ -187,61 +86,21 @@ impl Debug for Integer {
 }
 
 macro_rules! new_x {
-    ($t:ty => $name:ident) => {
+    ($($t:ty => $name:ident),+) => {
+        $(
         impl Integer {
             #[must_use]
             pub fn $name(n: $t) -> Self {
-                Self::from(n)
+                <Self as From<$t>>::from(n)
             }
         }
-
-        impl From<$t> for Integer {
-            fn from(n: $t) -> Self {
-                let mut content = [0_u8; INTEGER_MAX_SIZE];
-                for (i, b) in n.to_le_bytes().into_iter().enumerate() {
-                    content[i] = b;
-                }
-                Self {
-                    signed_state: SignedState::Positive,
-                    content,
-                }
-            }
-        }
-
-        impl TryFrom<Integer> for $t {
-            type Error = IntegerSerError;
-
-            fn try_from(i: Integer) -> Result<Self, Self::Error> {
-                if i.signed_state == SignedState::Negative {
-                    return Err(IntegerSerError::WrongType);
-                }
-
-                if i.unsigned_bits() > <$t>::BITS {
-                    return Err(IntegerSerError::WrongType);
-                }
-
-                let mut out = [0_u8; (<$t>::BITS / 8) as usize];
-                for (i, b) in i
-                    .content
-                    .into_iter()
-                    .enumerate()
-                    .take((<$t>::BITS / 8) as usize)
-                {
-                    out[i] = b;
-                }
-
-                Ok(<$t>::from_le_bytes(out))
-            }
-        }
+        )+
     };
-    ($t:ty =>> $name:ident) => {
-        impl Integer {
-            #[must_use]
-            pub fn $name(n: $t) -> Self {
-                Self::from(n)
-            }
-        }
+}
 
+macro_rules! from_signed {
+    ($($t:ty),+) => {
+        $(
         impl From<$t> for Integer {
             fn from(n: $t) -> Self {
                 if n == 0 {
@@ -297,21 +156,273 @@ macro_rules! new_x {
                 Ok(<$t>::from_le_bytes(out) * multiplier)
             }
         }
+        )+
+    };
+}
+macro_rules! from_unsigned {
+    ($($t:ty),+) => {
+        $(
+        impl From<$t> for Integer {
+            fn from(n: $t) -> Self {
+                let mut content = [0_u8; INTEGER_MAX_SIZE];
+                for (i, b) in n.to_le_bytes().into_iter().enumerate() {
+                    content[i] = b;
+                }
+                Self {
+                    signed_state: SignedState::Positive,
+                    content,
+                }
+            }
+        }
+        impl TryFrom<Integer> for $t {
+            type Error = IntegerSerError;
+
+            fn try_from(i: Integer) -> Result<Self, Self::Error> {
+                if i.signed_state == SignedState::Negative {
+                    return Err(IntegerSerError::WrongType);
+                }
+
+                if i.unsigned_bits() > <$t>::BITS {
+                    return Err(IntegerSerError::WrongType);
+                }
+
+                let mut out = [0_u8; (<$t>::BITS / 8) as usize];
+                for (i, b) in i
+                    .content
+                    .into_iter()
+                    .enumerate()
+                    .take((<$t>::BITS / 8) as usize)
+                {
+                    out[i] = b;
+                }
+
+                Ok(<$t>::from_le_bytes(out))
+            }
+        }
+        )+
     };
 }
 
-new_x!(u8 => u8);
-new_x!(i8 =>> i8);
-new_x!(u16 => u16);
-new_x!(i16 =>> i16);
-new_x!(u32 => u32);
-new_x!(i32 =>> i32);
-new_x!(usize => usize);
-new_x!(isize =>> isize);
-new_x!(u64 => u64);
-new_x!(i64 =>> i64);
-new_x!(u128 => u128);
-new_x!(i128 =>> i128);
+new_x!(u8 => u8, i8 => i8, u16 => u16, i16 => i16, u32 => u32, i32 => i32, usize => usize, isize => isize, u64 => u64, i64 => i64, u128 => u128, i128 => i128);
+
+from_signed!(i8, i16, i32, i64, isize, i128);
+from_unsigned!(u8, u16, u32, u64, usize, u128);
+
+macro_rules! integer_trait_impl {
+    ($t:ident, $f:ident) => {
+        impl $t<Self, Output=Self> for Integer {
+            type Output = Self;
+
+            fn $f(self, rhs: Self) -> Self::Output {
+                let ss_to_use = match (self.signed_state, rhs.signed_state) {
+                    (SignedState::Positive, SignedState::Positive) => SignedState::Positive,
+                    _ => SignedState::Negative
+                };
+
+
+                match ss_to_use {
+                    SignedState::Positive => {
+                        let Ok(lhs) = BiggestInt::try_from(self) else {
+                            panic!("integer too big to fit into u128")
+                        };
+                        let Ok(rhs) = BiggestInt::try_from(rhs) else {
+                            panic!("integer too big to fit into u128")
+                        };
+
+                        <Self as From<BiggestInt>>::from($t::$f(lhs, rhs))
+                    }
+                    SignedState::Negative => {
+                        let Ok(lhs) = BiggestIntButSigned::try_from(self) else {
+                            panic!("integer too big to fit into i128")
+                        };
+                        let Ok(rhs) = BiggestIntButSigned::try_from(rhs) else {
+                            panic!("integer too big to fit into i128")
+                        };
+
+                        <Self as From<BiggestIntButSigned>>::from($t::$f(lhs, rhs))
+                    }
+                }
+            }
+        }
+    };
+}
+integer_trait_impl!(Add, add);
+integer_trait_impl!(Sub, sub);
+integer_trait_impl!(Mul, mul);
+integer_trait_impl!(Div, div);
+
+
+impl Bounded for Integer {
+    fn min_value() -> Self {
+        <Integer as From<BiggestIntButSigned>>::from(BiggestIntButSigned::MIN)
+    }
+
+    fn max_value() -> Self {
+        <Integer as From<BiggestInt>>::from(BiggestInt::MAX)
+    }
+}
+impl ToPrimitive for Integer {
+    fn to_i64(&self) -> Option<i64> {
+        (*self).try_into().ok()
+    }
+
+    fn to_i128(&self) -> Option<i128> {
+        (*self).try_into().ok()
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        (*self).try_into().ok()
+    }
+    fn to_u128(&self) -> Option<u128> {
+        (*self).try_into().ok()
+    }
+}
+impl NumCast for Integer {
+    #[allow(clippy::manual_map)]
+    fn from<T: ToPrimitive> (n: T) -> Option<Self> {
+        if let Some(i) = n.to_i128() {
+            Some(<Self as From<BiggestIntButSigned>>::from(i))
+        } else if let Some(u) = n.to_u128() {
+            Some(<Self as From<BiggestInt>>::from(u))
+        } else {
+            None
+        }
+    }
+}
+
+impl One for Integer {
+    fn one() -> Self {
+        1_u128.into()
+    }
+}
+
+impl ConstOne for Integer {
+    const ONE: Self = Self {
+        signed_state: SignedState::Positive,
+        content: 1_u128.to_le_bytes()
+    };
+}
+
+impl Zero for Integer {
+    fn zero() -> Self {
+        0_u128.into()
+    }
+
+    fn is_zero(&self) -> bool {
+        self.content.iter().all(|x| *x == 0)
+    }
+}
+
+impl ConstZero for Integer {
+    const ZERO: Self = Self {
+        signed_state: SignedState::Positive,
+        content: [0; (BiggestInt::BITS / 8) as usize]
+    };
+}
+
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Integer {
+    fn serialize<S>(&self, serialiser: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+    {
+        let s = *self;
+        if self.signed_state == SignedState::Positive {
+            serialiser.serialize_u128(s.try_into().map_err(serde::ser::Error::custom)?)
+        } else {
+            serialiser.serialize_i128(s.try_into().map_err(serde::ser::Error::custom)?)
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Integer {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+        struct IntegerVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for IntegerVisitor {
+            type Value = Integer;
+
+            fn expecting(&self, f: &mut Formatter) -> core::fmt::Result {
+                write!(
+                    f,
+                    "An integer between {} and {}",
+                    BiggestInt::MAX,
+                    BiggestIntButSigned::MIN
+                )
+            }
+
+            fn visit_i8<E>(self, v: i8) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<i8>>::from(v))
+            }
+            fn visit_i16<E>(self, v: i16) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<i16>>::from(v))
+            }
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<i32>>::from(v))
+            }
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<i64>>::from(v))
+            }
+            fn visit_i128<E>(self, v: i128) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<i128>>::from(v))
+            }
+
+            fn visit_u8<E>(self, v: u8) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<u8>>::from(v))
+            }
+            fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<u16>>::from(v))
+            }
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<u32>>::from(v))
+            }
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<u64>>::from(v))
+            }
+            fn visit_u128<E>(self, v: u128) -> Result<Self::Value, E>
+                where
+                    E: Error,
+            {
+                Ok(<Integer as From<u128>>::from(v))
+            }
+        }
+
+        deserializer.deserialize_any(IntegerVisitor)
+    }
+}
 
 impl FromStr for Integer {
     type Err = IntegerSerError;
@@ -422,7 +533,7 @@ impl Integer {
         let mut res = Vec::with_capacity(1 + stored_size);
         let stored_size_disc =
             (stored_size as u8) << (8 - (INTEGER_DISCRIMINANT_BITS + SIGNED_BITS));
-        let signed_state_disc = u8::from(self.signed_state) << (8 - SIGNED_BITS);
+        let signed_state_disc = <u8 as From<SignedState>>::from(self.signed_state) << (8 - SIGNED_BITS);
 
         let discriminant: u8 = signed_state_disc | stored_size_disc;
         res.push(discriminant);
@@ -449,7 +560,7 @@ impl Integer {
             let signed_state = SignedState::try_from(
                 (discriminant & signed_discriminant_mask()) >> (8 - SIGNED_BITS),
             )?;
-            let stored = usize::from(
+            let stored = <usize as From<u8>>::from(
                 (discriminant & size_discriminant_mask())
                     >> (8 - (INTEGER_DISCRIMINANT_BITS + SIGNED_BITS)),
             );
