@@ -6,9 +6,9 @@ use alloc::{
 use core::{
     fmt::{Debug, Display, Formatter},
     num::ParseIntError,
+    ops::{Add, Div, Mul, Sub},
     str::FromStr,
 };
-use core::ops::{Add, Mul, Sub, Div};
 use num_traits::{Bounded, ConstOne, ConstZero, NumCast, One, ToPrimitive, Zero};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
@@ -210,15 +210,14 @@ from_unsigned!(u8, u16, u32, u64, usize, u128);
 
 macro_rules! integer_trait_impl {
     ($t:ident, $f:ident) => {
-        impl $t<Self, Output=Self> for Integer {
+        impl $t<Self, Output = Self> for Integer {
             type Output = Self;
 
             fn $f(self, rhs: Self) -> Self::Output {
                 let ss_to_use = match (self.signed_state, rhs.signed_state) {
                     (SignedState::Positive, SignedState::Positive) => SignedState::Positive,
-                    _ => SignedState::Negative
+                    _ => SignedState::Negative,
                 };
-
 
                 match ss_to_use {
                     SignedState::Positive => {
@@ -251,7 +250,6 @@ integer_trait_impl!(Sub, sub);
 integer_trait_impl!(Mul, mul);
 integer_trait_impl!(Div, div);
 
-
 impl Bounded for Integer {
     fn min_value() -> Self {
         <Integer as From<BiggestIntButSigned>>::from(BiggestIntButSigned::MIN)
@@ -279,7 +277,7 @@ impl ToPrimitive for Integer {
 }
 impl NumCast for Integer {
     #[allow(clippy::manual_map)]
-    fn from<T: ToPrimitive> (n: T) -> Option<Self> {
+    fn from<T: ToPrimitive>(n: T) -> Option<Self> {
         if let Some(i) = n.to_i128() {
             Some(<Self as From<BiggestIntButSigned>>::from(i))
         } else if let Some(u) = n.to_u128() {
@@ -299,7 +297,7 @@ impl One for Integer {
 impl ConstOne for Integer {
     const ONE: Self = Self {
         signed_state: SignedState::Positive,
-        content: 1_u128.to_le_bytes()
+        content: 1_u128.to_le_bytes(),
     };
 }
 
@@ -316,16 +314,15 @@ impl Zero for Integer {
 impl ConstZero for Integer {
     const ZERO: Self = Self {
         signed_state: SignedState::Positive,
-        content: [0; (BiggestInt::BITS / 8) as usize]
+        content: [0; (BiggestInt::BITS / 8) as usize],
     };
 }
-
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Integer {
     fn serialize<S>(&self, serialiser: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
+    where
+        S: serde::Serializer,
     {
         let s = *self;
         if self.signed_state == SignedState::Positive {
@@ -339,8 +336,8 @@ impl serde::Serialize for Integer {
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Integer {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
+    where
+        D: serde::Deserializer<'de>,
     {
         use serde::de::Error;
         struct IntegerVisitor;
@@ -358,63 +355,63 @@ impl<'de> serde::Deserialize<'de> for Integer {
             }
 
             fn visit_i8<E>(self, v: i8) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<i8>>::from(v))
             }
             fn visit_i16<E>(self, v: i16) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<i16>>::from(v))
             }
             fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<i32>>::from(v))
             }
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<i64>>::from(v))
             }
             fn visit_i128<E>(self, v: i128) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<i128>>::from(v))
             }
 
             fn visit_u8<E>(self, v: u8) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<u8>>::from(v))
             }
             fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<u16>>::from(v))
             }
             fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<u32>>::from(v))
             }
             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<u64>>::from(v))
             }
             fn visit_u128<E>(self, v: u128) -> Result<Self::Value, E>
-                where
-                    E: Error,
+            where
+                E: Error,
             {
                 Ok(<Integer as From<u128>>::from(v))
             }
@@ -533,7 +530,8 @@ impl Integer {
         let mut res = Vec::with_capacity(1 + stored_size);
         let stored_size_disc =
             (stored_size as u8) << (8 - (INTEGER_DISCRIMINANT_BITS + SIGNED_BITS));
-        let signed_state_disc = <u8 as From<SignedState>>::from(self.signed_state) << (8 - SIGNED_BITS);
+        let signed_state_disc =
+            <u8 as From<SignedState>>::from(self.signed_state) << (8 - SIGNED_BITS);
 
         let discriminant: u8 = signed_state_disc | stored_size_disc;
         res.push(discriminant);
