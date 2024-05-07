@@ -35,8 +35,6 @@ impl SourisState {
     pub async fn new_db(&self, key: String) -> Result<bool, SourisError> {
         let mut dbs = self.dbs.lock().await;
 
-        println!("Here");
-
         if dbs.contains_key(&key) {
             trace!(
                 ?key,
@@ -46,13 +44,6 @@ impl SourisState {
         }
 
         dbs.insert(key.clone(), Store::default());
-
-        let blank = Store::default().ser()?;
-        let file_name = self.base_location.join(format!("{key}.sdb"));
-        let mut file = File::create(&file_name).await?;
-        info!(?file_name, "Writing blank SDB");
-
-        file.write_all(&blank).await?;
 
         Ok(false)
     }
@@ -91,19 +82,17 @@ impl SourisState {
         dbs.get(&name).cloned()
     }
 
-    ///returns whether we had to create a new DB
+    ///returns whether the value was inserted - could fail if the database didn't exist
     pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) -> bool {
         let mut dbs = self.dbs.lock().await;
 
-        let mut had_to_create = false;
-        let db = dbs.entry(db).or_insert_with(|| {
-            had_to_create = true;
-            Store::default()
-        });
+        let Some(db) = dbs.get_mut(&db) else {
+            return false;
+        };
 
         db.insert(k, v);
 
-        had_to_create
+        true
     }
 
     pub async fn get_value(&self, db: String, k: &String) -> Result<Value, SourisError> {
@@ -211,6 +200,7 @@ impl SourisState {
 
     pub async fn save(&self) -> color_eyre::Result<()> {
         let mut names = vec![];
+
         for (name, db) in self.dbs.lock().await.iter() {
             let file_name = self.base_location.join(format!("{name}.sdb"));
             let bytes = db.ser()?;
@@ -238,7 +228,7 @@ async fn write_to_file(
     path: impl AsRef<Path> + Debug,
     base_location: impl AsRef<Path> + Debug,
 ) -> color_eyre::Result<()> {
-    let mut metadata_file = match File::create(&path).await {
+    let mut file = match File::create(&path).await {
         Ok(f) => f,
         Err(e) => {
             if e.kind() == ErrorKind::NotFound {
@@ -253,7 +243,7 @@ async fn write_to_file(
         }
     };
 
-    metadata_file.write_all(bytes).await?;
+    file.write_all(bytes).await?;
 
     Ok(())
 }

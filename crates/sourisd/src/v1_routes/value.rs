@@ -4,11 +4,11 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value as SJValue;
 use sourisdb::values::Value;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct KeyAndValue {
     k: String,
     v: SJValue,

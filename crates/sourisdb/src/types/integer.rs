@@ -210,7 +210,7 @@ from_unsigned!(u8, u16, u32, u64, usize, u128);
 
 macro_rules! integer_trait_impl {
     ($t:ident, $f:ident) => {
-        impl $t<Self, Output = Self> for Integer {
+        impl $t<Self> for Integer {
             type Output = Self;
 
             fn $f(self, rhs: Self) -> Self::Output {
@@ -669,7 +669,7 @@ mod tests {
                 Ok(f) => f,
                 Err(e) => {
                     let e = e.to_string();
-                    return if e.contains("invalid type") { //dealt with in Value impl
+                    return if e.contains("invalid type") { //floats dealt with in Value impl
                         Ok(())
                     } else {
                         panic!("{e:?}")
