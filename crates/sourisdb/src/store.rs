@@ -1,5 +1,5 @@
 use crate::{
-    types::integer::{Integer, IntegerSerError},
+    types::integer::{Integer, IntegerSerError, SignedState},
     utilities::cursor::Cursor,
     values::{Value, ValueSerError},
 };
@@ -407,11 +407,12 @@ impl Store {
                 let length = kvs.len();
                 res.extend(b"SIZE".iter());
                 res.push(0);
-                res.extend(Integer::usize(length).ser());
+                res.extend(Integer::usize(length).ser().1); //can ignore SignedState as always
+                                                            //positive
                 res.push(0);
 
                 for (k, v) in kvs {
-                    res.extend(Integer::usize(k.len()).ser());
+                    res.extend(Integer::usize(k.len()).ser().1);
                     res.extend(k.as_bytes());
 
                     let ser_value = v.ser()?;
@@ -419,7 +420,7 @@ impl Store {
                 }
             }
             Store::Array { arr } => {
-                res.extend(Integer::usize(arr.len()).ser());
+                res.extend(Integer::usize(arr.len()).ser().1);
 
                 for v in arr {
                     res.extend(v.ser()?);
@@ -440,12 +441,13 @@ impl Store {
             Version::Map => {
                 bytes.seek(4); //size
                 bytes.seek(1); //\0
-                let length: usize = Integer::deser(bytes)?.try_into()?;
+                let length: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
                 bytes.seek(1); //\0
 
                 let mut kvs = HashMap::new();
                 for _ in 0..length {
-                    let key_len: usize = Integer::deser(bytes)?.try_into()?;
+                    let key_len: usize =
+                        Integer::deser(SignedState::Positive, bytes)?.try_into()?;
                     let Some(key) = bytes.read(key_len) else {
                         return Err(StoreError::NotEnoughBytes);
                     };
@@ -458,7 +460,7 @@ impl Store {
                 Ok(Self::Map { kvs })
             }
             Version::Array => {
-                let len: usize = Integer::deser(bytes)?.try_into()?;
+                let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
 
                 let mut arr = Vec::with_capacity(len);
                 for _ in 0..len {

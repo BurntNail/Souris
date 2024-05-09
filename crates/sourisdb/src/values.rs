@@ -1,7 +1,7 @@
 use crate::{
     store::{Store, StoreError},
     types::{
-        integer::{Integer, IntegerSerError},
+        integer::{Integer, IntegerSerError, SignedState},
         ts::{TSError, Timestamp},
     },
     utilities::cursor::Cursor,
@@ -199,18 +199,17 @@ pub enum ValueTy {
 impl From<ValueTy> for u8 {
     fn from(value: ValueTy) -> Self {
         match value {
-            ValueTy::Ch => 0b0000,
-            ValueTy::String => 0b0001,
-            ValueTy::Binary => 0b0010,
-            ValueTy::Bool => 0b0011,
-            ValueTy::Int => 0b0100,
-            ValueTy::Imaginary => 0b0101,
-            // ValueTy::Array => 0b0110,
-            ValueTy::Timestamp => 0b0111,
-            ValueTy::JSON => 0b1000,
-            ValueTy::Store => 0b1001,
-            ValueTy::Null => 0b1010,
-            ValueTy::Float => 0b1011,
+            ValueTy::Ch => 0,
+            ValueTy::String => 1,
+            ValueTy::Binary => 2,
+            ValueTy::Bool => 3,
+            ValueTy::Int => 4,
+            ValueTy::Imaginary => 5,
+            ValueTy::Timestamp => 6,
+            ValueTy::JSON => 7,
+            ValueTy::Store => 8,
+            ValueTy::Null => 9,
+            ValueTy::Float => 10,
         }
     }
 }
@@ -219,18 +218,17 @@ impl TryFrom<u8> for ValueTy {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match value {
-            0b0000 => ValueTy::Ch,
-            0b0001 => ValueTy::String,
-            0b0010 => ValueTy::Binary,
-            0b0011 => ValueTy::Bool,
-            0b0100 => ValueTy::Int,
-            0b0101 => ValueTy::Imaginary,
-            // 0b0110 => ValueTy::Array,
-            0b0111 => ValueTy::Timestamp,
-            0b1000 => ValueTy::JSON,
-            0b1001 => ValueTy::Store,
-            0b1010 => ValueTy::Null,
-            0b1011 => ValueTy::Float,
+            0 => ValueTy::Ch,
+            1 => ValueTy::String,
+            2 => ValueTy::Binary,
+            3 => ValueTy::Bool,
+            4 => ValueTy::Int,
+            5 => ValueTy::Imaginary,
+            6 => ValueTy::Timestamp,
+            7 => ValueTy::JSON,
+            8 => ValueTy::Store,
+            9 => ValueTy::Null,
+            10 => ValueTy::Float,
             _ => return Err(ValueSerError::InvalidType(value)),
         })
     }
@@ -353,52 +351,69 @@ impl Value {
     pub fn ser(&self) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
-        let vty = self.to_ty();
-        let ty = u8::from(vty) << 4;
-
-        let niche = match &self {
-            Self::Bool(b) => Some(u8::from(*b)),
-            _ => None,
-        };
-        if let Some(niche) = niche {
-            res.push(niche | ty);
-            return Ok(res);
-        }
-
-        res.push(ty);
+        let mut ty = u8::from(self.to_ty()) << 3;
 
         match self {
             Self::Ch(ch) => {
-                res.extend(Integer::u32(*ch as u32).ser());
-            }
-            Self::String(s) => {
-                let bytes = s.as_bytes();
+                let (_, bytes) = Integer::from(*ch as u32).ser();
 
-                res.extend(Integer::usize(bytes.len()).ser().iter());
+                res.push(ty);
                 res.extend(bytes.iter());
             }
+            Self::String(s) => {
+                let str_bytes = s.as_bytes();
+                let (_, len_bytes) = Integer::from(str_bytes.len()).ser();
+
+                res.push(ty);
+                res.extend(len_bytes.iter());
+                res.extend(str_bytes.iter());
+            }
             Self::Binary(b) => {
+                let (_, len_bytes) = Integer::from(b.len()).ser();
+
+                res.push(ty);
+                res.extend(len_bytes);
                 res.extend(b.iter());
             }
-            Self::Bool(_) => {
-                unreachable!("reached bool after niche optimisations applied uh oh")
+            Self::Bool(b) => {
+                ty |= u8::from(*b) << 2;
+                res.push(ty);
             }
             Self::Int(i) => {
-                res.extend(i.ser().iter());
+                let (signed_state, bytes) = i.ser();
+
+                ty |= u8::from(signed_state);
+
+                res.push(ty);
+                res.extend(bytes.iter());
             }
             Self::Imaginary(a, b) => {
-                res.extend(a.ser().iter());
-                res.extend(b.ser().iter());
+                let (re_ss, re_bytes) = a.ser();
+                let (im_ss, im_bytes) = b.ser();
+
+                ty |= u8::from(re_ss);
+                ty |= u8::from(im_ss) << 1;
+
+                res.push(ty);
+                res.extend(re_bytes.iter());
+                res.extend(im_bytes.iter());
             }
             Self::Timestamp(t) => {
-                res.extend(t.ser().iter());
+                let (year_signed_state, bytes) = t.ser();
+
+                ty |= u8::from(year_signed_state);
+
+                res.push(ty);
+                res.extend(bytes.iter());
             }
             Self::JSON(v) => {
                 let str = v.to_string();
-                let bytes = str.as_bytes();
+                let str_bytes = str.as_bytes();
+                let (_, len_bytes) = Integer::from(str_bytes.len()).ser();
 
-                res.extend(Integer::usize(bytes.len()).ser().iter());
-                res.extend(bytes.iter());
+                res.push(ty);
+                res.extend(len_bytes.iter());
+                res.extend(str_bytes.iter());
             }
             Self::Store(s) => {
                 res.extend(s.ser()?);
@@ -406,7 +421,7 @@ impl Value {
             Self::Null(_) => {}
             Self::Float(f) => {
                 let bytes = f.to_le_bytes();
-                res.extend(bytes.iter()); //TODO: optimise this
+                res.extend(bytes.iter());
             }
         }
 
@@ -414,35 +429,37 @@ impl Value {
     }
 
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
-        let [byte] = bytes.read(1).ok_or(ValueSerError::NotEnoughBytes)? else {
-            unreachable!("didn't get just one byte back")
-        };
-        let byte = *byte;
+        let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 
-        let ty = byte >> 4;
+        let ty = byte >> 3;
         let ty = ValueTy::try_from(ty)?;
+
+        //for lengths or single integers
+        let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
 
         Ok(match ty {
             ValueTy::Int => {
-                let int = Integer::deser(bytes)?;
+                let int = Integer::deser(signed_state, bytes)?;
                 Self::Int(int)
             }
             ValueTy::Imaginary => {
-                let a = Integer::deser(bytes)?;
-                let b = Integer::deser(bytes)?;
+                let second_signed_state = SignedState::try_from((byte & 0b0000_0010) >> 1)?;
+
+                let a = Integer::deser(signed_state, bytes)?;
+                let b = Integer::deser(second_signed_state, bytes)?;
                 Self::Imaginary(a, b)
             }
             ValueTy::Ch => {
-                let ch = char::from_u32(Integer::deser(bytes)?.try_into()?)
+                let ch = char::from_u32(Integer::deser(SignedState::Positive, bytes)?.try_into()?)
                     .ok_or(ValueSerError::InvalidCharacter)?;
                 Self::Ch(ch)
             }
             ValueTy::Timestamp => {
-                let t = Timestamp::deser(bytes)?;
+                let t = Timestamp::deser(signed_state, bytes)?;
                 Self::Timestamp(t)
             }
             ValueTy::String => {
-                let len: usize = Integer::deser(bytes)?.try_into()?;
+                let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
                 let str_bytes = bytes
                     .read(len)
                     .ok_or(ValueSerError::NotEnoughBytes)?
@@ -450,7 +467,7 @@ impl Value {
                 Self::String(String::from_utf8(str_bytes)?)
             }
             ValueTy::JSON => {
-                let len: usize = Integer::deser(bytes)?.try_into()?;
+                let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
                 let str_bytes = bytes
                     .read(len)
                     .ok_or(ValueSerError::NotEnoughBytes)?
@@ -459,14 +476,14 @@ impl Value {
                 Self::JSON(value)
             }
             ValueTy::Binary => {
-                let len: usize = Integer::deser(bytes)?.try_into()?;
+                let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
                 let bytes = bytes
                     .read(len)
                     .ok_or(ValueSerError::NotEnoughBytes)?
                     .to_vec();
                 Self::Binary(bytes)
             }
-            ValueTy::Bool => Self::Bool((byte & 0b0000_0001) > 0),
+            ValueTy::Bool => Self::Bool((byte & 0b0000_0100) > 0),
             ValueTy::Store => Self::Store(Store::deser(bytes)?),
             ValueTy::Null => Self::Null(None),
             ValueTy::Float => {

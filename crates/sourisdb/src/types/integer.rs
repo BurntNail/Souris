@@ -1,6 +1,7 @@
 use crate::utilities::cursor::Cursor;
 use alloc::{
     string::{String, ToString},
+    vec,
     vec::Vec,
 };
 use core::{
@@ -17,19 +18,19 @@ pub enum SignedState {
     Negative,
 }
 
-const SIGNED_BITS: usize = 1;
-
 ///size of the backing integer
 type BiggestInt = u128;
 type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
 ///# of bytes for storing one `BiggestInt`
 const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated and this is clearer
-///# of bits to store a number from 0 to `INTEGER_MAX_SIZE` in the discriminant
-const INTEGER_DISCRIMINANT_BITS: usize = INTEGER_MAX_SIZE.ilog2() as usize + 1;
+///max size for an integer to be stored by itself
+const ONE_BYTE_MAX_SIZE: u8 = u8::MAX - (INTEGER_MAX_SIZE as u8);
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Integer {
+    ///whether the number is negative
     signed_state: SignedState,
+    ///positive little endian bytes
     content: [u8; INTEGER_MAX_SIZE],
 }
 
@@ -523,58 +524,56 @@ impl std::error::Error for IntegerSerError {
 
 impl Integer {
     #[must_use]
-    pub fn ser(self) -> Vec<u8> {
+    pub fn ser(self) -> (SignedState, Vec<u8>) {
+        if let Some(smol) = self.to_i8() {
+            return if smol < 0 {
+                (SignedState::Negative, vec![(-smol) as u8])
+            } else {
+                (SignedState::Positive, vec![smol as u8])
+            };
+        } else if let Some(pos_smol) = self.to_u8() {
+            if pos_smol < ONE_BYTE_MAX_SIZE {
+                return (SignedState::Positive, vec![pos_smol]);
+            }
+        }
+
         let stored_size = self.min_bytes_needed();
         let bytes = self.content;
 
-        let mut res = Vec::with_capacity(1 + stored_size);
-        let stored_size_disc =
-            (stored_size as u8) << (8 - (INTEGER_DISCRIMINANT_BITS + SIGNED_BITS));
-        let signed_state_disc =
-            <u8 as From<SignedState>>::from(self.signed_state) << (8 - SIGNED_BITS);
+        let discriminant = ONE_BYTE_MAX_SIZE + stored_size as u8;
 
-        let discriminant: u8 = signed_state_disc | stored_size_disc;
+        let mut res = vec![];
         res.push(discriminant);
         res.extend(&bytes[0..stored_size]);
 
-        res
+        (self.signed_state, res)
     }
 
-    pub fn deser(reader: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
-        const fn size_discriminant_mask() -> u8 {
-            let base: u8 = (1 << INTEGER_DISCRIMINANT_BITS) - 1; //construct INTEGER_BITS bits at the end
-            base << (8 - (INTEGER_DISCRIMINANT_BITS + SIGNED_BITS)) //move them forward until there's only INTEGER_BITS bits left at the front
-        }
-        const fn signed_discriminant_mask() -> u8 {
-            let base: u8 = (1 << SIGNED_BITS) - 1; //construct INTEGER_BITS bits at the end
-            base << (8 - SIGNED_BITS) //move them forward it's at the front
-        }
-
-        let (signed_state, stored) = {
-            let [discriminant] = reader.read(1).ok_or(IntegerSerError::NotEnoughBytes)? else {
-                unreachable!("didn't get just one byte back")
-            };
-            let discriminant = *discriminant;
-            let signed_state = SignedState::try_from(
-                (discriminant & signed_discriminant_mask()) >> (8 - SIGNED_BITS),
-            )?;
-            let stored = <usize as From<u8>>::from(
-                (discriminant & size_discriminant_mask())
-                    >> (8 - (INTEGER_DISCRIMINANT_BITS + SIGNED_BITS)),
-            );
-
-            #[allow(clippy::items_after_statements)]
-            (signed_state, stored)
+    pub fn deser(
+        signed_state: SignedState,
+        reader: &mut Cursor<u8>,
+    ) -> Result<Self, IntegerSerError> {
+        let Some(first_byte) = reader.next().copied() else {
+            return Err(IntegerSerError::NotEnoughBytes);
         };
 
-        let mut content = [0_u8; INTEGER_MAX_SIZE];
-        for (i, b) in reader
-            .read(stored)
-            .ok_or(IntegerSerError::NotEnoughBytes)?
-            .iter()
-            .copied()
-            .enumerate()
-        {
+        if first_byte <= ONE_BYTE_MAX_SIZE {
+            let mut content = [0; INTEGER_MAX_SIZE];
+            content[0] = first_byte;
+
+            return Ok(Self {
+                signed_state,
+                content,
+            });
+        }
+
+        let bytes_stored = first_byte - ONE_BYTE_MAX_SIZE;
+        let Some(bytes_stored) = reader.read(bytes_stored as usize) else {
+            return Err(IntegerSerError::NotEnoughBytes);
+        };
+
+        let mut content = [0; INTEGER_MAX_SIZE];
+        for (i, b) in bytes_stored.iter().copied().enumerate() {
             content[i] = b;
         }
 
@@ -613,8 +612,8 @@ mod tests {
 
             let parsed = Integer::from_str(&s).unwrap();
 
-            let sered = parsed.ser();
-            let got_back = Integer::deser(&mut Cursor::new(&sered)).unwrap();
+            let (s, sered) = parsed.ser();
+            let got_back = Integer::deser(s, &mut Cursor::new(&sered)).unwrap();
             prop_assert_eq!(parsed, got_back);
 
             prop_assert_eq!(BiggestIntButSigned::try_from(got_back).unwrap(), i);
@@ -626,8 +625,8 @@ mod tests {
 
             let parsed = Integer::from_str(&s).unwrap();
 
-            let sered = parsed.ser();
-            let got_back = Integer::deser(&mut Cursor::new(&sered)).unwrap();
+            let (s, sered) = parsed.ser();
+            let got_back = Integer::deser(s, &mut Cursor::new(&sered)).unwrap();
             prop_assert_eq!(parsed, got_back);
 
             prop_assert_eq!(u32::try_from(got_back).unwrap(), u32::from(i));

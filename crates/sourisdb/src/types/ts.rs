@@ -1,5 +1,5 @@
 use crate::{
-    types::integer::{Integer, IntegerSerError},
+    types::integer::{Integer, IntegerSerError, SignedState},
     utilities::cursor::Cursor,
 };
 use alloc::{vec, vec::Vec};
@@ -49,42 +49,42 @@ impl Display for TSError {
 
 impl Timestamp {
     #[must_use]
-    pub fn ser(&self) -> Vec<u8> {
+    pub fn ser(&self) -> (SignedState, Vec<u8>) {
         let date = self.0.date();
-        let year = date.year();
-        let month = date.month();
-        let day = date.day();
+        let (year_ss, year) = Integer::from(date.year()).ser();
+        let (_, month) = Integer::from(date.month()).ser();
+        let (_, day) = Integer::from(date.day()).ser();
 
         let time = self.0.time();
-        let hour = time.hour();
-        let minute = time.minute();
-        let sec = time.second();
-        let nanos = time.nanosecond();
+        let (_, hour) = Integer::from(time.hour()).ser();
+        let (_, minute) = Integer::from(time.minute()).ser();
+        let (_, sec) = Integer::from(time.second()).ser();
+        let (_, nanos) = Integer::from(time.nanosecond()).ser();
 
         let mut res = vec![];
 
-        res.extend(Integer::i32(year).ser());
-        res.extend(Integer::u32(month).ser());
-        res.extend(Integer::u32(day).ser());
-        res.extend(Integer::u32(hour).ser());
-        res.extend(Integer::u32(minute).ser());
-        res.extend(Integer::u32(sec).ser());
-        res.extend(Integer::u32(nanos).ser());
+        res.extend(year.iter());
+        res.extend(month.iter());
+        res.extend(day.iter());
+        res.extend(hour.iter());
+        res.extend(minute.iter());
+        res.extend(sec.iter());
+        res.extend(nanos.iter());
 
-        res
+        (year_ss, res)
     }
 
-    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, TSError> {
-        let year = Integer::deser(bytes)?.try_into()?;
-        let month = Integer::deser(bytes)?.try_into()?;
-        let day = Integer::deser(bytes)?.try_into()?;
+    pub fn deser(year_signed_state: SignedState, bytes: &mut Cursor<u8>) -> Result<Self, TSError> {
+        let year = Integer::deser(year_signed_state, bytes)?.try_into()?;
+        let month = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+        let day = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
 
         let date = NaiveDate::from_ymd_opt(year, month, day).ok_or(TSError::InvalidDateOrTime)?;
 
-        let hour = Integer::deser(bytes)?.try_into()?;
-        let min = Integer::deser(bytes)?.try_into()?;
-        let sec = Integer::deser(bytes)?.try_into()?;
-        let ns = Integer::deser(bytes)?.try_into()?;
+        let hour = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+        let min = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+        let sec = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+        let ns = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
 
         let time =
             NaiveTime::from_hms_nano_opt(hour, min, sec, ns).ok_or(TSError::InvalidDateOrTime)?;

@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
 use clap::{Parser, Subcommand};
 use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
 use dialoguer::{
@@ -37,6 +37,9 @@ enum Commands {
     DebugViewAll,
     RemoveEntry,
     UpdateEntry,
+    ExportToJSON {
+        json_location: PathBuf,
+    },
     CreateNewFromJSON {
         json_location: PathBuf,
     },
@@ -55,6 +58,7 @@ enum Error {
     Store(StoreError),
     Dialoguer(DError),
     InvalidDateOrTime,
+    SJError(serde_json::Error),
 }
 
 impl Display for Error {
@@ -64,6 +68,7 @@ impl Display for Error {
             Error::Store(e) => write!(f, "Error in store: {e:?}"),
             Error::Dialoguer(e) => write!(f, "Error with dialoguer: {e:?}"),
             Error::InvalidDateOrTime => write!(f, "Received invalid date/time"),
+            Error::SJError(e) => write!(f, "Error with JSON: {e:?}"),
         }
     }
 }
@@ -81,6 +86,11 @@ impl From<StoreError> for Error {
 impl From<DError> for Error {
     fn from(value: DError) -> Self {
         Self::Dialoguer(value) //yes, i'm aware that this is a wrapper over IOError, but just in case :)
+    }
+}
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Self::SJError(value)
     }
 }
 
@@ -235,6 +245,13 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
             store.insert(key, new);
             println!("Successfully updated");
         }
+        Commands::ExportToJSON { json_location } => {
+            let store = view_all(path, &theme)?;
+            let json = serde_json::to_string(&store)?;
+
+            let mut file = File::create(json_location)?;
+            file.write_all(json.as_bytes())?;
+        }
     }
 
     Ok(())
@@ -307,7 +324,9 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
             Value::Imaginary(a, b)
         }
         ValueTy::Timestamp => {
-            let ts: NaiveDateTime = if Confirm::with_theme(theme)
+            let ts: NaiveDateTime = if Confirm::with_theme(theme).with_prompt("Now?").interact()? {
+                Local::now().naive_local()
+            } else if Confirm::with_theme(theme)
                 .with_prompt("Would you use the format?")
                 .interact()?
             {
