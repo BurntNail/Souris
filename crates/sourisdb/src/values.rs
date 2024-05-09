@@ -1,5 +1,4 @@
 use crate::{
-    store::{Store, StoreError},
     types::{
         integer::{Integer, IntegerSerError, SignedState},
         ts::{TSError, Timestamp},
@@ -7,7 +6,6 @@ use crate::{
     utilities::cursor::Cursor,
 };
 use alloc::{
-    boxed::Box,
     format,
     string::{FromUtf8Error, String, ToString},
     vec,
@@ -18,6 +16,7 @@ use core::{
     hash::{Hash, Hasher},
     num::FpCategory,
 };
+use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
 
 #[derive(Clone)]
@@ -32,9 +31,10 @@ pub enum Value {
     Imaginary(Integer, Integer),
     Timestamp(Timestamp),
     JSON(SJValue),
-    Store(Store),
     Null(Option<()>),
-    Float(f64), //TODO: optimise storage?
+    Float(f64),
+    Array(Vec<Value>),
+    Map(HashMap<String, Value>)
 }
 
 impl PartialEq for Value {
@@ -52,9 +52,10 @@ impl PartialEq for Value {
             (Self::Imaginary(a, b), Self::Imaginary(a2, b2)) => a.eq(a2) && b.eq(b2),
             (Self::Timestamp(t), Self::Timestamp(t2)) => t.eq(t2),
             (Self::JSON(j), Self::JSON(j2)) => j.eq(j2),
-            (Self::Store(s), Self::Store(s2)) => s.eq(s2),
             (Self::Null(_), Self::Null(_)) => true,
             (Self::Float(f), Self::Float(f2)) => f.eq(f2),
+            (Self::Array(a), Self::Array(a2)) => a.eq(a2),
+            (Self::Map(m), Self::Map(m2)) => m.eq(m2),
             _ => unreachable!("already checked ty equality"),
         }
     }
@@ -91,11 +92,16 @@ impl Hash for Value {
             Value::JSON(j) => {
                 j.to_string().hash(state);
             }
-            Value::Store(s) => {
-                for k in s.keys() {
+            Value::Map(m) => {
+                for k in m.keys() {
                     k.hash(state);
                 }
-                for v in s.values() {
+                for v in m.values() {
+                    v.hash(state);
+                }
+            }
+            Value::Array(a) => {
+                for v in a {
                     v.hash(state);
                 }
             }
@@ -130,9 +136,10 @@ impl Debug for Value {
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
             Self::Timestamp(ndt) => s.field("content", ndt),
             Self::JSON(v) => s.field("content", v),
-            Self::Store(store) => s.field("content", store),
             Self::Float(f) => s.field("content", f),
             Self::Null(o) => s.field("content", &o),
+            Self::Array(a) => s.field("content", &a),
+            Self::Map(m) => s.field("content", &m)
         };
 
         s.finish()
@@ -158,9 +165,10 @@ impl Display for Value {
             }
             Self::Timestamp(ndt) => write!(f, "{ndt}"),
             Self::JSON(v) => write!(f, "{v}"),
-            Self::Store(s) => write!(f, "{s}"),
-            Self::Float(fl) => write!(f, "{fl:?}"),
-            Self::Null(o) => write!(f, "{o:?}"),
+            Self::Float(fl) => write!(f, "{fl}"),
+            Self::Null(_o) => write!(f, "null"),
+            Self::Map(m) => write!(f, "{m:?}"),
+            Self::Array(a) => write!(f, "{a:?}"),
         }
     }
 }
@@ -191,9 +199,10 @@ pub enum ValueTy {
     Imaginary,
     Timestamp,
     JSON,
-    Store,
     Null,
     Float,
+    Array,
+    Map,
 }
 
 impl From<ValueTy> for u8 {
@@ -207,9 +216,10 @@ impl From<ValueTy> for u8 {
             ValueTy::Imaginary => 5,
             ValueTy::Timestamp => 6,
             ValueTy::JSON => 7,
-            ValueTy::Store => 8,
+            ValueTy::Map => 8,
             ValueTy::Null => 9,
             ValueTy::Float => 10,
+            ValueTy::Array => 11,
         }
     }
 }
@@ -226,9 +236,10 @@ impl TryFrom<u8> for ValueTy {
             5 => ValueTy::Imaginary,
             6 => ValueTy::Timestamp,
             7 => ValueTy::JSON,
-            8 => ValueTy::Store,
+            8 => ValueTy::Map,
             9 => ValueTy::Null,
             10 => ValueTy::Float,
+            11 => ValueTy::Array,
             _ => return Err(ValueSerError::InvalidType(value)),
         })
     }
@@ -244,7 +255,7 @@ pub enum ValueSerError {
     NonUTF8String(FromUtf8Error),
     TSError(TSError),
     SerdeJson(SJError),
-    StoreError(Box<StoreError>),
+    NotAStringKeyFound(Value),
 }
 
 impl Display for ValueSerError {
@@ -261,7 +272,7 @@ impl Display for ValueSerError {
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
             ValueSerError::TSError(e) => write!(f, "Error de/ser-ing timestamp: {e:?}"),
             ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e:?}"),
-            ValueSerError::StoreError(e) => write!(f, "Error de/ser-ing souris store: {e:?}"),
+            ValueSerError::NotAStringKeyFound(v) => write!(f, "Found a non-string in the key position of a map: {v:?}"),
         }
     }
 }
@@ -286,11 +297,6 @@ impl From<SJError> for ValueSerError {
         Self::SerdeJson(value)
     }
 }
-impl From<StoreError> for ValueSerError {
-    fn from(value: StoreError) -> Self {
-        Self::StoreError(Box::new(value))
-    }
-}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ValueSerError {
@@ -300,7 +306,6 @@ impl std::error::Error for ValueSerError {
             ValueSerError::NonUTF8String(e) => Some(e),
             ValueSerError::TSError(e) => Some(e),
             ValueSerError::SerdeJson(e) => Some(e),
-            ValueSerError::StoreError(e) => Some(e),
             _ => None,
         }
     }
@@ -319,14 +324,16 @@ impl From<SJValue> for Value {
                 } else if let Some(float) = n.as_f64() {
                     Value::Float(float)
                 } else {
-                    unreachable!("must be one of the three JSON integer types")
+                    unreachable!("must be one of the three JSON number types")
                 }
             }
             SJValue::String(s) => Value::String(s.to_string()),
             SJValue::Array(a) => {
-                Value::Store(Store::new_arr(a.into_iter().map(Self::from).collect()))
+                Value::Array(a.into_iter().map(Self::from).collect())
             }
-            SJValue::Object(o) => Value::Store(Store::from(o)),
+            SJValue::Object(o) => {
+                Value::Map(o.into_iter().map(|(k, v)| (k, v.into())).collect())
+            },
         }
     }
 }
@@ -342,7 +349,8 @@ impl Value {
             Self::Imaginary(_, _) => ValueTy::Imaginary,
             Self::Timestamp(_) => ValueTy::Timestamp,
             Self::JSON(_) => ValueTy::JSON,
-            Self::Store(_) => ValueTy::Store,
+            Self::Map(_) => ValueTy::Map,
+            Self::Array(_) => ValueTy::Array,
             Self::Float(_) => ValueTy::Float,
             Self::Null(_) => ValueTy::Null,
         }
@@ -415,15 +423,43 @@ impl Value {
                 res.extend(len_bytes.iter());
                 res.extend(str_bytes.iter());
             }
-            Self::Store(s) => {
-                res.push(ty);
-                res.extend(s.ser()?);
-            }
             Self::Null(_) => {}
             Self::Float(f) => {
                 let bytes = f.to_le_bytes();
                 res.push(ty);
                 res.extend(bytes.iter());
+            }
+            Self::Map(m) => {
+                if m.len() < ((1_usize << 2) - 1) {
+                    ty |= (m.len() as u8) << 1;
+                    res.push(ty);
+                } else {
+                    let (_, integer_bytes) = Integer::from(m.len()).ser();
+                    ty |= 0b1; //to signify that we used an integer
+                    res.push(ty);
+                    res.extend(integer_bytes);
+                }
+
+                for (k, v) in m.clone() {
+                    res.extend(Value::String(k).ser()?);
+                    res.extend(v.ser()?);
+                }
+            }
+            Self::Array(a) => {
+                //yes, DRY, but only 2 instances right next to each other so not too bad
+                if a.len() < ((1_usize << 2) - 1) {
+                    ty |= (a.len() as u8) << 1;
+                    res.push(ty);
+                } else {
+                    let (_, integer_bytes) = Integer::from(a.len()).ser();
+                    ty |= 0b1; //to signify that we used an integer
+                    res.push(ty);
+                    res.extend(integer_bytes);
+                }
+
+                for v in a.clone() {
+                    res.extend(v.ser()?);
+                }
             }
         }
 
@@ -486,7 +522,6 @@ impl Value {
                 Self::Binary(bytes)
             }
             ValueTy::Bool => Self::Bool((byte & 0b0000_0100) > 0),
-            ValueTy::Store => Self::Store(Store::deser(bytes)?),
             ValueTy::Null => Self::Null(None),
             ValueTy::Float => {
                 let bytes: [u8; 8] = match bytes.read(8).map(TryInto::try_into) {
@@ -497,6 +532,34 @@ impl Value {
                     Some(Ok(b)) => b,
                 };
                 Self::Float(f64::from_le_bytes(bytes))
+            }
+            ValueTy::Map | ValueTy::Array => {
+                let len: usize = {
+                    if (byte & 0b0000_0001) > 0 {
+                        //we used an integer
+                        Integer::deser(SignedState::Positive, bytes)?.try_into()?
+                    } else {
+                        //we encoded it in the byte
+                        ((byte & 0b0000_0110) >> 1) as usize
+                    }
+                };
+
+                if ty == ValueTy::Map {
+                    let mut map = HashMap::with_capacity(len);
+
+                    for _ in 0..len {
+                        let key = Value::deser(bytes)?;
+                        let Value::String(key) = key else {
+                            return Err(ValueSerError::NotAStringKeyFound(key));
+                        };
+                        let value = Value::deser(bytes)?;
+                        map.insert(key, value);
+                    }
+
+                    Value::Map(map)
+                } else {
+                    Value::Array((0..len).map(|_| Value::deser(bytes)).collect::<Result<_, _>>()?)
+                }
             }
         })
     }
