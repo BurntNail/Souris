@@ -416,11 +416,13 @@ impl Value {
                 res.extend(str_bytes.iter());
             }
             Self::Store(s) => {
+                res.push(ty);
                 res.extend(s.ser()?);
             }
             Self::Null(_) => {}
             Self::Float(f) => {
                 let bytes = f.to_le_bytes();
+                res.push(ty);
                 res.extend(bytes.iter());
             }
         }
