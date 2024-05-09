@@ -16,7 +16,11 @@ use core::{
     hash::{Hash, Hasher},
     num::FpCategory,
 };
+use core::net::{Ipv4Addr, Ipv6Addr};
+use core::str::FromStr;
+use chrono_tz::{Tz};
 use hashbrown::HashMap;
+use rust_decimal::Decimal;
 use serde_json::{Error as SJError, Value as SJValue};
 
 #[derive(Clone)]
@@ -31,10 +35,14 @@ pub enum Value {
     Imaginary(Integer, Integer),
     Timestamp(Timestamp),
     JSON(SJValue),
-    Null(Option<()>),
+    Null(()),
     Float(f64),
     Array(Vec<Value>),
-    Map(HashMap<String, Value>)
+    Map(HashMap<String, Value>),
+    Timezone(Tz),
+    Ipv4Addr(Ipv4Addr),
+    Ipv6Addr(Ipv6Addr),
+    Decimal(Decimal),
 }
 
 impl PartialEq for Value {
@@ -56,6 +64,10 @@ impl PartialEq for Value {
             (Self::Float(f), Self::Float(f2)) => f.eq(f2),
             (Self::Array(a), Self::Array(a2)) => a.eq(a2),
             (Self::Map(m), Self::Map(m2)) => m.eq(m2),
+            (Self::Timezone(t), Self::Timezone(t2)) => t.eq(t2),
+            (Self::Ipv4Addr(t), Self::Ipv4Addr(t2)) => t.eq(t2),
+            (Self::Ipv6Addr(t), Self::Ipv6Addr(t2)) => t.eq(t2),
+            (Self::Decimal(t), Self::Decimal(t2)) => t.eq(t2),
             _ => unreachable!("already checked ty equality"),
         }
     }
@@ -117,6 +129,18 @@ impl Hash for Value {
                 f.to_le_bytes().hash(state);
             }
             Value::Null(_) => {}
+            Value::Timezone(tz) => {
+                tz.hash(state);
+            }
+            Value::Ipv4Addr(a) => {
+                a.hash(state);
+            }
+            Value::Ipv6Addr(a) => {
+                a.hash(state);
+            }
+            Value::Decimal(d) => {
+                d.hash(state);
+            }
         }
     }
 }
@@ -139,7 +163,11 @@ impl Debug for Value {
             Self::Float(f) => s.field("content", f),
             Self::Null(o) => s.field("content", &o),
             Self::Array(a) => s.field("content", &a),
-            Self::Map(m) => s.field("content", &m)
+            Self::Map(m) => s.field("content", &m),
+            Self::Ipv4Addr(m) => s.field("content", &m),
+            Self::Ipv6Addr(m) => s.field("content", &m),
+            Self::Decimal(m) => s.field("content", &m),
+            Self::Timezone(m) => s.field("content", &m),
         };
 
         s.finish()
@@ -169,6 +197,10 @@ impl Display for Value {
             Self::Null(_o) => write!(f, "null"),
             Self::Map(m) => write!(f, "{m:?}"),
             Self::Array(a) => write!(f, "{a:?}"),
+            Self::Timezone(v) => write!(f, "{v}"),
+            Self::Ipv4Addr(v) => write!(f, "{v}"),
+            Self::Ipv6Addr(v) => write!(f, "{v}"),
+            Self::Decimal(v) => write!(f, "{v}"),
         }
     }
 }
@@ -203,6 +235,10 @@ pub enum ValueTy {
     Float,
     Array,
     Map,
+    Timezone,
+    IpV4,
+    IpV6,
+    Decimal,
 }
 
 impl From<ValueTy> for u8 {
@@ -220,6 +256,10 @@ impl From<ValueTy> for u8 {
             ValueTy::Null => 9,
             ValueTy::Float => 10,
             ValueTy::Array => 11,
+            ValueTy::Timezone => 12,
+            ValueTy::IpV4 => 13,
+            ValueTy::IpV6 => 14,
+            ValueTy::Decimal => 15,
         }
     }
 }
@@ -240,6 +280,10 @@ impl TryFrom<u8> for ValueTy {
             9 => ValueTy::Null,
             10 => ValueTy::Float,
             11 => ValueTy::Array,
+            12 => ValueTy::Timezone,
+            13 => ValueTy::IpV4,
+            14 => ValueTy::IpV6,
+            15 => ValueTy::Decimal,
             _ => return Err(ValueSerError::InvalidType(value)),
         })
     }
@@ -255,7 +299,9 @@ pub enum ValueSerError {
     NonUTF8String(FromUtf8Error),
     TSError(TSError),
     SerdeJson(SJError),
-    NotAStringKeyFound(Value),
+    UnexpectedValueType(Value, ValueTy),
+    TzError(chrono_tz::ParseError),
+    DecimalError(rust_decimal::Error)
 }
 
 impl Display for ValueSerError {
@@ -272,7 +318,9 @@ impl Display for ValueSerError {
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
             ValueSerError::TSError(e) => write!(f, "Error de/ser-ing timestamp: {e:?}"),
             ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e:?}"),
-            ValueSerError::NotAStringKeyFound(v) => write!(f, "Found a non-string in the key position of a map: {v:?}"),
+            ValueSerError::UnexpectedValueType(v, ex) => write!(f, "Expected {ex:?}, found: {v:?}"),
+            ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e:?}"),
+            ValueSerError::DecimalError(e) => write!(f, "Error with decimals: {e:?}"),
         }
     }
 }
@@ -297,6 +345,16 @@ impl From<SJError> for ValueSerError {
         Self::SerdeJson(value)
     }
 }
+impl From<chrono_tz::ParseError> for ValueSerError {
+    fn from(value: chrono_tz::ParseError) -> Self {
+        Self::TzError(value)
+    }
+}
+impl From<rust_decimal::Error> for ValueSerError {
+    fn from(value: rust_decimal::Error) -> Self {
+        Self::DecimalError(value)
+    }
+}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ValueSerError {
@@ -306,6 +364,8 @@ impl std::error::Error for ValueSerError {
             ValueSerError::NonUTF8String(e) => Some(e),
             ValueSerError::TSError(e) => Some(e),
             ValueSerError::SerdeJson(e) => Some(e),
+            ValueSerError::TzError(e) => Some(e),
+            ValueSerError::DecimalError(e) => Some(e),
             _ => None,
         }
     }
@@ -314,7 +374,7 @@ impl std::error::Error for ValueSerError {
 impl From<SJValue> for Value {
     fn from(v: SJValue) -> Self {
         match v {
-            SJValue::Null => Value::Null(None),
+            SJValue::Null => Value::Null(()),
             SJValue::Bool(b) => Value::Bool(b),
             SJValue::Number(n) => {
                 if let Some(neg) = n.as_i64() {
@@ -353,13 +413,17 @@ impl Value {
             Self::Array(_) => ValueTy::Array,
             Self::Float(_) => ValueTy::Float,
             Self::Null(_) => ValueTy::Null,
+            Self::Timezone(_) => ValueTy::Timezone,
+            Self::Ipv4Addr(_) => ValueTy::IpV4,
+            Self::Ipv6Addr(_) => ValueTy::IpV6,
+            Self::Decimal(_) => ValueTy::Decimal,
         }
     }
 
     pub fn ser(&self) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
-        let mut ty = u8::from(self.to_ty()) << 3;
+        let mut ty = u8::from(self.to_ty()) << 4;
 
         match self {
             Self::Ch(ch) => {
@@ -415,13 +479,8 @@ impl Value {
                 res.extend(bytes.iter());
             }
             Self::JSON(v) => {
-                let str = v.to_string();
-                let str_bytes = str.as_bytes();
-                let (_, len_bytes) = Integer::from(str_bytes.len()).ser();
-
                 res.push(ty);
-                res.extend(len_bytes.iter());
-                res.extend(str_bytes.iter());
+                res.extend(Value::String(v.to_string()).ser()?);
             }
             Self::Null(_) => {}
             Self::Float(f) => {
@@ -430,7 +489,7 @@ impl Value {
                 res.extend(bytes.iter());
             }
             Self::Map(m) => {
-                if m.len() < ((1_usize << 2) - 1) {
+                if m.len() < ((1_usize << 3) - 1) {
                     ty |= (m.len() as u8) << 1;
                     res.push(ty);
                 } else {
@@ -447,7 +506,7 @@ impl Value {
             }
             Self::Array(a) => {
                 //yes, DRY, but only 2 instances right next to each other so not too bad
-                if a.len() < ((1_usize << 2) - 1) {
+                if a.len() < ((1_usize << 3) - 1) {
                     ty |= (a.len() as u8) << 1;
                     res.push(ty);
                 } else {
@@ -461,6 +520,25 @@ impl Value {
                     res.extend(v.ser()?);
                 }
             }
+            Self::Timezone(tz) => {
+                let name = tz.name();
+                res.push(ty);
+                res.extend(Value::String(name.into()).ser()?);
+            }
+            Self::Ipv4Addr(a) => {
+                let parts = a.octets();
+                res.push(ty);
+                res.extend(parts);
+            }
+            Self::Ipv6Addr(a) => {
+                let parts: Vec<u8> = a.octets().into_iter().map(|x| x.to_le_bytes()).flatten().collect();
+                res.push(ty);
+                res.extend(parts);
+            }
+            Self::Decimal(d) => {
+                res.push(ty); //TODO: explore whether i can serialise certain parts separately?
+                res.extend(Value::String(d.to_string()).ser()?);
+            }
         }
 
         Ok(res)
@@ -469,21 +547,22 @@ impl Value {
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
         let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 
-        let ty = byte >> 3;
+        let ty = byte >> 4;
         let ty = ValueTy::try_from(ty)?;
 
         //for lengths or single integers
-        let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
 
         Ok(match ty {
             ValueTy::Int => {
+                let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
                 let int = Integer::deser(signed_state, bytes)?;
                 Self::Int(int)
             }
             ValueTy::Imaginary => {
+                let first_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
                 let second_signed_state = SignedState::try_from((byte & 0b0000_0010) >> 1)?;
 
-                let a = Integer::deser(signed_state, bytes)?;
+                let a = Integer::deser(first_signed_state, bytes)?;
                 let b = Integer::deser(second_signed_state, bytes)?;
                 Self::Imaginary(a, b)
             }
@@ -493,6 +572,7 @@ impl Value {
                 Self::Ch(ch)
             }
             ValueTy::Timestamp => {
+                let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
                 let t = Timestamp::deser(signed_state, bytes)?;
                 Self::Timestamp(t)
             }
@@ -505,12 +585,11 @@ impl Value {
                 Self::String(String::from_utf8(str_bytes)?)
             }
             ValueTy::JSON => {
-                let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
-                let str_bytes = bytes
-                    .read(len)
-                    .ok_or(ValueSerError::NotEnoughBytes)?
-                    .to_vec();
-                let value: SJValue = serde_json::from_slice(&str_bytes)?;
+                let val = Value::deser(bytes)?;
+                let Value::String(s) = val else {
+                    return Err(ValueSerError::UnexpectedValueType(val, ValueTy::String));
+                };
+                let value: SJValue = serde_json::from_str(&s)?;
                 Self::JSON(value)
             }
             ValueTy::Binary => {
@@ -522,9 +601,9 @@ impl Value {
                 Self::Binary(bytes)
             }
             ValueTy::Bool => Self::Bool((byte & 0b0000_0100) > 0),
-            ValueTy::Null => Self::Null(None),
+            ValueTy::Null => Self::Null(()),
             ValueTy::Float => {
-                let bytes: [u8; 8] = match bytes.read(8).map(TryInto::try_into) {
+                let bytes = match bytes.read_specific::<8>().map(TryInto::try_into) {
                     None => return Err(ValueSerError::NotEnoughBytes),
                     Some(Err(_e)) => {
                         unreachable!("Trying to get 8 bytes into 8 bytes, no?")
@@ -550,7 +629,7 @@ impl Value {
                     for _ in 0..len {
                         let key = Value::deser(bytes)?;
                         let Value::String(key) = key else {
-                            return Err(ValueSerError::NotAStringKeyFound(key));
+                            return Err(ValueSerError::UnexpectedValueType(key, ValueTy::String));
                         };
                         let value = Value::deser(bytes)?;
                         map.insert(key, value);
@@ -560,6 +639,41 @@ impl Value {
                 } else {
                     Value::Array((0..len).map(|_| Value::deser(bytes)).collect::<Result<_, _>>()?)
                 }
+            }
+            ValueTy::Timezone => {
+                let val = Value::deser(bytes)?;
+                let Value::String(val) = val else {
+                    return Err(ValueSerError::UnexpectedValueType(val, ValueTy::String));
+                };
+                let tz = Tz::from_str(&val)?;
+                Self::Timezone(tz)
+            }
+            ValueTy::IpV4 => {
+                let Some([a, b, c, d]) = bytes.read_specific::<4>() else {
+                    return Err(ValueSerError::NotEnoughBytes);
+                };
+                Self::Ipv4Addr(Ipv4Addr::new(*a, *b, *c, *d))
+            }
+            ValueTy::IpV6 => {
+                let Some(bytes) = bytes.read_specific::<16>() else {
+                    return Err(ValueSerError::NotEnoughBytes);
+                };
+
+                let mut octets = [0_u16; 8];
+                for i in (0..8_usize).map(|x| x * 2) {
+                    octets[i] = u16::from_le_bytes([bytes[i], bytes[i+1]]);
+                }
+                let [a, b, c, d, e, f, g, h] = octets;
+
+                Self::Ipv6Addr(Ipv6Addr::new(a, b, c, d, e, f, g, h))
+            }
+            ValueTy::Decimal => {
+                let val = Value::deser(bytes)?;
+                let Value::String(val) = val else {
+                    return Err(ValueSerError::UnexpectedValueType(val, ValueTy::String));
+                };
+                let decimal = Decimal::from_str(&val)?;
+                Value::Decimal(decimal)
             }
         })
     }
@@ -601,4 +715,6 @@ mod tests {
             assert_eq!(big, Value::deser(&mut Cursor::new(&ser)).unwrap());
         }
     }
+
+    //TODO: tests
 }

@@ -6,6 +6,8 @@ use alloc::{vec, vec::Vec};
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use core::fmt::{Display, Formatter};
 
+//TODO: this doesn't need to be another type lol, move it into `Value`
+
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Timestamp(pub NaiveDateTime);

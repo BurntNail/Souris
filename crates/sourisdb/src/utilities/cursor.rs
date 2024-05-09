@@ -46,6 +46,17 @@ impl<'a, T> Cursor<'a, T> {
         Some(&self.backing[start..end])
     }
 
+    pub fn read_specific<const N: usize>(&mut self) -> Option<&'a [T]> {
+        let start = self.pos;
+        let end = start.checked_add(N)?;
+        if end > self.backing.len() {
+            return None;
+        }
+        self.pos = end;
+
+        Some(&self.backing[start..end])
+    }
+
     pub fn peek(&mut self, n: usize) -> Option<&'a [T]> {
         let start = self.pos;
         let end = start + n;
