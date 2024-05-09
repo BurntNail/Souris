@@ -12,3 +12,5 @@ impl From<SJValue> for Store {
         Self(Value::from(value))
     }
 }
+
+//TODO: ser + deser methods + convenience to_ methods
