@@ -19,6 +19,7 @@ use alloc::{
     string::{String, ToString},
 };
 
+#[must_use]
 pub fn display_bytes_as_hex_array(b: &[u8]) -> String {
     let mut out;
     match b.len() {

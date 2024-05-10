@@ -62,6 +62,7 @@ impl From<DurationDef> for Duration {
 }
 
 impl Value {
+    #[must_use]
     pub fn as_char(&self) -> Option<char> {
         if let Value::Ch(c) = self {
             Some(*c)
@@ -70,6 +71,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_str(&self) -> Option<&str> {
         if let Value::String(s) = self {
             Some(s)
@@ -78,6 +80,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_binary(&self) -> Option<&[u8]> {
         if let Value::Binary(b) = self {
             Some(b)
@@ -86,6 +89,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_boolean(&self) -> Option<bool> {
         if let Value::Bool(b) = self {
             Some(*b)
@@ -94,6 +98,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_integer(&self) -> Option<Integer> {
         if let Value::Int(i) = self {
             Some(*i)
@@ -102,6 +107,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_timestamp(&self) -> Option<NaiveDateTime> {
         if let Value::Timestamp(ts) = self {
             Some(*ts)
@@ -110,6 +116,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_json(&self) -> Option<&SJValue> {
         if let Value::JSON(j) = self {
             Some(j)
@@ -118,6 +125,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_null(&self) -> Option<()> {
         if let Value::Null(()) = self {
             Some(())
@@ -142,6 +150,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_map(&self) -> Option<&HashMap<String, Value>> {
         if let Value::Map(m) = self {
             Some(m)
@@ -150,6 +159,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_tz(&self) -> Option<Tz> {
         if let Value::Timezone(tz) = self {
             Some(*tz)
@@ -158,6 +168,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_ipv4(&self) -> Option<Ipv4Addr> {
         if let Value::Ipv4Addr(a) = self {
             Some(*a)
@@ -166,6 +177,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_ipv6(&self) -> Option<Ipv6Addr> {
         if let Value::Ipv6Addr(a) = self {
             Some(*a)
@@ -174,6 +186,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn as_duration(&self) -> Option<Duration> {
         if let Value::Duration(d) = self {
             Some(*d)
@@ -457,7 +470,7 @@ impl Display for Value {
                             .apply_modifier(UTF8_ROUND_CORNERS)
                             .set_content_arrangement(ContentArrangement::Dynamic);
 
-                        for (k, v) in m.into_iter() {
+                        for (k, v) in m {
                             table.add_row(vec![format!("{k}"), format!("{v}")]);
                         }
                         write!(f, "\n{table}")
@@ -771,15 +784,15 @@ impl Value {
                 res.extend(bytes.iter());
             }
             Self::Map(m) => {
-                // if m.len() < ((1_usize << 3) - 1) {
-                //     ty |= (m.len() as u8) << 1;
-                //     res.push(ty);
-                // } else {
-                let (_, integer_bytes) = Integer::from(m.len()).ser();
-                ty |= 0b1; //to signify that we used an integer
-                res.push(ty);
-                res.extend(integer_bytes);
-                // }
+                if m.len() < ((1_usize << 3) - 1) {
+                    ty |= (m.len() as u8) << 1;
+                    res.push(ty);
+                } else {
+                    let (_, integer_bytes) = Integer::from(m.len()).ser();
+                    ty |= 0b1; //to signify that we used an integer
+                    res.push(ty);
+                    res.extend(integer_bytes);
+                }
 
                 for (k, v) in m.clone() {
                     res.extend(Value::String(k).ser()?);
@@ -787,16 +800,16 @@ impl Value {
                 }
             }
             Self::Array(a) => {
-                //yes, DRY, but only 2 instances right next to each other so not too bad
-                // if a.len() < ((1_usize << 3) - 1) {
-                //     ty |= (a.len() as u8) << 1;
-                //     res.push(ty);
-                // } else {
-                let (_, integer_bytes) = Integer::from(a.len()).ser();
-                ty |= 0b1; //to signify that we used an integer
-                res.push(ty);
-                res.extend(integer_bytes);
-                // }
+                // yes, DRY, but only 2 instances right next to each other so not too bad
+                if a.len() < ((1_usize << 3) - 1) {
+                    ty |= (a.len() as u8) << 1;
+                    res.push(ty);
+                } else {
+                    let (_, integer_bytes) = Integer::from(a.len()).ser();
+                    ty |= 0b1; //to signify that we used an integer
+                    res.push(ty);
+                    res.extend(integer_bytes);
+                }
 
                 for v in a.clone() {
                     res.extend(v.ser()?);
@@ -917,13 +930,13 @@ impl Value {
             }
             ValueTy::Map | ValueTy::Array => {
                 let len: usize = {
-                    // if (byte & 0b0000_0001) > 0 {
-                    //we used an integer
-                    Integer::deser(SignedState::Positive, bytes)?.try_into()?
-                    // } else {
-                    //we encoded it in the byte
-                    // ((byte & 0b0000_1110) >> 1) as usize
-                    // }
+                    if (byte & 0b0000_0001) > 0 {
+                        // we used an integer
+                        Integer::deser(SignedState::Positive, bytes)?.try_into()?
+                    } else {
+                        //we encoded it in the byte
+                        ((byte & 0b0000_1110) >> 1) as usize
+                    }
                 };
 
                 if ty == ValueTy::Map {

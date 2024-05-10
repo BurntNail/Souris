@@ -55,7 +55,7 @@ enum Error {
     IO(IOError),
     Dialoguer(DError),
     InvalidDateOrTime,
-    SJError(serde_json::Error),
+    SerdeJson(serde_json::Error),
     Value(ValueSerError),
 }
 
@@ -65,7 +65,7 @@ impl Display for Error {
             Error::IO(e) => write!(f, "Error handling IO: {e:?}"),
             Error::Dialoguer(e) => write!(f, "Error with dialoguer: {e:?}"),
             Error::InvalidDateOrTime => write!(f, "Received invalid date/time"),
-            Error::SJError(e) => write!(f, "Error with JSON: {e:?}"),
+            Error::SerdeJson(e) => write!(f, "Error with JSON: {e:?}"),
             Error::Value(e) => write!(f, "Error with values: {e:?}"),
         }
     }
@@ -83,7 +83,7 @@ impl From<DError> for Error {
 }
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
-        Self::SJError(value)
+        Self::SerdeJson(value)
     }
 }
 impl From<ValueSerError> for Error {
