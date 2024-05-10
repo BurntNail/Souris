@@ -1,8 +1,5 @@
 use crate::{
-    types::{
-        integer::{Integer, IntegerSerError, SignedState},
-        ts::{TSError, Timestamp},
-    },
+    types::integer::{Integer, IntegerSerError, SignedState},
     utilities::cursor::Cursor,
 };
 use alloc::{
@@ -11,14 +8,15 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono_tz::Tz;
 use core::{
     fmt::{Debug, Display, Formatter},
     hash::{Hash, Hasher},
+    net::{Ipv4Addr, Ipv6Addr},
     num::FpCategory,
+    str::FromStr,
 };
-use core::net::{Ipv4Addr, Ipv6Addr};
-use core::str::FromStr;
-use chrono_tz::{Tz};
 use hashbrown::HashMap;
 use rust_decimal::Decimal;
 use serde_json::{Error as SJError, Value as SJValue};
@@ -33,7 +31,7 @@ pub enum Value {
     Bool(bool),
     Int(Integer),
     Imaginary(Integer, Integer),
-    Timestamp(Timestamp),
+    Timestamp(NaiveDateTime),
     JSON(SJValue),
     Null(()),
     Float(f64),
@@ -43,6 +41,176 @@ pub enum Value {
     Ipv4Addr(Ipv4Addr),
     Ipv6Addr(Ipv6Addr),
     Decimal(Decimal),
+}
+
+impl Value {
+    pub fn as_char(&self) -> Option<char> {
+        if let Value::Ch(c) = self {
+            Some(*c)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        if let Value::String(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_binary(&self) -> Option<&[u8]> {
+        if let Value::Binary(b) = self {
+            Some(b)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_boolean(&self) -> Option<bool> {
+        if let Value::Bool(b) = self {
+            Some(*b)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_integer(&self) -> Option<Integer> {
+        if let Value::Int(i) = self {
+            Some(*i)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_timestamp(&self) -> Option<NaiveDateTime> {
+        if let Value::Timestamp(ts) = self {
+            Some(*ts)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_json(&self) -> Option<&SJValue> {
+        if let Value::JSON(j) = self {
+            Some(j)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_null(&self) -> Option<()> {
+        if let Value::Null(_) = self {
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_float(&mut self) -> Option<f64> {
+        if let Value::Float(f) = self {
+            Some(*f)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_array(&mut self) -> Option<&[Value]> {
+        if let Value::Array(a) = self {
+            Some(a)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_map(&self) -> Option<&HashMap<String, Value>> {
+        if let Value::Map(m) = self {
+            Some(m)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_char(&mut self) -> Option<&mut char> {
+        if let Value::Ch(c) = self {
+            Some(c)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_str(&mut self) -> Option<&mut String> {
+        if let Value::String(s) = self {
+            Some(s)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_binary(&mut self) -> Option<&mut [u8]> {
+        if let Value::Binary(b) = self {
+            Some(b)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_boolean(&mut self) -> Option<&mut bool> {
+        if let Value::Bool(b) = self {
+            Some(b)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_integer(&mut self) -> Option<&mut Integer> {
+        if let Value::Int(i) = self {
+            Some(i)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_timestamp(&mut self) -> Option<&mut NaiveDateTime> {
+        if let Value::Timestamp(ts) = self {
+            Some(ts)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_json(&mut self) -> Option<&mut SJValue> {
+        if let Value::JSON(j) = self {
+            Some(j)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_float(&mut self) -> Option<&mut f64> {
+        if let Value::Float(f) = self {
+            Some(f)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_array(&mut self) -> Option<&mut [Value]> {
+        if let Value::Array(a) = self {
+            Some(a)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_map(&mut self) -> Option<&mut HashMap<String, Value>> {
+        if let Value::Map(m) = self {
+            Some(m)
+        } else {
+            None
+        }
+    }
 }
 
 impl PartialEq for Value {
@@ -159,8 +327,8 @@ impl Debug for Value {
             Self::Int(i) => s.field("content", i),
             Self::Imaginary(a, b) => s.field("content", &(a, b)),
             Self::Timestamp(ndt) => s.field("content", ndt),
-            Self::JSON(v) => s.field("content", v),
-            Self::Float(f) => s.field("content", f),
+            Self::JSON(v) => s.field("content", &v),
+            Self::Float(f) => s.field("content", &f),
             Self::Null(o) => s.field("content", &o),
             Self::Array(a) => s.field("content", &a),
             Self::Map(m) => s.field("content", &m),
@@ -297,11 +465,11 @@ pub enum ValueSerError {
     NotEnoughBytes,
     InvalidCharacter,
     NonUTF8String(FromUtf8Error),
-    TSError(TSError),
     SerdeJson(SJError),
     UnexpectedValueType(Value, ValueTy),
     TzError(chrono_tz::ParseError),
-    DecimalError(rust_decimal::Error)
+    DecimalError(rust_decimal::Error),
+    InvalidDateOrTime,
 }
 
 impl Display for ValueSerError {
@@ -316,11 +484,11 @@ impl Display for ValueSerError {
             ValueSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
-            ValueSerError::TSError(e) => write!(f, "Error de/ser-ing timestamp: {e:?}"),
             ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e:?}"),
             ValueSerError::UnexpectedValueType(v, ex) => write!(f, "Expected {ex:?}, found: {v:?}"),
             ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e:?}"),
             ValueSerError::DecimalError(e) => write!(f, "Error with decimals: {e:?}"),
+            ValueSerError::InvalidDateOrTime => write!(f, "Error with invalid time given"),
         }
     }
 }
@@ -333,11 +501,6 @@ impl From<IntegerSerError> for ValueSerError {
 impl From<FromUtf8Error> for ValueSerError {
     fn from(value: FromUtf8Error) -> Self {
         Self::NonUTF8String(value)
-    }
-}
-impl From<TSError> for ValueSerError {
-    fn from(value: TSError) -> Self {
-        Self::TSError(value)
     }
 }
 impl From<SJError> for ValueSerError {
@@ -362,7 +525,6 @@ impl std::error::Error for ValueSerError {
         match self {
             ValueSerError::IntegerSerError(e) => Some(e),
             ValueSerError::NonUTF8String(e) => Some(e),
-            ValueSerError::TSError(e) => Some(e),
             ValueSerError::SerdeJson(e) => Some(e),
             ValueSerError::TzError(e) => Some(e),
             ValueSerError::DecimalError(e) => Some(e),
@@ -388,12 +550,8 @@ impl From<SJValue> for Value {
                 }
             }
             SJValue::String(s) => Value::String(s.to_string()),
-            SJValue::Array(a) => {
-                Value::Array(a.into_iter().map(Self::from).collect())
-            }
-            SJValue::Object(o) => {
-                Value::Map(o.into_iter().map(|(k, v)| (k, v.into())).collect())
-            },
+            SJValue::Array(a) => Value::Array(a.into_iter().map(Self::from).collect()),
+            SJValue::Object(o) => Value::Map(o.into_iter().map(|(k, v)| (k, v.into())).collect()),
         }
     }
 }
@@ -471,12 +629,28 @@ impl Value {
                 res.extend(im_bytes.iter());
             }
             Self::Timestamp(t) => {
-                let (year_signed_state, bytes) = t.ser();
+                let date = t.date();
+                let (year_ss, year) = Integer::from(date.year()).ser();
+                let (_, month) = Integer::from(date.month()).ser();
+                let (_, day) = Integer::from(date.day()).ser();
 
-                ty |= u8::from(year_signed_state);
+                let time = t.time();
+                let (_, hour) = Integer::from(time.hour()).ser();
+                let (_, minute) = Integer::from(time.minute()).ser();
+                let (_, sec) = Integer::from(time.second()).ser();
+                let (_, nanos) = Integer::from(time.nanosecond()).ser();
+
+                ty |= u8::from(year_ss);
 
                 res.push(ty);
-                res.extend(bytes.iter());
+
+                res.extend(year.iter());
+                res.extend(month.iter());
+                res.extend(day.iter());
+                res.extend(hour.iter());
+                res.extend(minute.iter());
+                res.extend(sec.iter());
+                res.extend(nanos.iter());
             }
             Self::JSON(v) => {
                 res.push(ty);
@@ -531,7 +705,12 @@ impl Value {
                 res.extend(parts);
             }
             Self::Ipv6Addr(a) => {
-                let parts: Vec<u8> = a.octets().into_iter().map(|x| x.to_le_bytes()).flatten().collect();
+                let parts: Vec<u8> = a
+                    .octets()
+                    .into_iter()
+                    .map(|x| x.to_le_bytes())
+                    .flatten()
+                    .collect();
                 res.push(ty);
                 res.extend(parts);
             }
@@ -544,6 +723,7 @@ impl Value {
         Ok(res)
     }
 
+    #[allow(clippy::many_single_char_names)]
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
         let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 
@@ -572,9 +752,24 @@ impl Value {
                 Self::Ch(ch)
             }
             ValueTy::Timestamp => {
-                let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
-                let t = Timestamp::deser(signed_state, bytes)?;
-                Self::Timestamp(t)
+                let year_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
+
+                let year = Integer::deser(year_signed_state, bytes)?.try_into()?;
+                let month = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let day = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+
+                let date = NaiveDate::from_ymd_opt(year, month, day)
+                    .ok_or(ValueSerError::InvalidDateOrTime)?;
+
+                let hour = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let min = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let sec = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let ns = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+
+                let time = NaiveTime::from_hms_nano_opt(hour, min, sec, ns)
+                    .ok_or(ValueSerError::InvalidDateOrTime)?;
+
+                Self::Timestamp(NaiveDateTime::new(date, time))
             }
             ValueTy::String => {
                 let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
@@ -637,7 +832,11 @@ impl Value {
 
                     Value::Map(map)
                 } else {
-                    Value::Array((0..len).map(|_| Value::deser(bytes)).collect::<Result<_, _>>()?)
+                    Value::Array(
+                        (0..len)
+                            .map(|_| Value::deser(bytes))
+                            .collect::<Result<_, _>>()?,
+                    )
                 }
             }
             ValueTy::Timezone => {
@@ -661,7 +860,7 @@ impl Value {
 
                 let mut octets = [0_u16; 8];
                 for i in (0..8_usize).map(|x| x * 2) {
-                    octets[i] = u16::from_le_bytes([bytes[i], bytes[i+1]]);
+                    octets[i] = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
                 }
                 let [a, b, c, d, e, f, g, h] = octets;
 
