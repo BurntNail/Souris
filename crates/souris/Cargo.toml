@@ -7,8 +7,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
-comfy-table = "7.1.1"
-sourisdb = { path = "../sourisdb", features = ["serde"] }
+sourisdb = { path = "../sourisdb", features = ["std", "serde"] }
 dialoguer = { version = "0.11.0", features = [
   "fuzzy-matcher",
   "fuzzy-select",

@@ -1,6 +1,5 @@
-use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Duration, Local, NaiveDate, NaiveDateTime, NaiveTime};
 use clap::{Parser, Subcommand};
-use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
 use dialoguer::{
     theme::{ColorfulTheme, Theme},
     Confirm, Error as DError, FuzzySelect, Input,
@@ -8,10 +7,9 @@ use dialoguer::{
 use sourisdb::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
-    store::{Store, StoreError},
-    types::{integer::Integer, ts::Timestamp},
-    utilities::cursor::Cursor,
-    values::{Value, ValueTy},
+    store::Store,
+    types::integer::Integer,
+    values::{Value, ValueSerError, ValueTy},
 };
 use std::{
     fmt::{Display, Formatter},
@@ -55,20 +53,20 @@ fn main() {
 #[derive(Debug)]
 enum Error {
     IO(IOError),
-    Store(StoreError),
     Dialoguer(DError),
     InvalidDateOrTime,
     SJError(serde_json::Error),
+    Value(ValueSerError),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::IO(e) => write!(f, "Error handling IO: {e:?}"),
-            Error::Store(e) => write!(f, "Error in store: {e:?}"),
             Error::Dialoguer(e) => write!(f, "Error with dialoguer: {e:?}"),
             Error::InvalidDateOrTime => write!(f, "Received invalid date/time"),
             Error::SJError(e) => write!(f, "Error with JSON: {e:?}"),
+            Error::Value(e) => write!(f, "Error with values: {e:?}"),
         }
     }
 }
@@ -76,11 +74,6 @@ impl Display for Error {
 impl From<IOError> for Error {
     fn from(value: IOError) -> Self {
         Self::IO(value)
-    }
-}
-impl From<StoreError> for Error {
-    fn from(value: StoreError) -> Self {
-        Self::Store(value)
     }
 }
 impl From<DError> for Error {
@@ -91,6 +84,11 @@ impl From<DError> for Error {
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::SJError(value)
+    }
+}
+impl From<ValueSerError> for Error {
+    fn from(value: ValueSerError) -> Self {
+        Self::Value(value)
     }
 }
 
@@ -104,17 +102,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::ViewAll => {
             let store = view_all(path, &theme)?;
 
-            let mut table = Table::new();
-            table
-                .set_header(vec!["Key", "Value"])
-                .load_preset(UTF8_FULL)
-                .apply_modifier(UTF8_ROUND_CORNERS)
-                .set_content_arrangement(ContentArrangement::Dynamic);
-
-            for (k, v) in store.into_iter() {
-                table.add_row(vec![format!("{k}"), format!("{v}")]);
-            }
-            println!("{table}");
+            println!("{store}");
         }
         #[cfg(debug_assertions)]
         Commands::DebugViewAll => {
@@ -144,10 +132,13 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
 
-            let key = Input::with_theme(&theme)
-                .with_prompt("Please enter the key: ")
-                .interact()?;
-            let value = get_value_from_stdin("Please enter the value:", &theme)?;
+            let Some(map) = store.as_mut_map() else {
+                println!("File found wasn't a map.");
+                return Ok(());
+            };
+
+            let key = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
+            let value = get_value_from_stdin("Value: ", &theme)?;
 
             println!();
 
@@ -160,7 +151,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 .with_prompt("Confirm Addition?")
                 .interact()?
             {
-                store.insert(key, value);
+                map.insert(key, value);
                 let mut file = File::create(path)?;
                 file.write_all(&store.ser()?)?;
 
@@ -173,13 +164,14 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::RemoveEntry => {
             let mut store = view_all(path.clone(), &theme)?;
 
+            let Some(map) = store.as_mut_map() else {
+                println!("File found wasn't a map.");
+                return Ok(());
+            };
+
             println!();
 
-            let mut keys = store
-                .clone()
-                .into_iter()
-                .map(|(k, _)| k)
-                .collect::<Vec<_>>();
+            let mut keys = map.clone().into_iter().map(|(k, _)| k).collect::<Vec<_>>();
             let key = FuzzySelect::with_theme(&theme)
                 .with_prompt("Select key to be removed:")
                 .items(&keys)
@@ -191,7 +183,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 .with_prompt("Confirm Removal?")
                 .interact()?
             {
-                match store.remove(&key) {
+                match map.remove(&key) {
                     Some(value) => {
                         let mut file = File::create(path)?;
                         file.write_all(&store.ser()?)?;
@@ -210,13 +202,14 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::UpdateEntry => {
             let mut store = view_all(path.clone(), &theme)?;
 
+            let Some(map) = store.as_mut_map() else {
+                println!("File found wasn't a map.");
+                return Ok(());
+            };
+
             println!();
 
-            let mut keys = store
-                .clone()
-                .into_iter()
-                .map(|(k, _)| k)
-                .collect::<Vec<_>>();
+            let mut keys = map.clone().into_iter().map(|(k, _)| k).collect::<Vec<_>>();
             let key = FuzzySelect::with_theme(&theme)
                 .with_prompt("Select key to update value of:")
                 .items(&keys)
@@ -232,7 +225,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 std::process::exit(0);
             }
 
-            let existing = &store[&key];
+            let existing = &map[&key];
             let new = get_value_from_stdin("Enter the new value: ", &theme)?;
             if !Confirm::with_theme(&theme)
                 .with_prompt(format!("Confirm replace value {existing} with {new}?"))
@@ -242,7 +235,11 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 std::process::exit(0);
             }
 
-            store.insert(key, new);
+            map.insert(key, new);
+
+            let mut file = File::create(path)?;
+            file.write_all(&store.ser()?)?;
+
             println!("Successfully updated");
         }
         Commands::ExportToJSON { json_location } => {
@@ -261,20 +258,25 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
     println!("{prompt}");
 
     let tys = [
-        ValueTy::Bool,
-        ValueTy::Int,
         ValueTy::Ch,
         ValueTy::String,
         ValueTy::Binary,
+        ValueTy::Bool,
+        ValueTy::Int,
         ValueTy::Imaginary,
         ValueTy::Timestamp,
         ValueTy::JSON,
-        ValueTy::Store,
         ValueTy::Null,
         ValueTy::Float,
+        ValueTy::Array,
+        ValueTy::Map,
+        ValueTy::Timezone,
+        ValueTy::IpV4,
+        ValueTy::IpV6,
+        ValueTy::Duration,
     ];
     let selection = FuzzySelect::with_theme(theme)
-        .with_prompt("Which type?")
+        .with_prompt("Type: ")
         .items(
             tys.into_iter()
                 .map(|x| format!("{x:?}"))
@@ -285,14 +287,12 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
     Ok(match tys[selection] {
         ValueTy::Ch => {
             let ch: char = Input::with_theme(theme)
-                .with_prompt("Which character?")
+                .with_prompt("Character: ")
                 .interact()?;
             Value::Ch(ch)
         }
         ValueTy::String => {
-            let st: String = Input::with_theme(theme)
-                .with_prompt("What text?")
-                .interact()?;
+            let st: String = Input::with_theme(theme).with_prompt("Text: ").interact()?;
             Value::String(st)
         }
         ValueTy::Binary => {
@@ -309,16 +309,16 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
         }
         ValueTy::Int => {
             let i: Integer = Input::with_theme(theme)
-                .with_prompt("Which number?")
+                .with_prompt("Which number: ")
                 .interact()?;
             Value::Int(i)
         }
         ValueTy::Imaginary => {
             let a: Integer = Input::with_theme(theme)
-                .with_prompt("Real Part?")
+                .with_prompt("Real Part: ")
                 .interact()?;
             let b: Integer = Input::with_theme(theme)
-                .with_prompt("Imaginary Part?")
+                .with_prompt("Imaginary Part: ")
                 .interact()?;
 
             Value::Imaginary(a, b)
@@ -334,19 +334,21 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                     .with_prompt("%Y-%m-%dT%H:%M:%S%.f")
                     .interact()?
             } else {
-                let y = Input::with_theme(theme).with_prompt("Year?").interact()?;
-                let m = Input::with_theme(theme).with_prompt("Month?").interact()?;
-                let d = Input::with_theme(theme).with_prompt("Date?").interact()?;
+                let y = Input::with_theme(theme).with_prompt("Year: ").interact()?;
+                let m = Input::with_theme(theme).with_prompt("Month: ").interact()?;
+                let d = Input::with_theme(theme).with_prompt("Date: ").interact()?;
 
                 let date = NaiveDate::from_ymd_opt(y, m, d).ok_or(Error::InvalidDateOrTime)?;
 
-                let h = Input::with_theme(theme).with_prompt("Hour?").interact()?;
-                let m = Input::with_theme(theme).with_prompt("Minute?").interact()?;
+                let h = Input::with_theme(theme).with_prompt("Hour: ").interact()?;
+                let m = Input::with_theme(theme)
+                    .with_prompt("Minute: ")
+                    .interact()?;
                 let s = Input::with_theme(theme)
-                    .with_prompt("Seconds?")
+                    .with_prompt("Seconds: ")
                     .interact()?;
                 let ms = Input::with_theme(theme)
-                    .with_prompt("Milliseconds?")
+                    .with_prompt("Milliseconds: ")
                     .interact()?;
 
                 let time =
@@ -355,105 +357,130 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                 NaiveDateTime::new(date, time)
             };
 
-            Value::Timestamp(Timestamp(ts))
+            Value::Timestamp(ts)
         }
         ValueTy::JSON => {
-            let v: SJValue = Input::with_theme(theme)
-                .with_prompt("Enter the JSON?")
-                .interact()?;
+            let v: SJValue = Input::with_theme(theme).with_prompt("JSON: ").interact()?;
             Value::JSON(v)
         }
-        ValueTy::Store => {
-            if FuzzySelect::with_theme(theme)
-                .with_prompt("Array or Map?")
-                .items(&["Array", "Map"])
+        ValueTy::Array => {
+            let res = if Confirm::with_theme(theme)
+                .with_prompt("Do you know how long the array is?")
                 .interact()?
-                == 0
             {
-                let res = if Confirm::with_theme(theme)
-                    .with_prompt("Do you know how long the array is?")
-                    .interact()?
-                {
-                    let length: usize = Input::with_theme(theme)
-                        .with_prompt("How long?")
-                        .interact()?;
+                let length: usize = Input::with_theme(theme)
+                    .with_prompt("How long?")
+                    .interact()?;
 
-                    (0..length)
-                        .map(|i| {
-                            get_value_from_stdin(format!("Please enter item {}", i + 1), theme)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?
-                } else {
-                    let mut res = vec![];
-                    let mut i = 1;
-                    loop {
-                        let item = get_value_from_stdin(format!("Please enter item {i}"), theme)?;
-                        res.push(item);
-                        i += 1;
-
-                        if Confirm::with_theme(theme)
-                            .with_prompt("Is that everything?")
-                            .interact()?
-                        {
-                            break;
-                        }
-                    }
-                    res
-                };
-
-                Value::Store(Store::new_arr(res))
+                (1..=length)
+                    .map(|i| get_value_from_stdin(format!("Item {i}:"), theme))
+                    .collect::<Result<Vec<_>, _>>()?
             } else {
-                let map = if Confirm::with_theme(theme)
-                    .with_prompt("Do you know how long the store is?")
-                    .interact()?
-                {
-                    let length: usize = Input::with_theme(theme)
-                        .with_prompt("How long?")
-                        .interact()?;
+                let mut res = vec![];
+                let mut i = 1;
+                loop {
+                    let item = get_value_from_stdin(format!("Item {i}: "), theme)?;
+                    res.push(item);
+                    i += 1;
 
-                    let mut map = HashMap::new();
-
-                    for _ in 0..length {
-                        let key: String = Input::with_theme(theme)
-                            .with_prompt("Please enter the key: ")
-                            .interact()?;
-                        let value = get_value_from_stdin("Please enter a value", theme)?;
-
-                        map.insert(key, value);
+                    if Confirm::with_theme(theme)
+                        .with_prompt("Is that everything?")
+                        .interact()?
+                    {
+                        break;
                     }
+                }
+                res
+            };
 
-                    map
-                } else {
-                    let mut map = HashMap::new();
-
-                    loop {
-                        if Confirm::with_theme(theme)
-                            .with_prompt("Is that all the keys & values?")
-                            .interact()?
-                        {
-                            break;
-                        }
-
-                        let key: String = Input::with_theme(theme)
-                            .with_prompt("Please enter the key: ")
-                            .interact()?;
-                        let value = get_value_from_stdin("Please enter a value", theme)?;
-
-                        map.insert(key, value);
-                    }
-
-                    map
-                };
-
-                Value::Store(Store::new_map(map)?)
-            }
+            Value::Array(res)
         }
-        ValueTy::Null => Value::Null(None),
+        ValueTy::Map => {
+            let map = if Confirm::with_theme(theme)
+                .with_prompt("Do you know how long the store is?")
+                .interact()?
+            {
+                let length: usize = Input::with_theme(theme)
+                    .with_prompt("Length: ")
+                    .interact()?;
+
+                let mut map = HashMap::new();
+
+                for _ in 0..length {
+                    let key: String = Input::with_theme(theme).with_prompt("Key: ").interact()?;
+                    let value = get_value_from_stdin("Value: ", theme)?;
+
+                    map.insert(key, value);
+                }
+
+                map
+            } else {
+                let mut map = HashMap::new();
+
+                loop {
+                    if Confirm::with_theme(theme)
+                        .with_prompt("Is that all the keys & values?")
+                        .interact()?
+                    {
+                        break;
+                    }
+
+                    let key: String = Input::with_theme(theme).with_prompt("Key: ").interact()?;
+                    let value = get_value_from_stdin("Value: ", theme)?;
+
+                    map.insert(key, value);
+                }
+
+                map
+            };
+
+            Value::Map(map)
+        }
+        ValueTy::Null => Value::Null(()),
         ValueTy::Float => {
             let f: f64 = Input::with_theme(theme)
                 .with_prompt("What float?")
                 .interact()?;
             Value::Float(f)
+        }
+        ValueTy::Timezone => {
+            let chosen_index = FuzzySelect::with_theme(theme)
+                .with_prompt("Timezone: ")
+                .items(&chrono_tz::TZ_VARIANTS)
+                .interact()?;
+            Value::Timezone(chrono_tz::TZ_VARIANTS[chosen_index])
+        }
+        ValueTy::IpV4 => {
+            let addr = Input::with_theme(theme)
+                .with_prompt("Ipv4 Address: ")
+                .interact()?;
+            Value::Ipv4Addr(addr)
+        }
+        ValueTy::IpV6 => {
+            let addr = Input::with_theme(theme)
+                .with_prompt("Ipv6 Address: ")
+                .interact()?;
+            Value::Ipv6Addr(addr)
+        }
+        ValueTy::Duration => {
+            let secs = Input::with_theme(theme)
+                .with_prompt("Seconds: ")
+                .interact()?;
+            let nanos = loop {
+                let trial = Input::with_theme(theme)
+                    .with_prompt("Nanoseconds: ")
+                    .interact()?;
+                if trial >= 1_000_000_000 {
+                    println!("Too big - nanos must be < 1,000,000,000");
+                } else {
+                    break trial;
+                }
+            };
+            let Some(d) = Duration::new(secs, nanos) else {
+                unreachable!("just checked that nanos is acceptable");
+            };
+
+            Value::Duration(d)
         }
     })
 }
@@ -484,10 +511,7 @@ fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
                 }
             }
 
-            eprintln!("Read {} bytes.", contents.len()); //grammar: always != 1
-
-            let mut cursor = Cursor::new(&contents);
-            let store = Store::deser(&mut cursor)?;
+            let store = Store::deser(&contents)?;
             Ok(store)
         }
     }
@@ -510,7 +534,7 @@ fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
         Ok(f) => f,
     };
 
-    let store = Store::default();
+    let store = Store::new_map();
     file.write_all(&store.ser()?)?;
     println!("Successfully created new SourisDB.");
 

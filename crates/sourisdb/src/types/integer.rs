@@ -19,8 +19,8 @@ pub enum SignedState {
 }
 
 ///size of the backing integer
-type BiggestInt = u128;
-type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
+pub type BiggestInt = u128;
+pub type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
 ///# of bytes for storing one `BiggestInt`
 const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated and this is clearer
 ///max size for an integer to be stored by itself

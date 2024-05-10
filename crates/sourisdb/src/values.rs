@@ -1,14 +1,15 @@
 use crate::{
+    display_bytes_as_hex_array,
     types::integer::{Integer, IntegerSerError, SignedState},
     utilities::cursor::Cursor,
 };
 use alloc::{
-    format,
     string::{FromUtf8Error, String, ToString},
     vec,
     vec::Vec,
 };
-use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use cfg_if::cfg_if;
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use chrono_tz::Tz;
 use core::{
     fmt::{Debug, Display, Formatter},
@@ -18,7 +19,6 @@ use core::{
     str::FromStr,
 };
 use hashbrown::HashMap;
-use rust_decimal::Decimal;
 use serde_json::{Error as SJError, Value as SJValue};
 
 #[derive(Clone)]
@@ -40,7 +40,25 @@ pub enum Value {
     Timezone(Tz),
     Ipv4Addr(Ipv4Addr),
     Ipv6Addr(Ipv6Addr),
-    Decimal(Decimal),
+    #[cfg_attr(feature = "serde", serde(with = "DurationDef"))]
+    Duration(Duration),
+}
+
+#[cfg(feature = "serde")]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(remote = "Duration"))]
+struct DurationDef {
+    #[serde(getter = "Duration::num_seconds")]
+    secs: i64,
+    #[serde(getter = "Duration::subsec_nanos")]
+    nanos: i32,
+}
+#[cfg(feature = "serde")]
+impl From<DurationDef> for Duration {
+    fn from(value: DurationDef) -> Self {
+        Duration::new(value.secs, value.nanos as u32).expect("unable to get duration working")
+        //TODO: check if this is OK
+    }
 }
 
 impl Value {
@@ -101,7 +119,7 @@ impl Value {
     }
 
     pub fn as_null(&self) -> Option<()> {
-        if let Value::Null(_) = self {
+        if let Value::Null(()) = self {
             Some(())
         } else {
             None
@@ -127,6 +145,38 @@ impl Value {
     pub fn as_map(&self) -> Option<&HashMap<String, Value>> {
         if let Value::Map(m) = self {
             Some(m)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_tz(&self) -> Option<Tz> {
+        if let Value::Timezone(tz) = self {
+            Some(*tz)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_ipv4(&self) -> Option<Ipv4Addr> {
+        if let Value::Ipv4Addr(a) = self {
+            Some(*a)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_ipv6(&self) -> Option<Ipv6Addr> {
+        if let Value::Ipv6Addr(a) = self {
+            Some(*a)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_duration(&self) -> Option<Duration> {
+        if let Value::Duration(d) = self {
+            Some(*d)
         } else {
             None
         }
@@ -211,6 +261,38 @@ impl Value {
             None
         }
     }
+
+    pub fn as_mut_tz(&mut self) -> Option<&mut Tz> {
+        if let Value::Timezone(tz) = self {
+            Some(tz)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_ipv4(&mut self) -> Option<&mut Ipv4Addr> {
+        if let Value::Ipv4Addr(a) = self {
+            Some(a)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_ipv6(&mut self) -> Option<&mut Ipv6Addr> {
+        if let Value::Ipv6Addr(a) = self {
+            Some(a)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_duration(&mut self) -> Option<&mut Duration> {
+        if let Value::Duration(d) = self {
+            Some(d)
+        } else {
+            None
+        }
+    }
 }
 
 impl PartialEq for Value {
@@ -228,14 +310,14 @@ impl PartialEq for Value {
             (Self::Imaginary(a, b), Self::Imaginary(a2, b2)) => a.eq(a2) && b.eq(b2),
             (Self::Timestamp(t), Self::Timestamp(t2)) => t.eq(t2),
             (Self::JSON(j), Self::JSON(j2)) => j.eq(j2),
-            (Self::Null(_), Self::Null(_)) => true,
+            (Self::Null(()), Self::Null(())) => true,
             (Self::Float(f), Self::Float(f2)) => f.eq(f2),
             (Self::Array(a), Self::Array(a2)) => a.eq(a2),
             (Self::Map(m), Self::Map(m2)) => m.eq(m2),
             (Self::Timezone(t), Self::Timezone(t2)) => t.eq(t2),
             (Self::Ipv4Addr(t), Self::Ipv4Addr(t2)) => t.eq(t2),
             (Self::Ipv6Addr(t), Self::Ipv6Addr(t2)) => t.eq(t2),
-            (Self::Decimal(t), Self::Decimal(t2)) => t.eq(t2),
+            (Self::Duration(t), Self::Duration(t2)) => t.eq(t2),
             _ => unreachable!("already checked ty equality"),
         }
     }
@@ -296,7 +378,7 @@ impl Hash for Value {
                 .hash(state);
                 f.to_le_bytes().hash(state);
             }
-            Value::Null(_) => {}
+            Value::Null(()) => {}
             Value::Timezone(tz) => {
                 tz.hash(state);
             }
@@ -306,7 +388,7 @@ impl Hash for Value {
             Value::Ipv6Addr(a) => {
                 a.hash(state);
             }
-            Value::Decimal(d) => {
+            Value::Duration(d) => {
                 d.hash(state);
             }
         }
@@ -334,7 +416,7 @@ impl Debug for Value {
             Self::Map(m) => s.field("content", &m),
             Self::Ipv4Addr(m) => s.field("content", &m),
             Self::Ipv6Addr(m) => s.field("content", &m),
-            Self::Decimal(m) => s.field("content", &m),
+            Self::Duration(m) => s.field("content", &m),
             Self::Timezone(m) => s.field("content", &m),
         };
 
@@ -363,30 +445,58 @@ impl Display for Value {
             Self::JSON(v) => write!(f, "{v}"),
             Self::Float(fl) => write!(f, "{fl}"),
             Self::Null(_o) => write!(f, "null"),
-            Self::Map(m) => write!(f, "{m:?}"),
-            Self::Array(a) => write!(f, "{a:?}"),
+            Self::Map(m) => {
+                cfg_if! {
+                    if #[cfg(feature = "std")] {
+                        use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
+
+                        let mut table = Table::new();
+                        table
+                            .set_header(vec!["Key", "Value"])
+                            .load_preset(UTF8_FULL)
+                            .apply_modifier(UTF8_ROUND_CORNERS)
+                            .set_content_arrangement(ContentArrangement::Dynamic);
+
+                        for (k, v) in m.into_iter() {
+                            table.add_row(vec![format!("{k}"), format!("{v}")]);
+                        }
+                        write!(f, "\n{table}")
+                    } else {
+                        write!(f, "{{")?;
+
+                        let mut first = true;
+                        for (k, v) in m {
+                            if first {
+                                first = false;
+
+                                write!(f, "{k}: {v}")?;
+                            } else {
+                                write!(f, ", {k}: {v}")?;
+                            }
+                        }
+                        write!(f, "}}")
+                    }
+                }
+            }
+            Self::Array(a) => {
+                write!(f, "[")?;
+                let mut first = true;
+                for v in a {
+                    if first {
+                        first = false;
+                        write!(f, "{v}")?;
+                    } else {
+                        write!(f, ", {v}")?;
+                    }
+                }
+                write!(f, "]")
+            }
             Self::Timezone(v) => write!(f, "{v}"),
             Self::Ipv4Addr(v) => write!(f, "{v}"),
             Self::Ipv6Addr(v) => write!(f, "{v}"),
-            Self::Decimal(v) => write!(f, "{v}"),
+            Self::Duration(v) => write!(f, "{v}"),
         }
     }
-}
-
-fn display_bytes_as_hex_array(b: &[u8]) -> String {
-    let mut out;
-    match b.len() {
-        0 => out = "[]".to_string(),
-        1 => out = format!("[{:#X}]", b[0]),
-        _ => {
-            out = format!("[{:#X}", b[0]);
-            for b in b.iter().skip(1) {
-                out.push_str(&format!(", {b:#X}"));
-            }
-            out.push(']');
-        }
-    };
-    out
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -406,7 +516,7 @@ pub enum ValueTy {
     Timezone,
     IpV4,
     IpV6,
-    Decimal,
+    Duration,
 }
 
 impl From<ValueTy> for u8 {
@@ -427,7 +537,7 @@ impl From<ValueTy> for u8 {
             ValueTy::Timezone => 12,
             ValueTy::IpV4 => 13,
             ValueTy::IpV6 => 14,
-            ValueTy::Decimal => 15,
+            ValueTy::Duration => 15,
         }
     }
 }
@@ -451,7 +561,7 @@ impl TryFrom<u8> for ValueTy {
             12 => ValueTy::Timezone,
             13 => ValueTy::IpV4,
             14 => ValueTy::IpV6,
-            15 => ValueTy::Decimal,
+            15 => ValueTy::Duration,
             _ => return Err(ValueSerError::InvalidType(value)),
         })
     }
@@ -468,8 +578,8 @@ pub enum ValueSerError {
     SerdeJson(SJError),
     UnexpectedValueType(Value, ValueTy),
     TzError(chrono_tz::ParseError),
-    DecimalError(rust_decimal::Error),
     InvalidDateOrTime,
+    NanosecondsOverflow(Duration),
 }
 
 impl Display for ValueSerError {
@@ -487,8 +597,10 @@ impl Display for ValueSerError {
             ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e:?}"),
             ValueSerError::UnexpectedValueType(v, ex) => write!(f, "Expected {ex:?}, found: {v:?}"),
             ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e:?}"),
-            ValueSerError::DecimalError(e) => write!(f, "Error with decimals: {e:?}"),
             ValueSerError::InvalidDateOrTime => write!(f, "Error with invalid time given"),
+            ValueSerError::NanosecondsOverflow(d) => {
+                write!(f, "Given duration {d} had too many total nanoseconds")
+            }
         }
     }
 }
@@ -513,11 +625,6 @@ impl From<chrono_tz::ParseError> for ValueSerError {
         Self::TzError(value)
     }
 }
-impl From<rust_decimal::Error> for ValueSerError {
-    fn from(value: rust_decimal::Error) -> Self {
-        Self::DecimalError(value)
-    }
-}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ValueSerError {
@@ -527,7 +634,6 @@ impl std::error::Error for ValueSerError {
             ValueSerError::NonUTF8String(e) => Some(e),
             ValueSerError::SerdeJson(e) => Some(e),
             ValueSerError::TzError(e) => Some(e),
-            ValueSerError::DecimalError(e) => Some(e),
             _ => None,
         }
     }
@@ -570,11 +676,11 @@ impl Value {
             Self::Map(_) => ValueTy::Map,
             Self::Array(_) => ValueTy::Array,
             Self::Float(_) => ValueTy::Float,
-            Self::Null(_) => ValueTy::Null,
+            Self::Null(()) => ValueTy::Null,
             Self::Timezone(_) => ValueTy::Timezone,
             Self::Ipv4Addr(_) => ValueTy::IpV4,
             Self::Ipv6Addr(_) => ValueTy::IpV6,
-            Self::Decimal(_) => ValueTy::Decimal,
+            Self::Duration(_) => ValueTy::Duration,
         }
     }
 
@@ -606,7 +712,7 @@ impl Value {
                 res.extend(b.iter());
             }
             Self::Bool(b) => {
-                ty |= u8::from(*b) << 2;
+                ty |= u8::from(*b);
                 res.push(ty);
             }
             Self::Int(i) => {
@@ -656,22 +762,24 @@ impl Value {
                 res.push(ty);
                 res.extend(Value::String(v.to_string()).ser()?);
             }
-            Self::Null(_) => {}
+            Self::Null(()) => {
+                res.push(ty);
+            }
             Self::Float(f) => {
                 let bytes = f.to_le_bytes();
                 res.push(ty);
                 res.extend(bytes.iter());
             }
             Self::Map(m) => {
-                if m.len() < ((1_usize << 3) - 1) {
-                    ty |= (m.len() as u8) << 1;
-                    res.push(ty);
-                } else {
-                    let (_, integer_bytes) = Integer::from(m.len()).ser();
-                    ty |= 0b1; //to signify that we used an integer
-                    res.push(ty);
-                    res.extend(integer_bytes);
-                }
+                // if m.len() < ((1_usize << 3) - 1) {
+                //     ty |= (m.len() as u8) << 1;
+                //     res.push(ty);
+                // } else {
+                let (_, integer_bytes) = Integer::from(m.len()).ser();
+                ty |= 0b1; //to signify that we used an integer
+                res.push(ty);
+                res.extend(integer_bytes);
+                // }
 
                 for (k, v) in m.clone() {
                     res.extend(Value::String(k).ser()?);
@@ -680,15 +788,15 @@ impl Value {
             }
             Self::Array(a) => {
                 //yes, DRY, but only 2 instances right next to each other so not too bad
-                if a.len() < ((1_usize << 3) - 1) {
-                    ty |= (a.len() as u8) << 1;
-                    res.push(ty);
-                } else {
-                    let (_, integer_bytes) = Integer::from(a.len()).ser();
-                    ty |= 0b1; //to signify that we used an integer
-                    res.push(ty);
-                    res.extend(integer_bytes);
-                }
+                // if a.len() < ((1_usize << 3) - 1) {
+                //     ty |= (a.len() as u8) << 1;
+                //     res.push(ty);
+                // } else {
+                let (_, integer_bytes) = Integer::from(a.len()).ser();
+                ty |= 0b1; //to signify that we used an integer
+                res.push(ty);
+                res.extend(integer_bytes);
+                // }
 
                 for v in a.clone() {
                     res.extend(v.ser()?);
@@ -700,23 +808,23 @@ impl Value {
                 res.extend(Value::String(name.into()).ser()?);
             }
             Self::Ipv4Addr(a) => {
-                let parts = a.octets();
                 res.push(ty);
-                res.extend(parts);
+                res.extend(a.octets());
             }
             Self::Ipv6Addr(a) => {
-                let parts: Vec<u8> = a
-                    .octets()
-                    .into_iter()
-                    .map(|x| x.to_le_bytes())
-                    .flatten()
-                    .collect();
                 res.push(ty);
-                res.extend(parts);
+                res.extend(a.octets());
             }
-            Self::Decimal(d) => {
-                res.push(ty); //TODO: explore whether i can serialise certain parts separately?
-                res.extend(Value::String(d.to_string()).ser()?);
+            Self::Duration(d) => {
+                let Some(nanos) = d.num_nanoseconds() else {
+                    return Err(ValueSerError::NanosecondsOverflow(*d));
+                };
+                let (nanos_ss, nanos) = Integer::from(nanos).ser();
+
+                ty |= u8::from(nanos_ss);
+
+                res.push(ty);
+                res.extend(nanos);
             }
         }
 
@@ -727,7 +835,7 @@ impl Value {
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
         let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 
-        let ty = byte >> 4;
+        let ty = (byte & 0b1111_0000) >> 4;
         let ty = ValueTy::try_from(ty)?;
 
         //for lengths or single integers
@@ -795,7 +903,7 @@ impl Value {
                     .to_vec();
                 Self::Binary(bytes)
             }
-            ValueTy::Bool => Self::Bool((byte & 0b0000_0100) > 0),
+            ValueTy::Bool => Self::Bool((byte & 0b0000_0001) > 0),
             ValueTy::Null => Self::Null(()),
             ValueTy::Float => {
                 let bytes = match bytes.read_specific::<8>().map(TryInto::try_into) {
@@ -809,13 +917,13 @@ impl Value {
             }
             ValueTy::Map | ValueTy::Array => {
                 let len: usize = {
-                    if (byte & 0b0000_0001) > 0 {
-                        //we used an integer
-                        Integer::deser(SignedState::Positive, bytes)?.try_into()?
-                    } else {
-                        //we encoded it in the byte
-                        ((byte & 0b0000_0110) >> 1) as usize
-                    }
+                    // if (byte & 0b0000_0001) > 0 {
+                    //we used an integer
+                    Integer::deser(SignedState::Positive, bytes)?.try_into()?
+                    // } else {
+                    //we encoded it in the byte
+                    // ((byte & 0b0000_1110) >> 1) as usize
+                    // }
                 };
 
                 if ty == ValueTy::Map {
@@ -860,20 +968,15 @@ impl Value {
 
                 let mut octets = [0_u16; 8];
                 for i in (0..8_usize).map(|x| x * 2) {
-                    octets[i] = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
+                    octets[i / 2] = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
                 }
                 let [a, b, c, d, e, f, g, h] = octets;
 
                 Self::Ipv6Addr(Ipv6Addr::new(a, b, c, d, e, f, g, h))
             }
-            ValueTy::Decimal => {
-                let val = Value::deser(bytes)?;
-                let Value::String(val) = val else {
-                    return Err(ValueSerError::UnexpectedValueType(val, ValueTy::String));
-                };
-                let decimal = Decimal::from_str(&val)?;
-                Value::Decimal(decimal)
-            }
+            ValueTy::Duration => Self::Duration(Duration::nanoseconds(
+                Integer::deser(SignedState::try_from(byte & 0b0000_0001)?, bytes)?.try_into()?,
+            )),
         })
     }
 }
@@ -881,39 +984,85 @@ impl Value {
 #[cfg(test)]
 mod tests {
     use super::Value;
-    use crate::{types::integer::Integer, utilities::cursor::Cursor};
+    use crate::{
+        types::integer::{BiggestInt, BiggestIntButSigned, Integer},
+        utilities::cursor::Cursor,
+    };
+    use alloc::{
+        format,
+        string::{String, ToString},
+        vec::Vec,
+    };
+    use chrono::NaiveDateTime;
+    use proptest::{arbitrary::any, prop_assert_eq, proptest};
 
-    #[test]
-    fn test_bools() {
-        {
-            let t = Value::Bool(true);
-            let ser = t.clone().ser().unwrap();
+    proptest! {
+        #[test]
+        fn test_ch (c in any::<char>()) {
+            let v = Value::Ch(c);
 
-            assert_eq!(t, Value::deser(&mut Cursor::new(&ser)).unwrap());
+            let bytes = v.ser().unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let out = out_value.as_char().unwrap();
+
+            prop_assert_eq!(c, out);
         }
-        {
-            let f = Value::Bool(false);
-            let ser = f.clone().ser().unwrap();
 
-            assert_eq!(f, Value::deser(&mut Cursor::new(&ser)).unwrap());
+        #[test]
+        fn test_str (s in any::<String>()) {
+            let v = Value::String(s.clone());
+
+            let bytes = v.ser().unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let out = out_value.as_str().unwrap().to_string();
+
+            prop_assert_eq!(s, out);
         }
+
+        #[test]
+        fn test_bin (s in any::<Vec<u8>>()) {
+            let v = Value::Binary(s.clone());
+
+            let bytes = v.ser().unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let out = out_value.as_binary().unwrap().to_vec();
+
+            prop_assert_eq!(s, out);
+        }
+
+        #[test]
+        fn test_bool (s in any::<bool>()) {
+            let v = Value::Bool(s.clone());
+
+            let bytes = v.ser().unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let out = out_value.as_boolean().unwrap();
+
+            prop_assert_eq!(s, out);
+        }
+
+        #[test]
+        fn test_int (a in any::<BiggestInt>(), b in any::<BiggestIntButSigned>()) {
+            {
+                let v = Value::Int(a.clone().into());
+
+                let bytes = v.ser().unwrap();
+                let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+                let out = BiggestInt::try_from(out_value.as_integer().unwrap()).unwrap();
+
+                prop_assert_eq!(a, out);
+            }
+            {
+                let v = Value::Int(b.clone().into());
+
+                let bytes = v.ser().unwrap();
+                let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+                let out = BiggestIntButSigned::try_from(out_value.as_integer().unwrap()).unwrap();
+
+                prop_assert_eq!(b, out);
+            }
+        }
+
+        //TODO: more tests :)
     }
-
-    #[test]
-    fn test_ints() {
-        {
-            let neg = Value::Int(Integer::i8(-15));
-            let ser = neg.clone().ser().unwrap();
-
-            assert_eq!(neg, Value::deser(&mut Cursor::new(&ser)).unwrap());
-        }
-        {
-            let big = Value::Int(Integer::usize(123_456_789));
-            let ser = big.clone().ser().unwrap();
-
-            assert_eq!(big, Value::deser(&mut Cursor::new(&ser)).unwrap());
-        }
-    }
-
-    //TODO: tests
 }
