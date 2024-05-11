@@ -7,8 +7,8 @@ use dialoguer::{
 use sourisdb::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
-    store::Store,
-    types::integer::Integer,
+    store::{Store, StoreSerError},
+    types::{imaginary::Imaginary, integer::Integer},
     values::{Value, ValueSerError, ValueTy},
 };
 use std::{
@@ -17,8 +17,6 @@ use std::{
     io::{Error as IOError, ErrorKind, Read, Write},
     path::PathBuf,
 };
-use sourisdb::store::StoreSerError;
-use sourisdb::types::imaginary::Imaginary;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -65,12 +63,12 @@ enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::IO(e) => write!(f, "Error handling IO: {e:?}"),
-            Error::Dialoguer(e) => write!(f, "Error with dialoguer: {e:?}"),
+            Error::IO(e) => write!(f, "Error handling IO: {e}"),
+            Error::Dialoguer(e) => write!(f, "Error with dialoguer: {e}"),
             Error::InvalidDateOrTime => write!(f, "Received invalid date/time"),
-            Error::SerdeJson(e) => write!(f, "Error with JSON: {e:?}"),
-            Error::Value(e) => write!(f, "Error with values: {e:?}"),
-            Error::Store(e) => write!(f, "Error with store: {e:?}"),
+            Error::SerdeJson(e) => write!(f, "Error with JSON: {e}"),
+            Error::Value(e) => write!(f, "Error with values: {e}"),
+            Error::Store(e) => write!(f, "Error with store: {e}"),
         }
     }
 }
@@ -140,7 +138,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         }
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
-            
+
             let key = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
             let value = get_value_from_stdin("Value: ", &theme)?;
 
@@ -200,7 +198,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         }
         Commands::UpdateEntry => {
             let mut store = view_all(path.clone(), &theme)?;
-            
+
             println!();
 
             let mut keys = store.keys().collect::<Vec<_>>();
@@ -315,7 +313,7 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
                 .with_prompt("Imaginary Part: ")
                 .interact()?;
 
-            Value::Imaginary(Imaginary {real, imaginary})
+            Value::Imaginary(Imaginary { real, imaginary })
         }
         ValueTy::Timestamp => {
             let ts: NaiveDateTime = if Confirm::with_theme(theme).with_prompt("Now?").interact()? {

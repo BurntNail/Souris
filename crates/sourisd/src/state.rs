@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use color_eyre::eyre::bail;
 use dirs::data_dir;
 use sourisdb::{store::Store, values::Value};
@@ -21,7 +22,6 @@ mod meta {
 }
 use crate::error::SourisError;
 use meta::*;
-use sourisdb::utilities::cursor::Cursor;
 
 #[derive(Clone, Debug)]
 pub struct SourisState {
@@ -30,79 +30,100 @@ pub struct SourisState {
 }
 
 impl SourisState {
-    ///returns whether the key already existed
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn new_db(&self, key: String) -> Result<bool, SourisError> {
+    pub async fn new_db(
+        &self,
+        name: String,
+        overwrite_existing: bool,
+    ) -> Result<StatusCode, SourisError> {
         let mut dbs = self.dbs.lock().await;
 
-        if dbs.contains_key(&key) {
+        if dbs.contains_key(&name) {
             trace!(
-                ?key,
+                ?name,
                 "Tried to add new store, found existing store with name."
             );
-            return Ok(true);
+
+            if overwrite_existing {
+                let Some(db) = dbs.get_mut(&name) else {
+                    unreachable!("just checked that the key exists")
+                };
+                db.clear();
+            }
+            return Ok(StatusCode::OK);
         }
 
-        dbs.insert(key.clone(), Store::default());
+        dbs.insert(name.clone(), Store::new());
 
-        Ok(false)
+        Ok(StatusCode::CREATED)
     }
 
     ///returns whether it cleared a database
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn clear_db(&self, key: String) -> bool {
+    pub async fn clear_db(&self, name: String) -> Result<(), SourisError> {
         let mut dbs = self.dbs.lock().await;
-        if let Some(store) = dbs.get_mut(&key) {
+        if let Some(store) = dbs.get_mut(&name) {
             store.clear();
-            true
+            Ok(())
         } else {
             trace!("Unable to find store.");
-            false
+            Err(SourisError::DatabaseNotFound)
         }
     }
 
     ///returns whether it removed a database
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn remove_db(&self, key: String) -> Result<bool, tokio::io::Error> {
+    pub async fn remove_db(&self, name: String) -> Result<(), SourisError> {
         let mut dbs = self.dbs.lock().await;
-        if !dbs.contains_key(&key) {
-            return Ok(false);
+        if !dbs.contains_key(&name) {
+            return Err(SourisError::DatabaseNotFound);
         }
 
-        dbs.remove(&key);
+        dbs.remove(&name);
 
-        let file_name = self.base_location.join(format!("{key}.sdb"));
-        tokio::fs::remove_file(file_name).await?;
+        let file_name = self.base_location.join(format!("{name}.sdb"));
 
-        Ok(true)
+        if let Err(e) = tokio::fs::remove_file(file_name).await {
+            if e.kind() != ErrorKind::NotFound {
+                return Err(e.into());
+            }
+        }
+
+        Ok(())
     }
 
-    pub async fn get_db(&self, name: String) -> Option<Store> {
+    pub async fn get_db(&self, name: String) -> Result<Store, SourisError> {
         let dbs = self.dbs.lock().await;
-        dbs.get(&name).cloned()
+        dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)
     }
 
-    ///returns whether the value was inserted - could fail if the database didn't exist
-    pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) -> bool {
+    pub async fn add_key_value_pair(
+        &self,
+        db: String,
+        k: String,
+        v: Value,
+    ) -> Result<(), SourisError> {
         let mut dbs = self.dbs.lock().await;
 
         let Some(db) = dbs.get_mut(&db) else {
-            return false;
+            return Err(SourisError::DatabaseNotFound);
         };
 
         db.insert(k, v);
 
-        true
+        Ok(())
     }
 
     pub async fn get_value(&self, db: String, k: &String) -> Result<Value, SourisError> {
         let dbs = self.dbs.lock().await;
+
         let Some(db) = dbs.get(&db) else {
             return Err(SourisError::DatabaseNotFound);
         };
         let Some(key) = db.get(k).cloned() else {
             return Err(SourisError::KeyNotFound);
         };
+
         Ok(key)
     }
 }
@@ -116,7 +137,7 @@ impl SourisState {
                 Err(e) => {
                     return if e.kind() == ErrorKind::NotFound {
                         trace!(?location, "File not found, getting empty store.");
-                        return Ok(Store::default());
+                        return Ok(Store::new());
                     } else {
                         Err(e.into())
                     };
@@ -135,8 +156,7 @@ impl SourisState {
                 }
             }
 
-            let mut cursor = Cursor::new(&contents);
-            Ok(Store::deser(&mut cursor)?)
+            Ok(Store::deser(&contents)?)
         }
 
         #[tracing::instrument(level = "trace", skip(meta))]
@@ -144,24 +164,22 @@ impl SourisState {
             meta: &Store,
             base: PathBuf,
         ) -> Option<HashMap<String, Store>> {
-            let Some(Value::Store(Store::Array { arr: values })) =
-                meta.get(&DB_FILE_NAMES_KEY.into())
-            else {
-                trace!("Unable to find existing databases - using none");
+            let Some(Value::Array(values)) = meta.get(DB_FILE_NAMES_KEY) else {
+                trace!("Unable to find existing databases.");
                 return None;
             };
 
             let mut dbs = HashMap::new();
 
             for val in values {
-                let Value::String(file_name) = val else {
+                let Some(file_name) = val.as_str() else {
                     trace!(?val, "Found non-string inside existing databases list");
                     continue;
                 };
 
                 match get_store(base.join(format!("{file_name}.sdb"))).await {
                     Ok(s) => {
-                        dbs.insert(file_name.to_owned(), s);
+                        dbs.insert(file_name.to_string(), s);
                     }
                     Err(e) => {
                         trace!(?e, ?file_name, "Error getting database");
@@ -179,13 +197,11 @@ impl SourisState {
         let base_location = base_location.join(DIR);
 
         let mut meta = get_store(base_location.join(META_DB_FILE_NAME)).await?;
+
         let dbs = match get_internal_stores(&meta, base_location.clone()).await {
             Some(dbs) => dbs,
             None => {
-                meta.insert(
-                    DB_FILE_NAMES_KEY.into(),
-                    Value::Store(Store::Array { arr: vec![] }),
-                );
+                meta.insert(DB_FILE_NAMES_KEY.into(), Value::Array(vec![]));
                 HashMap::default()
             }
         };
@@ -204,6 +220,7 @@ impl SourisState {
         for (name, db) in self.dbs.lock().await.iter() {
             let file_name = self.base_location.join(format!("{name}.sdb"));
             let bytes = db.ser()?;
+
             if let Err(e) = write_to_file(&bytes, file_name, &self.base_location).await {
                 error!(?e, "Error writing out database");
             } else {
@@ -211,11 +228,8 @@ impl SourisState {
             }
         }
 
-        let mut meta = Store::default();
-        meta.insert(
-            DB_FILE_NAMES_KEY.into(),
-            Value::Store(Store::Array { arr: names }),
-        );
+        let mut meta = Store::new();
+        meta.insert(DB_FILE_NAMES_KEY.into(), Value::Array(names));
 
         let location = self.base_location.join(META_DB_FILE_NAME);
         let meta = meta.ser()?;
@@ -232,7 +246,7 @@ async fn write_to_file(
         Ok(f) => f,
         Err(e) => {
             if e.kind() == ErrorKind::NotFound {
-                //folder must not exist
+                //folder must not exist, hopefully?
                 trace!(?path, ?base_location, "Unable to find folder, creating");
 
                 create_dir_all(&base_location).await?;

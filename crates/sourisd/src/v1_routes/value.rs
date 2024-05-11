@@ -1,18 +1,11 @@
-use crate::{error::SourisError, state::SourisState, v1_routes::db::DbByName};
+use crate::{error::SourisError, state::SourisState};
 use axum::{
+    body::Bytes,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
 use serde::Deserialize;
-use serde_json::Value as SJValue;
-use sourisdb::values::Value;
-
-#[derive(Deserialize)]
-pub struct KeyAndValue {
-    k: String,
-    v: SJValue,
-}
+use sourisdb::{utilities::cursor::Cursor, values::Value};
 
 #[derive(Deserialize)]
 pub struct KeyAndDb {
@@ -22,20 +15,22 @@ pub struct KeyAndDb {
 
 #[axum::debug_handler]
 pub async fn add_kv(
-    Query(DbByName { name }): Query<DbByName>,
+    Query(KeyAndDb { db, key }): Query<KeyAndDb>,
     State(state): State<SourisState>,
-    Json(KeyAndValue { k, v }): Json<KeyAndValue>,
-) -> StatusCode {
-    match state.add_key_value_pair(name, k, Value::from(v)).await {
-        true => StatusCode::CREATED,
-        false => StatusCode::OK,
-    }
+    body: Bytes,
+) -> Result<StatusCode, SourisError> {
+    let v = Value::deser(&mut Cursor::new(&body))?;
+
+    state.add_key_value_pair(db, key, v).await?;
+    Ok(StatusCode::CREATED)
 }
 
 #[axum::debug_handler]
 pub async fn get_value(
     Query(KeyAndDb { key, db }): Query<KeyAndDb>,
     State(state): State<SourisState>,
-) -> Result<Json<Value>, SourisError> {
-    state.get_value(db, &key).await.map(Json)
+) -> Result<Vec<u8>, SourisError> {
+    let v = state.get_value(db, &key).await?;
+    let bytes = v.ser()?;
+    Ok(bytes)
 }

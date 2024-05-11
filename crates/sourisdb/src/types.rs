@@ -1,2 +1,2 @@
-pub mod integer;
 pub mod imaginary;
+pub mod integer;

@@ -3,8 +3,10 @@ use crate::{
     values::{Value, ValueSerError, ValueTy},
 };
 use alloc::{vec, vec::Vec};
-use core::fmt::{Display, Formatter};
-use core::ops::{Deref, DerefMut};
+use core::{
+    fmt::{Display, Formatter},
+    ops::{Deref, DerefMut},
+};
 use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
 
@@ -49,7 +51,7 @@ impl Store {
                 map
             }
         };
-        
+
         Ok(Self(map))
     }
 }
@@ -87,8 +89,8 @@ impl Display for StoreSerError {
                 f,
                 "Expected to find a map when deserialising, found {t:?} instead"
             ),
-            StoreSerError::Value(e) => write!(f, "Error with values: {e:?}"),
-            StoreSerError::SerdeJson(e) => write!(f, "Error with serde_json: {e:?}"),
+            StoreSerError::Value(e) => write!(f, "Error with values: {e}"),
+            StoreSerError::SerdeJson(e) => write!(f, "Error with serde_json: {e}"),
         }
     }
 }

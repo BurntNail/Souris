@@ -505,7 +505,7 @@ impl Display for IntegerSerError {
                 "Attempted to deserialise into different type than was originally serialised from"
             ),
             IntegerSerError::IntegerParseError(e) => {
-                write!(f, "Error parsing from base-10 string: {e:?}")
+                write!(f, "Error parsing from base-10 string: {e}")
             }
             IntegerSerError::SerdeCustom(s) => write!(f, "Error in serde: {s}"),
         }

@@ -1,6 +1,9 @@
 use crate::{
     display_bytes_as_hex_array,
-    types::integer::{Integer, IntegerSerError, SignedState},
+    types::{
+        imaginary::Imaginary,
+        integer::{Integer, IntegerSerError, SignedState},
+    },
     utilities::cursor::Cursor,
 };
 use alloc::{
@@ -20,7 +23,6 @@ use core::{
 };
 use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
-use crate::types::imaginary::Imaginary;
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -96,7 +98,7 @@ macro_rules! as_ty {
     };
 }
 
-as_ty!(Ch char -> char, String string -> String, Bool bool -> bool, Int int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration);
+as_ty!(Ch char -> char, String str -> String, Bool bool -> bool, Int int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration);
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -386,13 +388,13 @@ impl Display for ValueSerError {
                 f,
                 "Length provided was zero - what did you expect to deserialise there?"
             ),
-            ValueSerError::IntegerSerError(e) => write!(f, "Error de/ser-ing integer: {e:?}"),
+            ValueSerError::IntegerSerError(e) => write!(f, "Error de/ser-ing integer: {e}"),
             ValueSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
-            ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e:?}"),
-            ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e:?}"),
+            ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e}"),
+            ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e}"),
             ValueSerError::UnexpectedValueType(v, ex) => write!(f, "Expected {ex:?}, found: {v:?}"),
-            ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e:?}"),
+            ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e}"),
             ValueSerError::InvalidDateOrTime => write!(f, "Error with invalid time given"),
             ValueSerError::NanosecondsOverflow(d) => {
                 write!(f, "Given duration {d} had too many total nanoseconds")
@@ -643,8 +645,12 @@ impl Value {
             ValueTy::Imaginary => {
                 let first_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
                 let second_signed_state = SignedState::try_from((byte & 0b0000_0010) >> 1)?;
-                
-                Self::Imaginary(Imaginary::deser(first_signed_state, second_signed_state, bytes)?)
+
+                Self::Imaginary(Imaginary::deser(
+                    first_signed_state,
+                    second_signed_state,
+                    bytes,
+                )?)
             }
             ValueTy::Ch => {
                 let ch = char::from_u32(Integer::deser(SignedState::Positive, bytes)?.try_into()?)

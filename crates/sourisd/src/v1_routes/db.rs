@@ -5,7 +5,6 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
-use sourisdb::store::Store;
 
 #[derive(Deserialize)]
 pub struct NewDB {
@@ -25,48 +24,31 @@ pub async fn add_db(
         overwrite_existing,
     }): Json<NewDB>,
 ) -> Result<StatusCode, SourisError> {
-    let found_existing = state.new_db(name.clone()).await?;
-
-    Ok(if found_existing {
-        if overwrite_existing {
-            state.clear_db(name).await;
-        }
-
-        StatusCode::OK
-    } else {
-        StatusCode::CREATED
-    })
+    state.new_db(name.clone(), overwrite_existing).await
 }
 
 pub async fn clear_db(
     State(state): State<SourisState>,
     Json(DbByName { name }): Json<DbByName>,
-) -> StatusCode {
-    if state.clear_db(name).await {
-        StatusCode::OK
-    } else {
-        StatusCode::NOT_FOUND
-    }
+) -> Result<StatusCode, SourisError> {
+    state.clear_db(name).await?;
+    Ok(StatusCode::OK)
 }
 
 pub async fn remove_db(
     State(state): State<SourisState>,
     Json(DbByName { name }): Json<DbByName>,
 ) -> Result<StatusCode, SourisError> {
-    Ok(if state.remove_db(name).await? {
-        StatusCode::OK
-    } else {
-        StatusCode::NOT_FOUND
-    })
+    state.remove_db(name).await?;
+    Ok(StatusCode::OK)
 }
 
 #[axum::debug_handler]
 pub async fn get_db(
     State(state): State<SourisState>,
     Query(DbByName { name }): Query<DbByName>,
-) -> Result<Json<Store>, SourisError> {
-    match state.get_db(name).await {
-        Some(db) => Ok(Json(db)),
-        None => Err(SourisError::DatabaseNotFound),
-    }
+) -> Result<Vec<u8>, SourisError> {
+    let db = state.get_db(name).await?;
+    let bytes = db.ser()?;
+    Ok(bytes)
 }
