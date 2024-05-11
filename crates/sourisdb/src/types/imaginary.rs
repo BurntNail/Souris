@@ -3,6 +3,7 @@ use crate::{
     utilities::cursor::Cursor,
 };
 use core::fmt::{Display, Formatter};
+use alloc::vec::Vec;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -22,6 +23,7 @@ impl Display for Imaginary {
 }
 
 impl Imaginary {
+    #[must_use]
     pub fn ser(&self) -> (SignedState, SignedState, Vec<u8>) {
         let (re_ss, mut re_bytes) = self.real.ser();
         let (im_ss, im_bytes) = self.imaginary.ser();

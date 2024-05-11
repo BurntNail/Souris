@@ -2,7 +2,7 @@ use crate::{
     utilities::cursor::Cursor,
     values::{Value, ValueSerError, ValueTy},
 };
-use alloc::{vec, vec::Vec};
+use alloc::{vec, vec::Vec, string::String};
 use core::{
     fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
@@ -10,7 +10,7 @@ use core::{
 use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Store(HashMap<String, Value>);
 

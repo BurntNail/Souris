@@ -98,7 +98,7 @@ macro_rules! as_ty {
     };
 }
 
-as_ty!(Ch char -> char, String str -> String, Bool bool -> bool, Int int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration);
+as_ty!(Ch char -> char, String str -> String, Bool bool -> bool, Int int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration, Binary binary -> Vec<u8>);
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -783,7 +783,7 @@ impl Value {
 mod tests {
     use super::Value;
     use crate::{
-        types::integer::{BiggestInt, BiggestIntButSigned, Integer},
+        types::integer::{BiggestInt, BiggestIntButSigned},
         utilities::cursor::Cursor,
     };
     use alloc::{
@@ -791,7 +791,6 @@ mod tests {
         string::{String, ToString},
         vec::Vec,
     };
-    use chrono::NaiveDateTime;
     use proptest::{arbitrary::any, prop_assert_eq, proptest};
 
     proptest! {
@@ -801,7 +800,7 @@ mod tests {
 
             let bytes = v.ser().unwrap();
             let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
-            let out = out_value.as_char().unwrap();
+            let out = out_value.to_char().unwrap();
 
             prop_assert_eq!(c, out);
         }
@@ -834,7 +833,7 @@ mod tests {
 
             let bytes = v.ser().unwrap();
             let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
-            let out = out_value.as_boolean().unwrap();
+            let out = out_value.to_bool().unwrap();
 
             prop_assert_eq!(s, out);
         }
@@ -846,7 +845,7 @@ mod tests {
 
                 let bytes = v.ser().unwrap();
                 let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
-                let out = BiggestInt::try_from(out_value.as_integer().unwrap()).unwrap();
+                let out = BiggestInt::try_from(out_value.to_int().unwrap()).unwrap();
 
                 prop_assert_eq!(a, out);
             }
@@ -855,7 +854,7 @@ mod tests {
 
                 let bytes = v.ser().unwrap();
                 let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
-                let out = BiggestIntButSigned::try_from(out_value.as_integer().unwrap()).unwrap();
+                let out = BiggestIntButSigned::try_from(out_value.to_int().unwrap()).unwrap();
 
                 prop_assert_eq!(b, out);
             }
