@@ -1,66 +1,61 @@
 use crate::{
     utilities::cursor::Cursor,
-    values::{Value, ValueSerError},
+    values::{Value, ValueSerError, ValueTy},
 };
 use alloc::{vec, vec::Vec};
-use core::{
-    fmt::{Display, Formatter},
-    ops::{Deref, DerefMut},
-};
+use core::fmt::{Display, Formatter};
+use core::ops::{Deref, DerefMut};
 use hashbrown::HashMap;
-use serde_json::Value as SJValue;
+use serde_json::{Error as SJError, Value as SJValue};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Store(pub Value);
-
-impl From<SJValue> for Store {
-    fn from(value: SJValue) -> Self {
-        Self(Value::from(value))
-    }
-}
+pub struct Store(HashMap<String, Value>);
 
 impl Store {
     #[must_use]
-    pub fn new(v: Value) -> Self {
-        Self(v)
+    pub fn new() -> Self {
+        Self(HashMap::new())
     }
 
-    #[must_use]
-    pub fn new_map() -> Self {
-        Self(Value::Map(HashMap::new()))
-    }
-
-    #[must_use]
-    pub fn new_array() -> Self {
-        Self(Value::Array(Vec::new()))
-    }
-
-    pub fn ser(&self) -> Result<Vec<u8>, ValueSerError> {
+    pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
         let mut res = vec![];
 
         res.extend(b"SOURISDB");
-        res.extend(self.0.ser()?);
+        res.extend(Value::Map(self.0.clone()).ser()?);
 
         Ok(res)
     }
 
-    pub fn deser(bytes: &[u8]) -> Result<Self, ValueSerError> {
+    pub fn deser(bytes: &[u8]) -> Result<Self, StoreSerError> {
         let mut bytes = Cursor::new(&bytes);
         let _ = bytes.read_specific::<8>();
 
         let val = Value::deser(&mut bytes)?;
-        Ok(Self(val))
+        let ty = val.as_ty();
+        let Some(map) = val.to_map() else {
+            return Err(StoreSerError::ExpectedMap(ty));
+        };
+        Ok(Self(map))
     }
 
-    pub fn from_json(json: &[u8]) -> Result<Self, ValueSerError> {
+    pub fn from_json(json: &[u8]) -> Result<Self, StoreSerError> {
         let val: SJValue = serde_json::from_slice(json)?;
-        Ok(Self(Value::from(val)))
+        let map = match Value::from(val) {
+            Value::Map(m) => m,
+            v => {
+                let mut map = HashMap::new();
+                map.insert("JSON".into(), v);
+                map
+            }
+        };
+        
+        Ok(Self(map))
     }
 }
 
 impl Deref for Store {
-    type Target = Value;
+    type Target = HashMap<String, Value>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -74,6 +69,48 @@ impl DerefMut for Store {
 
 impl Display for Store {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", Value::Map(self.0.clone()))
+    }
+}
+
+#[derive(Debug)]
+pub enum StoreSerError {
+    ExpectedMap(ValueTy),
+    Value(ValueSerError),
+    SerdeJson(SJError),
+}
+
+impl Display for StoreSerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            StoreSerError::ExpectedMap(t) => write!(
+                f,
+                "Expected to find a map when deserialising, found {t:?} instead"
+            ),
+            StoreSerError::Value(e) => write!(f, "Error with values: {e:?}"),
+            StoreSerError::SerdeJson(e) => write!(f, "Error with serde_json: {e:?}"),
+        }
+    }
+}
+
+impl From<ValueSerError> for StoreSerError {
+    fn from(value: ValueSerError) -> Self {
+        Self::Value(value)
+    }
+}
+impl From<SJError> for StoreSerError {
+    fn from(value: SJError) -> Self {
+        Self::SerdeJson(value)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for StoreSerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Value(e) => Some(e),
+            Self::SerdeJson(e) => Some(e),
+            _ => None,
+        }
     }
 }

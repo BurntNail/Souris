@@ -17,6 +17,8 @@ use std::{
     io::{Error as IOError, ErrorKind, Read, Write},
     path::PathBuf,
 };
+use sourisdb::store::StoreSerError;
+use sourisdb::types::imaginary::Imaginary;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -57,6 +59,7 @@ enum Error {
     InvalidDateOrTime,
     SerdeJson(serde_json::Error),
     Value(ValueSerError),
+    Store(StoreSerError),
 }
 
 impl Display for Error {
@@ -67,6 +70,7 @@ impl Display for Error {
             Error::InvalidDateOrTime => write!(f, "Received invalid date/time"),
             Error::SerdeJson(e) => write!(f, "Error with JSON: {e:?}"),
             Error::Value(e) => write!(f, "Error with values: {e:?}"),
+            Error::Store(e) => write!(f, "Error with store: {e:?}"),
         }
     }
 }
@@ -89,6 +93,11 @@ impl From<serde_json::Error> for Error {
 impl From<ValueSerError> for Error {
     fn from(value: ValueSerError) -> Self {
         Self::Value(value)
+    }
+}
+impl From<StoreSerError> for Error {
+    fn from(value: StoreSerError) -> Self {
+        Self::Store(value)
     }
 }
 
@@ -131,12 +140,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         }
         Commands::AddEntry => {
             let mut store = view_all(path.clone(), &theme)?;
-
-            let Some(map) = store.as_mut_map() else {
-                println!("File found wasn't a map.");
-                return Ok(());
-            };
-
+            
             let key = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
             let value = get_value_from_stdin("Value: ", &theme)?;
 
@@ -151,7 +155,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 .with_prompt("Confirm Addition?")
                 .interact()?
             {
-                map.insert(key, value);
+                store.insert(key, value);
                 let mut file = File::create(path)?;
                 file.write_all(&store.ser()?)?;
 
@@ -164,26 +168,21 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         Commands::RemoveEntry => {
             let mut store = view_all(path.clone(), &theme)?;
 
-            let Some(map) = store.as_mut_map() else {
-                println!("File found wasn't a map.");
-                return Ok(());
-            };
-
             println!();
 
-            let mut keys = map.clone().into_iter().map(|(k, _)| k).collect::<Vec<_>>();
+            let mut keys = store.keys().collect::<Vec<_>>();
             let key = FuzzySelect::with_theme(&theme)
                 .with_prompt("Select key to be removed:")
                 .items(&keys)
                 .interact()?;
-            let key = keys.swap_remove(key); //idc if it gets swapped as we drop it next
+            let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
             drop(keys);
 
             if Confirm::with_theme(&theme)
                 .with_prompt("Confirm Removal?")
                 .interact()?
             {
-                match map.remove(&key) {
+                match store.remove(&key) {
                     Some(value) => {
                         let mut file = File::create(path)?;
                         file.write_all(&store.ser()?)?;
@@ -201,20 +200,15 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         }
         Commands::UpdateEntry => {
             let mut store = view_all(path.clone(), &theme)?;
-
-            let Some(map) = store.as_mut_map() else {
-                println!("File found wasn't a map.");
-                return Ok(());
-            };
-
+            
             println!();
 
-            let mut keys = map.clone().into_iter().map(|(k, _)| k).collect::<Vec<_>>();
+            let mut keys = store.keys().collect::<Vec<_>>();
             let key = FuzzySelect::with_theme(&theme)
                 .with_prompt("Select key to update value of:")
                 .items(&keys)
                 .interact()?;
-            let key = keys.swap_remove(key); //idc if it gets swapped as we drop keys next and swapping is faster
+            let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop keys next and swapping is faster
             drop(keys);
 
             if !Confirm::with_theme(&theme)
@@ -225,7 +219,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 std::process::exit(0);
             }
 
-            let existing = &map[&key];
+            let existing = &store[&key];
             let new = get_value_from_stdin("Enter the new value: ", &theme)?;
             if !Confirm::with_theme(&theme)
                 .with_prompt(format!("Confirm replace value {existing} with {new}?"))
@@ -235,7 +229,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 std::process::exit(0);
             }
 
-            map.insert(key, new);
+            store.insert(key, new);
 
             let mut file = File::create(path)?;
             file.write_all(&store.ser()?)?;
@@ -314,14 +308,14 @@ fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value
             Value::Int(i)
         }
         ValueTy::Imaginary => {
-            let a: Integer = Input::with_theme(theme)
+            let real: Integer = Input::with_theme(theme)
                 .with_prompt("Real Part: ")
                 .interact()?;
-            let b: Integer = Input::with_theme(theme)
+            let imaginary: Integer = Input::with_theme(theme)
                 .with_prompt("Imaginary Part: ")
                 .interact()?;
 
-            Value::Imaginary(a, b)
+            Value::Imaginary(Imaginary {real, imaginary})
         }
         ValueTy::Timestamp => {
             let ts: NaiveDateTime = if Confirm::with_theme(theme).with_prompt("Now?").interact()? {
@@ -534,7 +528,7 @@ fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
         Ok(f) => f,
     };
 
-    let store = Store::new_map();
+    let store = Store::new();
     file.write_all(&store.ser()?)?;
     println!("Successfully created new SourisDB.");
 

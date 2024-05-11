@@ -20,6 +20,7 @@ use core::{
 };
 use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
+use crate::types::imaginary::Imaginary;
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -30,7 +31,7 @@ pub enum Value {
     Binary(Vec<u8>),
     Bool(bool),
     Int(Integer),
-    Imaginary(Integer, Integer),
+    Imaginary(Imaginary),
     Timestamp(NaiveDateTime),
     JSON(SJValue),
     Null(()),
@@ -61,256 +62,45 @@ impl From<DurationDef> for Duration {
     }
 }
 
-impl Value {
-    #[must_use]
-    pub fn as_char(&self) -> Option<char> {
-        if let Value::Ch(c) = self {
-            Some(*c)
-        } else {
-            None
-        }
-    }
+macro_rules! as_ty {
+    ($($variant:ident $name:ident -> $t:ty),+) => {
+        paste::paste!{
+            $(
+                impl Value {
+                    pub fn [<as_ $name>] (&self) -> Option<&$t> {
+                        if let Value::$variant(v) = self {
+                            Some(v)
+                        } else {
+                            None
+                        }
+                    }
 
-    #[must_use]
-    pub fn as_str(&self) -> Option<&str> {
-        if let Value::String(s) = self {
-            Some(s)
-        } else {
-            None
-        }
-    }
+                    pub fn [<as_mut_ $name>] (&mut self) -> Option<&mut $t> {
+                        if let Value::$variant(v) = self {
+                            Some(v)
+                        } else {
+                            None
+                        }
+                    }
 
-    #[must_use]
-    pub fn as_binary(&self) -> Option<&[u8]> {
-        if let Value::Binary(b) = self {
-            Some(b)
-        } else {
-            None
+                    pub fn [<to_ $name>] (self) -> Option<$t> {
+                        if let Value::$variant(v) = self {
+                            Some(v)
+                        } else {
+                            None
+                        }
+                    }
+                }
+            )+
         }
-    }
-
-    #[must_use]
-    pub fn as_boolean(&self) -> Option<bool> {
-        if let Value::Bool(b) = self {
-            Some(*b)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_integer(&self) -> Option<Integer> {
-        if let Value::Int(i) = self {
-            Some(*i)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_timestamp(&self) -> Option<NaiveDateTime> {
-        if let Value::Timestamp(ts) = self {
-            Some(*ts)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_json(&self) -> Option<&SJValue> {
-        if let Value::JSON(j) = self {
-            Some(j)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_null(&self) -> Option<()> {
-        if let Value::Null(()) = self {
-            Some(())
-        } else {
-            None
-        }
-    }
-
-    pub fn as_float(&mut self) -> Option<f64> {
-        if let Value::Float(f) = self {
-            Some(*f)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_array(&mut self) -> Option<&[Value]> {
-        if let Value::Array(a) = self {
-            Some(a)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_map(&self) -> Option<&HashMap<String, Value>> {
-        if let Value::Map(m) = self {
-            Some(m)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_tz(&self) -> Option<Tz> {
-        if let Value::Timezone(tz) = self {
-            Some(*tz)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_ipv4(&self) -> Option<Ipv4Addr> {
-        if let Value::Ipv4Addr(a) = self {
-            Some(*a)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_ipv6(&self) -> Option<Ipv6Addr> {
-        if let Value::Ipv6Addr(a) = self {
-            Some(*a)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn as_duration(&self) -> Option<Duration> {
-        if let Value::Duration(d) = self {
-            Some(*d)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_char(&mut self) -> Option<&mut char> {
-        if let Value::Ch(c) = self {
-            Some(c)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_str(&mut self) -> Option<&mut String> {
-        if let Value::String(s) = self {
-            Some(s)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_binary(&mut self) -> Option<&mut [u8]> {
-        if let Value::Binary(b) = self {
-            Some(b)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_boolean(&mut self) -> Option<&mut bool> {
-        if let Value::Bool(b) = self {
-            Some(b)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_integer(&mut self) -> Option<&mut Integer> {
-        if let Value::Int(i) = self {
-            Some(i)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_timestamp(&mut self) -> Option<&mut NaiveDateTime> {
-        if let Value::Timestamp(ts) = self {
-            Some(ts)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_json(&mut self) -> Option<&mut SJValue> {
-        if let Value::JSON(j) = self {
-            Some(j)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_float(&mut self) -> Option<&mut f64> {
-        if let Value::Float(f) = self {
-            Some(f)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_array(&mut self) -> Option<&mut [Value]> {
-        if let Value::Array(a) = self {
-            Some(a)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_map(&mut self) -> Option<&mut HashMap<String, Value>> {
-        if let Value::Map(m) = self {
-            Some(m)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_tz(&mut self) -> Option<&mut Tz> {
-        if let Value::Timezone(tz) = self {
-            Some(tz)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_ipv4(&mut self) -> Option<&mut Ipv4Addr> {
-        if let Value::Ipv4Addr(a) = self {
-            Some(a)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_ipv6(&mut self) -> Option<&mut Ipv6Addr> {
-        if let Value::Ipv6Addr(a) = self {
-            Some(a)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_duration(&mut self) -> Option<&mut Duration> {
-        if let Value::Duration(d) = self {
-            Some(d)
-        } else {
-            None
-        }
-    }
+    };
 }
+
+as_ty!(Ch char -> char, String string -> String, Bool bool -> bool, Int int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration);
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
-        if self.to_ty() != other.to_ty() {
+        if self.as_ty() != other.as_ty() {
             return false;
         }
 
@@ -320,7 +110,7 @@ impl PartialEq for Value {
             (Self::Binary(b), Self::Binary(b2)) => b.eq(b2),
             (Self::Bool(b), Self::Bool(b2)) => b.eq(b2),
             (Self::Int(i), Self::Int(i2)) => i.eq(i2),
-            (Self::Imaginary(a, b), Self::Imaginary(a2, b2)) => a.eq(a2) && b.eq(b2),
+            (Self::Imaginary(i), Self::Imaginary(i2)) => i.eq(i2),
             (Self::Timestamp(t), Self::Timestamp(t2)) => t.eq(t2),
             (Self::JSON(j), Self::JSON(j2)) => j.eq(j2),
             (Self::Null(()), Self::Null(())) => true,
@@ -357,9 +147,8 @@ impl Hash for Value {
             Value::Int(v) => {
                 v.hash(state);
             }
-            Value::Imaginary(a, b) => {
-                a.hash(state);
-                b.hash(state);
+            Value::Imaginary(i) => {
+                i.hash(state);
             }
             Value::Timestamp(v) => {
                 v.hash(state);
@@ -412,7 +201,7 @@ impl Hash for Value {
 impl Debug for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let mut s = f.debug_struct("Value");
-        s.field("ty", &self.to_ty());
+        s.field("ty", &self.as_ty());
 
         match &self {
             Self::Ch(ch) => s.field("content", ch),
@@ -420,17 +209,17 @@ impl Debug for Value {
             Self::Binary(b) => s.field("content", &display_bytes_as_hex_array(b)),
             Self::Bool(b) => s.field("content", b),
             Self::Int(i) => s.field("content", i),
-            Self::Imaginary(a, b) => s.field("content", &(a, b)),
+            Self::Imaginary(i) => s.field("content", i),
             Self::Timestamp(ndt) => s.field("content", ndt),
-            Self::JSON(v) => s.field("content", &v),
-            Self::Float(f) => s.field("content", &f),
-            Self::Null(o) => s.field("content", &o),
-            Self::Array(a) => s.field("content", &a),
-            Self::Map(m) => s.field("content", &m),
-            Self::Ipv4Addr(m) => s.field("content", &m),
-            Self::Ipv6Addr(m) => s.field("content", &m),
-            Self::Duration(m) => s.field("content", &m),
-            Self::Timezone(m) => s.field("content", &m),
+            Self::JSON(v) => s.field("content", v),
+            Self::Float(f) => s.field("content", f),
+            Self::Null(o) => s.field("content", o),
+            Self::Array(a) => s.field("content", a),
+            Self::Map(m) => s.field("content", m),
+            Self::Ipv4Addr(m) => s.field("content", m),
+            Self::Ipv6Addr(m) => s.field("content", m),
+            Self::Duration(m) => s.field("content", m),
+            Self::Timezone(m) => s.field("content", m),
         };
 
         s.finish()
@@ -447,13 +236,7 @@ impl Display for Value {
             }
             Self::Bool(b) => write!(f, "{b}"),
             Self::Int(i) => write!(f, "{i}"),
-            Self::Imaginary(a, b) => {
-                if b.is_negative() {
-                    write!(f, "{a}{b}i")
-                } else {
-                    write!(f, "{a}+{b}i")
-                }
-            }
+            Self::Imaginary(i) => write!(f, "{i}"),
             Self::Timestamp(ndt) => write!(f, "{ndt}"),
             Self::JSON(v) => write!(f, "{v}"),
             Self::Float(fl) => write!(f, "{fl}"),
@@ -676,14 +459,14 @@ impl From<SJValue> for Value {
 }
 
 impl Value {
-    pub(crate) const fn to_ty(&self) -> ValueTy {
+    pub(crate) const fn as_ty(&self) -> ValueTy {
         match self {
             Self::Ch(_) => ValueTy::Ch,
             Self::String(_) => ValueTy::String,
             Self::Binary(_) => ValueTy::Binary,
             Self::Bool(_) => ValueTy::Bool,
             Self::Int(_) => ValueTy::Int,
-            Self::Imaginary(_, _) => ValueTy::Imaginary,
+            Self::Imaginary(_) => ValueTy::Imaginary,
             Self::Timestamp(_) => ValueTy::Timestamp,
             Self::JSON(_) => ValueTy::JSON,
             Self::Map(_) => ValueTy::Map,
@@ -700,7 +483,7 @@ impl Value {
     pub fn ser(&self) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
-        let mut ty = u8::from(self.to_ty()) << 4;
+        let mut ty = u8::from(self.as_ty()) << 4;
 
         match self {
             Self::Ch(ch) => {
@@ -736,16 +519,14 @@ impl Value {
                 res.push(ty);
                 res.extend(bytes.iter());
             }
-            Self::Imaginary(a, b) => {
-                let (re_ss, re_bytes) = a.ser();
-                let (im_ss, im_bytes) = b.ser();
+            Self::Imaginary(i) => {
+                let (re_ss, im_ss, bytes) = i.ser();
 
                 ty |= u8::from(re_ss);
                 ty |= u8::from(im_ss) << 1;
 
                 res.push(ty);
-                res.extend(re_bytes.iter());
-                res.extend(im_bytes.iter());
+                res.extend(bytes);
             }
             Self::Timestamp(t) => {
                 let date = t.date();
@@ -862,10 +643,8 @@ impl Value {
             ValueTy::Imaginary => {
                 let first_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
                 let second_signed_state = SignedState::try_from((byte & 0b0000_0010) >> 1)?;
-
-                let a = Integer::deser(first_signed_state, bytes)?;
-                let b = Integer::deser(second_signed_state, bytes)?;
-                Self::Imaginary(a, b)
+                
+                Self::Imaginary(Imaginary::deser(first_signed_state, second_signed_state, bytes)?)
             }
             ValueTy::Ch => {
                 let ch = char::from_u32(Integer::deser(SignedState::Positive, bytes)?.try_into()?)
