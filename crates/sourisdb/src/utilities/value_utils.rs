@@ -47,7 +47,7 @@ pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<V
             let ch: char = Input::with_theme(theme)
                 .with_prompt("Character: ")
                 .interact()?;
-            Value::Ch(ch)
+            Value::Character(ch)
         }
         ValueTy::String => {
             let st: String = Input::with_theme(theme).with_prompt("Text: ").interact()?;
@@ -63,13 +63,13 @@ pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<V
             let b = FuzzySelect::with_theme(theme)
                 .items(&["False", "True"])
                 .interact()?;
-            Value::Bool(b != 0)
+            Value::Boolean(b != 0)
         }
         ValueTy::Int => {
             let i: Integer = Input::with_theme(theme)
                 .with_prompt("Which number: ")
                 .interact()?;
-            Value::Int(i)
+            Value::Integer(i)
         }
         ValueTy::Imaginary => {
             let real: Integer = Input::with_theme(theme)

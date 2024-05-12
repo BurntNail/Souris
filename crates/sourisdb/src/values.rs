@@ -28,11 +28,11 @@ use serde_json::{Error as SJError, Value as SJValue};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(untagged))]
 pub enum Value {
-    Ch(char),
+    Character(char),
     String(String),
     Binary(Vec<u8>),
-    Bool(bool),
-    Int(Integer),
+    Boolean(bool),
+    Integer(Integer),
     Imaginary(Imaginary),
     Timestamp(NaiveDateTime),
     JSON(SJValue),
@@ -98,7 +98,7 @@ macro_rules! as_ty {
     };
 }
 
-as_ty!(Ch char -> char, String str -> String, Bool bool -> bool, Int int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration, Binary binary -> Vec<u8>);
+as_ty!(Character char -> char, String str -> String, Boolean bool -> bool, Integer int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration, Binary binary -> Vec<u8>);
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -107,11 +107,11 @@ impl PartialEq for Value {
         }
 
         match (self, other) {
-            (Self::Ch(c), Self::Ch(c2)) => c.eq(c2),
+            (Self::Character(c), Self::Character(c2)) => c.eq(c2),
             (Self::String(s), Self::String(s2)) => s.eq(s2),
             (Self::Binary(b), Self::Binary(b2)) => b.eq(b2),
-            (Self::Bool(b), Self::Bool(b2)) => b.eq(b2),
-            (Self::Int(i), Self::Int(i2)) => i.eq(i2),
+            (Self::Boolean(b), Self::Boolean(b2)) => b.eq(b2),
+            (Self::Integer(i), Self::Integer(i2)) => i.eq(i2),
             (Self::Imaginary(i), Self::Imaginary(i2)) => i.eq(i2),
             (Self::Timestamp(t), Self::Timestamp(t2)) => t.eq(t2),
             (Self::JSON(j), Self::JSON(j2)) => j.eq(j2),
@@ -134,7 +134,7 @@ impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         core::mem::discriminant(self).hash(state);
         match self {
-            Value::Ch(v) => {
+            Value::Character(v) => {
                 v.hash(state);
             }
             Value::String(v) => {
@@ -143,10 +143,10 @@ impl Hash for Value {
             Value::Binary(v) => {
                 v.hash(state);
             }
-            Value::Bool(v) => {
+            Value::Boolean(v) => {
                 v.hash(state);
             }
-            Value::Int(v) => {
+            Value::Integer(v) => {
                 v.hash(state);
             }
             Value::Imaginary(i) => {
@@ -206,11 +206,11 @@ impl Debug for Value {
         s.field("ty", &self.as_ty());
 
         match &self {
-            Self::Ch(ch) => s.field("content", ch),
+            Self::Character(ch) => s.field("content", ch),
             Self::String(str) => s.field("content", str),
             Self::Binary(b) => s.field("content", &display_bytes_as_hex_array(b)),
-            Self::Bool(b) => s.field("content", b),
-            Self::Int(i) => s.field("content", i),
+            Self::Boolean(b) => s.field("content", b),
+            Self::Integer(i) => s.field("content", i),
             Self::Imaginary(i) => s.field("content", i),
             Self::Timestamp(ndt) => s.field("content", ndt),
             Self::JSON(v) => s.field("content", v),
@@ -231,13 +231,13 @@ impl Debug for Value {
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match &self {
-            Self::Ch(ch) => write!(f, "{ch:?}"),
+            Self::Character(ch) => write!(f, "{ch:?}"),
             Self::String(str) => write!(f, "{str:?}"),
             Self::Binary(b) => {
                 write!(f, "{}", display_bytes_as_hex_array(b))
             }
-            Self::Bool(b) => write!(f, "{b}"),
-            Self::Int(i) => write!(f, "{i}"),
+            Self::Boolean(b) => write!(f, "{b}"),
+            Self::Integer(i) => write!(f, "{i}"),
             Self::Imaginary(i) => write!(f, "{i}"),
             Self::Timestamp(ndt) => write!(f, "{ndt}"),
             Self::JSON(v) => write!(f, "{v}"),
@@ -441,12 +441,12 @@ impl From<SJValue> for Value {
     fn from(v: SJValue) -> Self {
         match v {
             SJValue::Null => Value::Null(()),
-            SJValue::Bool(b) => Value::Bool(b),
+            SJValue::Bool(b) => Value::Boolean(b),
             SJValue::Number(n) => {
                 if let Some(neg) = n.as_i64() {
-                    Value::Int(Integer::i64(neg))
+                    Value::Integer(Integer::i64(neg))
                 } else if let Some(pos) = n.as_u64() {
-                    Value::Int(Integer::u64(pos))
+                    Value::Integer(Integer::u64(pos))
                 } else if let Some(float) = n.as_f64() {
                     Value::Float(float)
                 } else {
@@ -463,11 +463,11 @@ impl From<SJValue> for Value {
 impl Value {
     pub(crate) const fn as_ty(&self) -> ValueTy {
         match self {
-            Self::Ch(_) => ValueTy::Ch,
+            Self::Character(_) => ValueTy::Ch,
             Self::String(_) => ValueTy::String,
             Self::Binary(_) => ValueTy::Binary,
-            Self::Bool(_) => ValueTy::Bool,
-            Self::Int(_) => ValueTy::Int,
+            Self::Boolean(_) => ValueTy::Bool,
+            Self::Integer(_) => ValueTy::Int,
             Self::Imaginary(_) => ValueTy::Imaginary,
             Self::Timestamp(_) => ValueTy::Timestamp,
             Self::JSON(_) => ValueTy::JSON,
@@ -488,7 +488,7 @@ impl Value {
         let mut ty = u8::from(self.as_ty()) << 4;
 
         match self {
-            Self::Ch(ch) => {
+            Self::Character(ch) => {
                 let (_, bytes) = Integer::from(*ch as u32).ser();
 
                 res.push(ty);
@@ -509,11 +509,11 @@ impl Value {
                 res.extend(len_bytes);
                 res.extend(b.iter());
             }
-            Self::Bool(b) => {
+            Self::Boolean(b) => {
                 ty |= u8::from(*b);
                 res.push(ty);
             }
-            Self::Int(i) => {
+            Self::Integer(i) => {
                 let (signed_state, bytes) = i.ser();
 
                 ty |= u8::from(signed_state);
@@ -640,7 +640,7 @@ impl Value {
             ValueTy::Int => {
                 let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
                 let int = Integer::deser(signed_state, bytes)?;
-                Self::Int(int)
+                Self::Integer(int)
             }
             ValueTy::Imaginary => {
                 let first_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
@@ -655,7 +655,7 @@ impl Value {
             ValueTy::Ch => {
                 let ch = char::from_u32(Integer::deser(SignedState::Positive, bytes)?.try_into()?)
                     .ok_or(ValueSerError::InvalidCharacter)?;
-                Self::Ch(ch)
+                Self::Character(ch)
             }
             ValueTy::Timestamp => {
                 let year_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
@@ -701,7 +701,7 @@ impl Value {
                     .to_vec();
                 Self::Binary(bytes)
             }
-            ValueTy::Bool => Self::Bool((byte & 0b0000_0001) > 0),
+            ValueTy::Bool => Self::Boolean((byte & 0b0000_0001) > 0),
             ValueTy::Null => Self::Null(()),
             ValueTy::Float => {
                 let bytes = match bytes.read_specific::<8>().map(TryInto::try_into) {
@@ -796,7 +796,7 @@ mod tests {
     proptest! {
         #[test]
         fn test_ch (c in any::<char>()) {
-            let v = Value::Ch(c);
+            let v = Value::Character(c);
 
             let bytes = v.ser().unwrap();
             let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
@@ -829,7 +829,7 @@ mod tests {
 
         #[test]
         fn test_bool (s in any::<bool>()) {
-            let v = Value::Bool(s.clone());
+            let v = Value::Boolean(s.clone());
 
             let bytes = v.ser().unwrap();
             let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
@@ -841,7 +841,7 @@ mod tests {
         #[test]
         fn test_int (a in any::<BiggestInt>(), b in any::<BiggestIntButSigned>()) {
             {
-                let v = Value::Int(a.clone().into());
+                let v = Value::Integer(a.clone().into());
 
                 let bytes = v.ser().unwrap();
                 let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
@@ -850,7 +850,7 @@ mod tests {
                 prop_assert_eq!(a, out);
             }
             {
-                let v = Value::Int(b.clone().into());
+                let v = Value::Integer(b.clone().into());
 
                 let bytes = v.ser().unwrap();
                 let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();

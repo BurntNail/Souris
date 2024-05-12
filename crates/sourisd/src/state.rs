@@ -36,6 +36,10 @@ impl SourisState {
         name: String,
         overwrite_existing: bool,
     ) -> Result<StatusCode, SourisError> {
+        if &name == "meta" || !name.is_ascii() {
+            return Err(SourisError::InvalidDatabaseName);
+        }
+        
         let mut dbs = self.dbs.lock().await;
 
         if dbs.contains_key(&name) {
@@ -128,16 +132,18 @@ impl SourisState {
         db: String,
         k: String,
         v: Value,
-    ) -> Result<(), SourisError> {
+    ) {
         let mut dbs = self.dbs.lock().await;
-
-        let Some(db) = dbs.get_mut(&db) else {
-            return Err(SourisError::DatabaseNotFound);
+        
+        let db = match dbs.get_mut(&db) {
+            Some(d) => d,
+            None => {
+                dbs.insert(db.clone(), Store::default());
+                dbs.get_mut(&db).expect("just added this key")
+            }
         };
-
+        
         db.insert(k, v);
-
-        Ok(())
     }
 
     pub async fn get_value(&self, db: String, k: &String) -> Result<Value, SourisError> {
@@ -151,6 +157,23 @@ impl SourisState {
         };
 
         Ok(key)
+    }
+
+    pub async fn rm_key(&self, db: String, key: String) -> Result<(), SourisError> {
+        let mut dbs = self.dbs.lock().await;
+
+        let Some(db) = dbs.get_mut(&db) else {
+            return Err(SourisError::DatabaseNotFound);
+        };
+        
+        match db.remove(&key) {
+            Some(_) => Ok(()),
+            None => Err(SourisError::DatabaseNotFound)
+        }
+    }
+    
+    pub async fn get_all_db_names (&self) -> Vec<String> {
+        self.dbs.lock().await.keys().cloned().collect()
     }
 }
 

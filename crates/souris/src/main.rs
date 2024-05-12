@@ -1,8 +1,5 @@
 use clap::{Parser, Subcommand};
-use dialoguer::{
-    theme::{ColorfulTheme, Theme},
-    Error as DError, FuzzySelect,
-};
+use dialoguer::{theme::{ColorfulTheme, Theme}, Error as DError, FuzzySelect, Confirm, Input};
 use sourisdb::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
@@ -15,21 +12,23 @@ use std::{
     io::{Error as IOError, Read},
     path::PathBuf,
 };
-use std::net::Ipv4Addr;
+use std::io::Write;
 use reqwest::blocking::Client;
+use sourisdb::utilities::value_utils::get_value_from_stdin;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
 struct Arguments {
     path: String,
-    db_name: String,
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand, Debug, Clone)]
 enum Commands {
-    CreateNew,
+    CreateNew {
+        db_name: String
+    },
     AddEntry,
     ViewAll,
     #[cfg(debug_assertions)]
@@ -42,6 +41,7 @@ enum Commands {
     ImportFromJSON {
         json_location: PathBuf,
     },
+    RemoveDatabase,
 }
 
 fn main() {
@@ -59,6 +59,7 @@ enum Error {
     Value(ValueSerError),
     Store(StoreSerError),
     Reqwest(reqwest::Error),
+    NoDatabasesFound,
 }
 
 impl Display for Error {
@@ -70,6 +71,7 @@ impl Display for Error {
             Error::Value(e) => write!(f, "Error with values: {e}"),
             Error::Store(e) => write!(f, "Error with store: {e}"),
             Error::Reqwest(e) => write!(f, "Error with reqwest: {e}"),
+            Error::NoDatabasesFound => write!(f, "No databases found"),
         }
     }
 }
@@ -105,22 +107,36 @@ impl From<reqwest::Error> for Error {
     }
 }
 
-fn fun_main(Arguments { path, db_name, command }: Arguments) -> Result<(), Error> {
+fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
     let client = Client::new();
 
     match command {
-        Commands::CreateNew => {
-            let new_store = new_store(path, client, db_name, &theme)?;
-            println!("Created new store: {new_store}");
+        Commands::CreateNew {db_name} => {
+            let all = get_all_dbs(path.clone(), client.clone())?;
+
+            if all.contains(&db_name) {
+                if !Confirm::with_theme(&theme).with_prompt("A database with that name already exists. Overwrite?").interact()? {
+                    return Ok(())
+                }
+            }
+
+            let mut args = HashMap::new();
+            args.insert("overwrite_existing", SJValue::Bool(true));
+            args.insert("name", SJValue::String(db_name.clone()));
+
+            let rsp = client.post(format!("http://{path}:2256/v1/add_db")).query(&args).send()?.error_for_status()?;
+
+            println!("Got response: {rsp:?}");
+
         }
         Commands::ViewAll => {
-            let store = get_all(path, client, db_name)?;
+            let (_, store) = pick_db(path, client, &theme)?;
             println!("{store}");
         }
         #[cfg(debug_assertions)]
         Commands::DebugViewAll => {
-            let store = get_all(path, client, db_name)?;
+            let (_, store) = pick_db(path, client, &theme)?;
             println!("{store:#?}");
         }
         Commands::ImportFromJSON { json_location } => {
@@ -139,10 +155,10 @@ fn fun_main(Arguments { path, db_name, command }: Arguments) -> Result<(), Error
             let store = Store::from_json(&bytes)?;
             let store_bytes = store.ser()?;
 
-            let overwrite_existing = FuzzySelect::with_theme(&theme).items(&["Overwrite", "Ignore"]).with_prompt("Existing Database: ").interact()? == 0;
+            let db_name = pick_db_name(true, path.clone(), client.clone(), &theme)?;
 
             let mut args = HashMap::new();
-            args.insert("overwrite_existing", SJValue::Bool(overwrite_existing));
+            args.insert("overwrite_existing", SJValue::Bool(true));
             args.insert("name", SJValue::String(db_name.clone()));
 
             let rsp = client.put(format!("http://{path}:2256/v1/add_db_with_content")).query(&args).body(store_bytes).send()?.error_for_status()?;
@@ -150,8 +166,6 @@ fn fun_main(Arguments { path, db_name, command }: Arguments) -> Result<(), Error
             println!("Got contents: {rsp:?}");
         }
         Commands::AddEntry => {
-            /*let mut store = view_all(store_location.clone(), &theme)?;
-
             let key = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
             let value = get_value_from_stdin("Value: ", &theme)?;
 
@@ -162,23 +176,24 @@ fn fun_main(Arguments { path, db_name, command }: Arguments) -> Result<(), Error
 
             println!();
 
+            let db_name = pick_db_name(true, path.clone(), client.clone(), &theme)?;
+
             if Confirm::with_theme(&theme)
                 .with_prompt("Confirm Addition?")
                 .interact()?
             {
-                store.insert(key, value);
-                let mut file = File::create(store_location)?;
-                file.write_all(&store.ser()?)?;
-
-                println!("Successfully added to store.");
-            } else {
-                println!("Cancelled. Exiting...");
-                std::process::exit(0);
-            }*/
-            todo!()
+                let mut args = HashMap::new();
+                args.insert("db", SJValue::String(db_name));
+                args.insert("key", SJValue::String(key));
+                
+                let bytes = value.ser()?;
+                
+                let rsp = client.put(format!("http://{path}:2256/v1/add_kv")).query(&args).body(bytes).send()?.error_for_status()?;
+                println!("Got response: {rsp:?}");
+            }
         }
         Commands::RemoveEntry => {
-            /*let mut store = view_all(store_location.clone(), &theme)?;
+            let (db_name, store) = pick_db(path.clone(), client.clone(), &theme)?;
 
             println!();
 
@@ -188,82 +203,77 @@ fn fun_main(Arguments { path, db_name, command }: Arguments) -> Result<(), Error
                 .items(&keys)
                 .interact()?;
             let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
+            
             drop(keys);
+            drop(store);
 
             if Confirm::with_theme(&theme)
                 .with_prompt("Confirm Removal?")
                 .interact()?
             {
-                match store.remove(&key) {
-                    Some(value) => {
-                        let mut file = File::create(store_location)?;
-                        file.write_all(&store.ser()?)?;
-
-                        println!("Successfully removed {value:?} from store.");
-                    }
-                    None => {
-                        println!("Key not found. Nothing removed.");
-                    }
-                }
-            } else {
-                println!("Cancelled. Exiting...");
-                std::process::exit(0);
-            }*/
-            todo!()
+                let mut args = HashMap::new();
+                args.insert("db", SJValue::String(db_name));
+                args.insert("key", SJValue::String(key));
+                
+                let rsp = client.post(format!("http://{path}:2256/v1/rm_key")).query(&args).send()?.error_for_status()?;
+                println!("Got response: {rsp:?}");
+            }
         }
         Commands::UpdateEntry => {
-            /*let mut store = view_all(store_location.clone(), &theme)?;
+            let (db_name, store) = pick_db(path.clone(), client.clone(), &theme)?;
 
             println!();
 
             let mut keys = store.keys().collect::<Vec<_>>();
             let key = FuzzySelect::with_theme(&theme)
-                .with_prompt("Select key to update value of:")
+                .with_prompt("Select key to be updated:")
                 .items(&keys)
                 .interact()?;
-            let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop keys next and swapping is faster
+            let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
+
             drop(keys);
+            drop(store);
+            
+            let new_val = get_value_from_stdin("New Value: ", &theme)?;
 
-            if !Confirm::with_theme(&theme)
-                .with_prompt(format!("Confirm edit key {key}?"))
+            if Confirm::with_theme(&theme)
+                .with_prompt("Confirm Update?")
                 .interact()?
             {
-                println!("Cancelled. Exiting...");
-                std::process::exit(0);
+                let mut args = HashMap::new();
+                args.insert("db", SJValue::String(db_name));
+                args.insert("key", SJValue::String(key));
+                
+                let bytes = new_val.ser()?;
+
+                let rsp = client.put(format!("http://{path}:2256/v1/add_kv")).query(&args).body(bytes).send()?.error_for_status()?;
+                println!("Got response: {rsp:?}");
             }
-
-            let existing = &store[&key];
-            let new = get_value_from_stdin("Enter the new value: ", &theme)?;
-            if !Confirm::with_theme(&theme)
-                .with_prompt(format!("Confirm replace value {existing} with {new}?"))
-                .interact()?
-            {
-                println!("Cancelled. Exiting...");
-                std::process::exit(0);
-            }
-
-            store.insert(key, new);
-
-            let mut file = File::create(store_location)?;
-            file.write_all(&store.ser()?)?;
-
-            println!("Successfully updated");*/
-            todo!()
         }
         Commands::ExportToJSON { json_location } => {
-            /*let store = view_all(store_location, &theme)?;
+            let (name, store) = pick_db(path.clone(), client.clone(), &theme)?;
+            println!("Received Database {name:?}, converting to JSON");
+
             let json = serde_json::to_string(&store)?;
+            println!("Converted to JSON, writing to {json_location:?}");
 
             let mut file = File::create(json_location)?;
-            file.write_all(json.as_bytes())?;*/
-            todo!()
+            file.write_all(json.as_bytes())?;
+        }
+        Commands::RemoveDatabase => {
+            let db_name = pick_db_name(false, path.clone(), client.clone(), &theme)?;
+            let mut args = HashMap::new();
+            args.insert("name", SJValue::String(db_name));
+            
+            let rsp = client.post(format!("http://{path}:2256/v1/rm_db")).query(&args).send()?.error_for_status()?;
+            println!("Got response: {rsp:?}");
         }
     }
 
     Ok(())
 }
 
-fn get_all(path: String, client: Client, db_name: String) -> Result<Store, Error> {
+fn get_store(path: String, client: Client, db_name: String) -> Result<Store, Error> {
     let mut args = HashMap::new();
     args.insert("name", SJValue::String(db_name));
 
@@ -273,16 +283,43 @@ fn get_all(path: String, client: Client, db_name: String) -> Result<Store, Error
     Ok(store)
 }
 
-fn new_store(path: String, client: Client, db_name: String, theme: &dyn Theme) -> Result<Store, Error> {
-    let overwrite_existing = FuzzySelect::with_theme(theme).items(&["Overwrite", "Ignore"]).with_prompt("Existing Database: ").interact()? == 0;
+fn get_all_dbs (path: String, client: Client) -> Result<Vec<String>, reqwest::Error> {
+    client.get(format!("http://{path}:2256/v1/get_all_dbs")).send()?.error_for_status()?.json()
+}
 
-    let mut args = HashMap::new();
-    args.insert("overwrite_existing", SJValue::Bool(overwrite_existing));
-    args.insert("name", SJValue::String(db_name.clone()));
+fn pick_db (path: String, client: Client, theme: &dyn Theme) -> Result<(String, Store), Error> {
+    let chosen_db_name = pick_db_name(false, path.clone(), client.clone(), theme)?;
+    let chosen_store = get_store(path.clone(), client.clone(), chosen_db_name.clone())?;
+    Ok((chosen_db_name, chosen_store))
+}
 
-    let rsp = client.post(format!("http://{path}:2256/v1/add_db")).query(&args).send()?.error_for_status()?;
+fn pick_db_name (can_pick_new: bool, path: String, client: Client, theme: &dyn Theme) -> Result<String, Error> {
+    let mut names = get_all_dbs(path.clone(), client.clone())?;
 
-    println!("Got response: {rsp:?}");
+    if can_pick_new {
+        if Confirm::with_theme(theme).with_prompt("New Database?").interact()? {
+            return Ok(loop {
+                let trial = Input::with_theme(theme).with_prompt("Database Name: ").interact()?;
+                if &trial == "meta" {
+                    println!("That name is reserved.");
+                    continue;
+                }
+                
+                if !names.contains(&trial) {
+                    break trial;
+                }
 
-    get_all(path, client, db_name)
+                if Confirm::with_theme(theme).with_prompt("This database already exists. Overwrite?").interact()? {
+                    break trial;
+                }
+            });
+        }
+    }
+
+    if names.is_empty() {
+        return Err(Error::NoDatabasesFound);
+    }
+
+    let chosen_index = FuzzySelect::with_theme(theme).items(&names).with_prompt("Which database?").interact()?;
+    Ok(names.swap_remove(chosen_index))
 }

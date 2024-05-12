@@ -66,3 +66,7 @@ pub async fn get_db(
     let bytes = db.ser()?;
     Ok(bytes)
 }
+
+pub async fn get_all_dbs (State(state): State<SourisState>) -> Json<Vec<String>> {
+    Json(state.get_all_db_names().await)
+}

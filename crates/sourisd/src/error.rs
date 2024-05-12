@@ -16,6 +16,7 @@ pub enum SourisError {
     KeyNotFound,
     StoreError(StoreSerError),
     ValueError(ValueSerError),
+    InvalidDatabaseName,
 }
 
 impl From<IOError> for SourisError {
@@ -53,6 +54,7 @@ impl Display for SourisError {
             Self::DatabaseNotFound => write!(f, "Could not find database with name"),
             Self::KeyNotFound => write!(f, "Could not find value with name in database provided"),
             Self::ValueError(e) => write!(f, "Error with value: {e}"),
+            Self::InvalidDatabaseName => write!(f, "Invalid database name"),
         }
     }
 }
@@ -63,6 +65,7 @@ impl IntoResponse for SourisError {
 
         let code = match self {
             Self::DatabaseNotFound | Self::KeyNotFound => StatusCode::NOT_FOUND,
+            Self::InvalidDatabaseName => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
