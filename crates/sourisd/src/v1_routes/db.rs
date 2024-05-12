@@ -1,7 +1,7 @@
 use crate::{error::SourisError, state::SourisState};
 use axum::{
-    extract::{Query, State},
     body::Bytes,
+    extract::{Query, State},
     http::StatusCode,
     Json,
 };
@@ -29,16 +29,18 @@ pub async fn add_db(
     state.new_db(name.clone(), overwrite_existing).await
 }
 
-pub async fn add_db_with_content (
+pub async fn add_db_with_content(
     State(state): State<SourisState>,
     Query(NewDB {
-             name,
-             overwrite_existing,
-         }): Query<NewDB>,
-    body: Bytes
+        name,
+        overwrite_existing,
+    }): Query<NewDB>,
+    body: Bytes,
 ) -> Result<StatusCode, SourisError> {
     let store = Store::deser(body.as_ref())?;
-    Ok(state.new_db_with_contents(name, overwrite_existing, store).await)
+    Ok(state
+        .new_db_with_contents(name, overwrite_existing, store)
+        .await)
 }
 
 pub async fn clear_db(
@@ -67,6 +69,6 @@ pub async fn get_db(
     Ok(bytes)
 }
 
-pub async fn get_all_dbs (State(state): State<SourisState>) -> Json<Vec<String>> {
+pub async fn get_all_dbs(State(state): State<SourisState>) -> Json<Vec<String>> {
     Json(state.get_all_db_names().await)
 }

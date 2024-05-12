@@ -76,6 +76,7 @@ impl Display for Store {
 }
 
 #[derive(Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub enum StoreSerError {
     ExpectedMap(ValueTy),
     Value(ValueSerError),
@@ -112,7 +113,7 @@ impl std::error::Error for StoreSerError {
         match self {
             Self::Value(e) => Some(e),
             Self::SerdeJson(e) => Some(e),
-            _ => None,
+            Self::ExpectedMap(_) => None,
         }
     }
 }

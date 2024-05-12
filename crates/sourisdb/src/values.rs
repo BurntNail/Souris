@@ -69,6 +69,7 @@ macro_rules! as_ty {
         paste::paste!{
             $(
                 impl Value {
+                    #[must_use]
                     pub fn [<as_ $name>] (&self) -> Option<&$t> {
                         if let Value::$variant(v) = self {
                             Some(v)
@@ -77,6 +78,7 @@ macro_rules! as_ty {
                         }
                     }
 
+                    #[must_use]
                     pub fn [<as_mut_ $name>] (&mut self) -> Option<&mut $t> {
                         if let Value::$variant(v) = self {
                             Some(v)
@@ -85,6 +87,7 @@ macro_rules! as_ty {
                         }
                     }
 
+                    #[must_use]
                     pub fn [<to_ $name>] (self) -> Option<$t> {
                         if let Value::$variant(v) = self {
                             Some(v)
@@ -247,6 +250,7 @@ impl Display for Value {
                 cfg_if! {
                     if #[cfg(feature = "std")] {
                         use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
+                        use alloc::format;
 
                         let mut table = Table::new();
                         table
@@ -482,6 +486,7 @@ impl Value {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn ser(&self) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
@@ -627,7 +632,7 @@ impl Value {
         Ok(res)
     }
 
-    #[allow(clippy::many_single_char_names)]
+    #[allow(clippy::many_single_char_names, clippy::too_many_lines)]
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
         let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 

@@ -6,12 +6,12 @@ use crate::{
     types::{imaginary::Imaginary, integer::Integer},
     values::{Value, ValueTy},
 };
-use std::{
-    fmt::{Display},
-};
+use std::{fmt::{Display}, format, println};
+use alloc::{vec, vec::Vec, string::String};
 
 pub use dialoguer;
 
+#[allow(clippy::too_many_lines)]
 pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value, dialoguer::Error> {
     println!("{prompt}");
 

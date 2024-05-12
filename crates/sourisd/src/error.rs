@@ -10,6 +10,7 @@ use std::{
 use tokio::io::Error as IOError;
 
 #[derive(Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub enum SourisError {
     IO(IOError),
     DatabaseNotFound,

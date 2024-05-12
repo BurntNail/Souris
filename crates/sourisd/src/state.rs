@@ -21,9 +21,10 @@ mod meta {
     pub const DB_FILE_NAMES_KEY: &str = "existing_dbs";
 }
 use crate::error::SourisError;
-use meta::*;
+use meta::{META_DB_FILE_NAME, DB_FILE_NAMES_KEY};
 
 #[derive(Clone, Debug)]
+#[allow(clippy::module_name_repetitions)]
 pub struct SourisState {
     base_location: PathBuf,
     dbs: Arc<Mutex<HashMap<String, Store>>>, //only at runtime
@@ -39,7 +40,7 @@ impl SourisState {
         if &name == "meta" || !name.is_ascii() {
             return Err(SourisError::InvalidDatabaseName);
         }
-        
+
         let mut dbs = self.dbs.lock().await;
 
         if dbs.contains_key(&name) {
@@ -70,7 +71,7 @@ impl SourisState {
         contents: Store,
     ) -> StatusCode {
         let mut stores = self.dbs.lock().await;
-        
+
         let mut contained = false;
         if stores.contains_key(&name) {
             contained = true;
@@ -78,9 +79,9 @@ impl SourisState {
                 return StatusCode::OK;
             }
         }
-        
+
         stores.insert(name, contents);
-        
+
         if contained {
             StatusCode::OK
         } else {
@@ -127,22 +128,14 @@ impl SourisState {
         dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)
     }
 
-    pub async fn add_key_value_pair(
-        &self,
-        db: String,
-        k: String,
-        v: Value,
-    ) {
+    pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) {
         let mut dbs = self.dbs.lock().await;
-        
-        let db = match dbs.get_mut(&db) {
-            Some(d) => d,
-            None => {
-                dbs.insert(db.clone(), Store::default());
-                dbs.get_mut(&db).expect("just added this key")
-            }
+
+        let db = if let Some(d) = dbs.get_mut(&db) { d } else {
+            dbs.insert(db.clone(), Store::default());
+            dbs.get_mut(&db).expect("just added this key")
         };
-        
+
         db.insert(k, v);
     }
 
@@ -165,14 +158,14 @@ impl SourisState {
         let Some(db) = dbs.get_mut(&db) else {
             return Err(SourisError::DatabaseNotFound);
         };
-        
+
         match db.remove(&key) {
             Some(_) => Ok(()),
-            None => Err(SourisError::DatabaseNotFound)
+            None => Err(SourisError::DatabaseNotFound),
         }
     }
-    
-    pub async fn get_all_db_names (&self) -> Vec<String> {
+
+    pub async fn get_all_db_names(&self) -> Vec<String> {
         self.dbs.lock().await.keys().cloned().collect()
     }
 }
@@ -247,12 +240,9 @@ impl SourisState {
 
         let mut meta = get_store(base_location.join(META_DB_FILE_NAME)).await?;
 
-        let dbs = match get_internal_stores(&meta, base_location.clone()).await {
-            Some(dbs) => dbs,
-            None => {
-                meta.insert(DB_FILE_NAMES_KEY.into(), Value::Array(vec![]));
-                HashMap::default()
-            }
+        let dbs = if let Some(dbs) = get_internal_stores(&meta, base_location.clone()).await { dbs } else {
+            meta.insert(DB_FILE_NAMES_KEY.into(), Value::Array(vec![]));
+            HashMap::default()
         };
 
         let s = Self {

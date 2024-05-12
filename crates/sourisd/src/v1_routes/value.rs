@@ -41,6 +41,6 @@ pub async fn rm_key(
     State(state): State<SourisState>,
 ) -> Result<StatusCode, SourisError> {
     state.rm_key(key, db).await?;
-    
+
     Ok(StatusCode::OK)
 }

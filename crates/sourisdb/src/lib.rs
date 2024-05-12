@@ -1,9 +1,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
+#![no_std]
 
 extern crate alloc;
 extern crate core;
+
+#[cfg(feature = "std")]
+extern crate std;
 
 pub use chrono;
 pub use hashbrown;

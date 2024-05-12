@@ -1,19 +1,22 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
+
 #[macro_use]
 extern crate tracing;
 
 use crate::{
     state::SourisState,
     v1_routes::{
-        db::{add_db, clear_db, get_db, remove_db},
-        value::{add_kv, get_value},
+        db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
+        value::{add_kv, get_value, rm_key},
     },
 };
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{get, post, put},
     Router,
 };
 use std::time::Duration;
-use axum::extract::DefaultBodyLimit;
 use tokio::{
     net::TcpListener,
     signal,
@@ -23,8 +26,6 @@ use tokio::{
 use tower_http::trace::TraceLayer;
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
-use crate::v1_routes::db::{add_db_with_content, get_all_dbs};
-use crate::v1_routes::value::rm_key;
 
 mod error;
 mod state;
@@ -73,8 +74,8 @@ async fn shutdown_signal(stop_signal: UnboundedSender<()>, saver: JoinHandle<()>
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
+        () = ctrl_c => {},
+        () = terminate => {},
     };
 
     info!("Gracefully Exiting");
@@ -99,7 +100,7 @@ async fn main() {
                     info!("Stop signal received for saver");
                     break;
                 },
-                _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                () = tokio::time::sleep(Duration::from_secs(10)) => {
                     if let Err(e) = state.save().await {
                         error!(?e, "Error saving state");
                     }

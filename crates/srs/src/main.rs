@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
+
 use clap::{Parser, Subcommand};
 use dialoguer::{
     theme::{ColorfulTheme, Theme},
@@ -94,6 +97,7 @@ impl From<StoreSerError> for Error {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
 

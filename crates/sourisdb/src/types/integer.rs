@@ -24,6 +24,7 @@ pub type BiggestIntButSigned = i128; //convenience so it's all at the top of the
 ///# of bytes for storing one `BiggestInt`
 const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated and this is clearer
 ///max size for an integer to be stored by itself
+#[allow(clippy::cast_possible_truncation)]
 const ONE_BYTE_MAX_SIZE: u8 = u8::MAX - (INTEGER_MAX_SIZE as u8);
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -524,6 +525,7 @@ impl std::error::Error for IntegerSerError {
 
 impl Integer {
     #[must_use]
+    #[allow(clippy::cast_sign_loss)]
     pub fn ser(self) -> (SignedState, Vec<u8>) {
         if let Some(smol) = self.to_i8() {
             return if smol < 0 {
@@ -650,9 +652,7 @@ mod tests {
                     };
                 }
             };
-
-            eprintln!("{i:?} {from_serde:?}");
-
+            
             prop_assert_eq!(from_raw, to_serde);
             prop_assert_eq!(i, from_serde);
         }

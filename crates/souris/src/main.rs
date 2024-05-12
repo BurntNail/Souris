@@ -1,3 +1,5 @@
+#![warn(clippy::all, clippy::pedantic)]
+
 use clap::{Parser, Subcommand};
 use dialoguer::{theme::{ColorfulTheme, Theme}, Error as DError, FuzzySelect, Confirm, Input};
 use sourisdb::{
@@ -107,13 +109,14 @@ impl From<reqwest::Error> for Error {
     }
 }
 
+#[allow(clippy::collapsible_if, clippy::too_many_lines)]
 fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
     let client = Client::new();
 
     match command {
         Commands::CreateNew {db_name} => {
-            let all = get_all_dbs(path.clone(), client.clone())?;
+            let all = get_all_dbs(&path, &client)?;
 
             if all.contains(&db_name) {
                 if !Confirm::with_theme(&theme).with_prompt("A database with that name already exists. Overwrite?").interact()? {
@@ -131,12 +134,12 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
 
         }
         Commands::ViewAll => {
-            let (_, store) = pick_db(path, client, &theme)?;
+            let (_, store) = pick_db(&path, &client, &theme)?;
             println!("{store}");
         }
         #[cfg(debug_assertions)]
         Commands::DebugViewAll => {
-            let (_, store) = pick_db(path, client, &theme)?;
+            let (_, store) = pick_db(&path, &client, &theme)?;
             println!("{store:#?}");
         }
         Commands::ImportFromJSON { json_location } => {
@@ -155,7 +158,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             let store = Store::from_json(&bytes)?;
             let store_bytes = store.ser()?;
 
-            let db_name = pick_db_name(true, path.clone(), client.clone(), &theme)?;
+            let db_name = pick_db_name(true, &path, &client, &theme)?;
 
             let mut args = HashMap::new();
             args.insert("overwrite_existing", SJValue::Bool(true));
@@ -176,7 +179,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
 
             println!();
 
-            let db_name = pick_db_name(true, path.clone(), client.clone(), &theme)?;
+            let db_name = pick_db_name(true, &path, &client, &theme)?;
 
             if Confirm::with_theme(&theme)
                 .with_prompt("Confirm Addition?")
@@ -193,7 +196,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             }
         }
         Commands::RemoveEntry => {
-            let (db_name, store) = pick_db(path.clone(), client.clone(), &theme)?;
+            let (db_name, store) = pick_db(&path, &client, &theme)?;
 
             println!();
 
@@ -220,7 +223,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             }
         }
         Commands::UpdateEntry => {
-            let (db_name, store) = pick_db(path.clone(), client.clone(), &theme)?;
+            let (db_name, store) = pick_db(&path, &client, &theme)?;
 
             println!();
 
@@ -251,7 +254,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             }
         }
         Commands::ExportToJSON { json_location } => {
-            let (name, store) = pick_db(path.clone(), client.clone(), &theme)?;
+            let (name, store) = pick_db(&path, &client, &theme)?;
             println!("Received Database {name:?}, converting to JSON");
 
             let json = serde_json::to_string(&store)?;
@@ -261,7 +264,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             file.write_all(json.as_bytes())?;
         }
         Commands::RemoveDatabase => {
-            let db_name = pick_db_name(false, path.clone(), client.clone(), &theme)?;
+            let db_name = pick_db_name(false, &path, &client, &theme)?;
             let mut args = HashMap::new();
             args.insert("name", SJValue::String(db_name));
             
@@ -273,7 +276,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     Ok(())
 }
 
-fn get_store(path: String, client: Client, db_name: String) -> Result<Store, Error> {
+fn get_store(path: &str, client: &Client, db_name: String) -> Result<Store, Error> {
     let mut args = HashMap::new();
     args.insert("name", SJValue::String(db_name));
 
@@ -283,18 +286,19 @@ fn get_store(path: String, client: Client, db_name: String) -> Result<Store, Err
     Ok(store)
 }
 
-fn get_all_dbs (path: String, client: Client) -> Result<Vec<String>, reqwest::Error> {
+fn get_all_dbs (path: &str, client: &Client) -> Result<Vec<String>, reqwest::Error> {
     client.get(format!("http://{path}:2256/v1/get_all_dbs")).send()?.error_for_status()?.json()
 }
 
-fn pick_db (path: String, client: Client, theme: &dyn Theme) -> Result<(String, Store), Error> {
-    let chosen_db_name = pick_db_name(false, path.clone(), client.clone(), theme)?;
-    let chosen_store = get_store(path.clone(), client.clone(), chosen_db_name.clone())?;
+fn pick_db (path: &str, client: &Client, theme: &dyn Theme) -> Result<(String, Store), Error> {
+    let chosen_db_name = pick_db_name(false, path, client, theme)?;
+    let chosen_store = get_store(path, client, chosen_db_name.clone())?;
     Ok((chosen_db_name, chosen_store))
 }
 
-fn pick_db_name (can_pick_new: bool, path: String, client: Client, theme: &dyn Theme) -> Result<String, Error> {
-    let mut names = get_all_dbs(path.clone(), client.clone())?;
+#[allow(clippy::collapsible_if)]
+fn pick_db_name (can_pick_new: bool, path: &str, client: &Client, theme: &dyn Theme) -> Result<String, Error> {
+    let mut names = get_all_dbs(path, client)?;
 
     if can_pick_new {
         if Confirm::with_theme(theme).with_prompt("New Database?").interact()? {
