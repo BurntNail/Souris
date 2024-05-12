@@ -1,0 +1,19 @@
+[package]
+name = "souris"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "4.5.4", features = ["derive", "cargo"] }
+sourisdb = { path = "../sourisdb", features = ["std", "serde"] }
+dialoguer = { version = "0.11.0", features = [
+  "fuzzy-matcher",
+  "fuzzy-select",
+  "history",
+  "completion",
+] }
+chrono = "0.4"
+chrono-tz = "0.9"
+serde_json = "1.0.117"
