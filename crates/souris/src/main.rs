@@ -1,32 +1,33 @@
-use chrono::{Duration, Local, NaiveDate, NaiveDateTime, NaiveTime};
 use clap::{Parser, Subcommand};
 use dialoguer::{
     theme::{ColorfulTheme, Theme},
-    Confirm, Error as DError, FuzzySelect, Input,
+    Error as DError, FuzzySelect,
 };
 use sourisdb::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
     store::{Store, StoreSerError},
-    types::{imaginary::Imaginary, integer::Integer},
-    values::{Value, ValueSerError, ValueTy},
+    values::{ValueSerError},
 };
 use std::{
     fmt::{Display, Formatter},
     fs::File,
-    io::{Error as IOError, ErrorKind, Read, Write},
+    io::{Error as IOError, Read},
     path::PathBuf,
 };
+use std::net::Ipv4Addr;
+use reqwest::blocking::Client;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
-struct Args {
-    path: PathBuf,
+struct Arguments {
+    path: String,
+    db_name: String,
     #[command(subcommand)]
     command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum Commands {
     CreateNew,
     AddEntry,
@@ -38,14 +39,14 @@ enum Commands {
     ExportToJSON {
         json_location: PathBuf,
     },
-    CreateNewFromJSON {
+    ImportFromJSON {
         json_location: PathBuf,
     },
 }
 
 fn main() {
-    if let Err(e) = fun_main(Args::parse()) {
-        eprintln!("Error running program: {e}");
+    if let Err(e) = fun_main(Arguments::parse()) {
+        eprintln!("Error running program: {e:?}");
         std::process::exit(1);
     }
 }
@@ -54,10 +55,10 @@ fn main() {
 enum Error {
     IO(IOError),
     Dialoguer(DError),
-    InvalidDateOrTime,
     SerdeJson(serde_json::Error),
     Value(ValueSerError),
     Store(StoreSerError),
+    Reqwest(reqwest::Error),
 }
 
 impl Display for Error {
@@ -65,10 +66,10 @@ impl Display for Error {
         match self {
             Error::IO(e) => write!(f, "Error handling IO: {e}"),
             Error::Dialoguer(e) => write!(f, "Error with dialoguer: {e}"),
-            Error::InvalidDateOrTime => write!(f, "Received invalid date/time"),
             Error::SerdeJson(e) => write!(f, "Error with JSON: {e}"),
             Error::Value(e) => write!(f, "Error with values: {e}"),
             Error::Store(e) => write!(f, "Error with store: {e}"),
+            Error::Reqwest(e) => write!(f, "Error with reqwest: {e}"),
         }
     }
 }
@@ -98,25 +99,31 @@ impl From<StoreSerError> for Error {
         Self::Store(value)
     }
 }
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        Self::Reqwest(value)
+    }
+}
 
-fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
+fn fun_main(Arguments { path, db_name, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
+    let client = Client::new();
 
     match command {
         Commands::CreateNew => {
-            new_store_in_file(path, &theme)?;
+            let new_store = new_store(path, client, db_name, &theme)?;
+            println!("Created new store: {new_store}");
         }
         Commands::ViewAll => {
-            let store = view_all(path, &theme)?;
-
+            let store = get_all(path, client, db_name)?;
             println!("{store}");
         }
         #[cfg(debug_assertions)]
         Commands::DebugViewAll => {
-            let store = view_all(path, &theme)?;
+            let store = get_all(path, client, db_name)?;
             println!("{store:#?}");
         }
-        Commands::CreateNewFromJSON { json_location } => {
+        Commands::ImportFromJSON { json_location } => {
             let mut file = File::open(json_location)?;
             let mut bytes = vec![];
             let mut tmp = [0_u8; 128];
@@ -131,13 +138,19 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
 
             let store = Store::from_json(&bytes)?;
             let store_bytes = store.ser()?;
-            println!("Successfully parsed JSON");
 
-            let mut output = File::create(path)?;
-            output.write_all(&store_bytes)?;
+            let overwrite_existing = FuzzySelect::with_theme(&theme).items(&["Overwrite", "Ignore"]).with_prompt("Existing Database: ").interact()? == 0;
+
+            let mut args = HashMap::new();
+            args.insert("overwrite_existing", SJValue::Bool(overwrite_existing));
+            args.insert("name", SJValue::String(db_name.clone()));
+
+            let rsp = client.put(format!("http://{path}:2256/v1/add_db_with_content")).query(&args).body(store_bytes).send()?.error_for_status()?;
+
+            println!("Got contents: {rsp:?}");
         }
         Commands::AddEntry => {
-            let mut store = view_all(path.clone(), &theme)?;
+            /*let mut store = view_all(store_location.clone(), &theme)?;
 
             let key = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
             let value = get_value_from_stdin("Value: ", &theme)?;
@@ -154,17 +167,18 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 .interact()?
             {
                 store.insert(key, value);
-                let mut file = File::create(path)?;
+                let mut file = File::create(store_location)?;
                 file.write_all(&store.ser()?)?;
 
                 println!("Successfully added to store.");
             } else {
                 println!("Cancelled. Exiting...");
                 std::process::exit(0);
-            }
+            }*/
+            todo!()
         }
         Commands::RemoveEntry => {
-            let mut store = view_all(path.clone(), &theme)?;
+            /*let mut store = view_all(store_location.clone(), &theme)?;
 
             println!();
 
@@ -182,7 +196,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
             {
                 match store.remove(&key) {
                     Some(value) => {
-                        let mut file = File::create(path)?;
+                        let mut file = File::create(store_location)?;
                         file.write_all(&store.ser()?)?;
 
                         println!("Successfully removed {value:?} from store.");
@@ -194,10 +208,11 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
             } else {
                 println!("Cancelled. Exiting...");
                 std::process::exit(0);
-            }
+            }*/
+            todo!()
         }
         Commands::UpdateEntry => {
-            let mut store = view_all(path.clone(), &theme)?;
+            /*let mut store = view_all(store_location.clone(), &theme)?;
 
             println!();
 
@@ -229,306 +244,45 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
 
             store.insert(key, new);
 
-            let mut file = File::create(path)?;
+            let mut file = File::create(store_location)?;
             file.write_all(&store.ser()?)?;
 
-            println!("Successfully updated");
+            println!("Successfully updated");*/
+            todo!()
         }
         Commands::ExportToJSON { json_location } => {
-            let store = view_all(path, &theme)?;
+            /*let store = view_all(store_location, &theme)?;
             let json = serde_json::to_string(&store)?;
 
             let mut file = File::create(json_location)?;
-            file.write_all(json.as_bytes())?;
+            file.write_all(json.as_bytes())?;*/
+            todo!()
         }
     }
 
     Ok(())
 }
 
-fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value, Error> {
-    println!("{prompt}");
+fn get_all(path: String, client: Client, db_name: String) -> Result<Store, Error> {
+    let mut args = HashMap::new();
+    args.insert("name", SJValue::String(db_name));
 
-    let tys = [
-        ValueTy::Ch,
-        ValueTy::String,
-        ValueTy::Binary,
-        ValueTy::Bool,
-        ValueTy::Int,
-        ValueTy::Imaginary,
-        ValueTy::Timestamp,
-        ValueTy::JSON,
-        ValueTy::Null,
-        ValueTy::Float,
-        ValueTy::Array,
-        ValueTy::Map,
-        ValueTy::Timezone,
-        ValueTy::IpV4,
-        ValueTy::IpV6,
-        ValueTy::Duration,
-    ];
-    let selection = FuzzySelect::with_theme(theme)
-        .with_prompt("Type: ")
-        .items(
-            tys.into_iter()
-                .map(|x| format!("{x:?}"))
-                .collect::<Vec<_>>()
-                .as_slice(),
-        )
-        .interact()?;
-    Ok(match tys[selection] {
-        ValueTy::Ch => {
-            let ch: char = Input::with_theme(theme)
-                .with_prompt("Character: ")
-                .interact()?;
-            Value::Ch(ch)
-        }
-        ValueTy::String => {
-            let st: String = Input::with_theme(theme).with_prompt("Text: ").interact()?;
-            Value::String(st)
-        }
-        ValueTy::Binary => {
-            let st: String = Input::with_theme(theme)
-                .with_prompt("What text to be interpreted as UTF-8 bytes?")
-                .interact()?;
-            Value::Binary(st.as_bytes().to_vec())
-        }
-        ValueTy::Bool => {
-            let b = FuzzySelect::with_theme(theme)
-                .items(&["False", "True"])
-                .interact()?;
-            Value::Bool(b != 0)
-        }
-        ValueTy::Int => {
-            let i: Integer = Input::with_theme(theme)
-                .with_prompt("Which number: ")
-                .interact()?;
-            Value::Int(i)
-        }
-        ValueTy::Imaginary => {
-            let real: Integer = Input::with_theme(theme)
-                .with_prompt("Real Part: ")
-                .interact()?;
-            let imaginary: Integer = Input::with_theme(theme)
-                .with_prompt("Imaginary Part: ")
-                .interact()?;
-
-            Value::Imaginary(Imaginary { real, imaginary })
-        }
-        ValueTy::Timestamp => {
-            let ts: NaiveDateTime = if Confirm::with_theme(theme).with_prompt("Now?").interact()? {
-                Local::now().naive_local()
-            } else if Confirm::with_theme(theme)
-                .with_prompt("Would you use the format?")
-                .interact()?
-            {
-                Input::with_theme(theme)
-                    .with_prompt("%Y-%m-%dT%H:%M:%S%.f")
-                    .interact()?
-            } else {
-                let y = Input::with_theme(theme).with_prompt("Year: ").interact()?;
-                let m = Input::with_theme(theme).with_prompt("Month: ").interact()?;
-                let d = Input::with_theme(theme).with_prompt("Date: ").interact()?;
-
-                let date = NaiveDate::from_ymd_opt(y, m, d).ok_or(Error::InvalidDateOrTime)?;
-
-                let h = Input::with_theme(theme).with_prompt("Hour: ").interact()?;
-                let m = Input::with_theme(theme)
-                    .with_prompt("Minute: ")
-                    .interact()?;
-                let s = Input::with_theme(theme)
-                    .with_prompt("Seconds: ")
-                    .interact()?;
-                let ms = Input::with_theme(theme)
-                    .with_prompt("Milliseconds: ")
-                    .interact()?;
-
-                let time =
-                    NaiveTime::from_hms_milli_opt(h, m, s, ms).ok_or(Error::InvalidDateOrTime)?;
-
-                NaiveDateTime::new(date, time)
-            };
-
-            Value::Timestamp(ts)
-        }
-        ValueTy::JSON => {
-            let v: SJValue = Input::with_theme(theme).with_prompt("JSON: ").interact()?;
-            Value::JSON(v)
-        }
-        ValueTy::Array => {
-            let res = if Confirm::with_theme(theme)
-                .with_prompt("Do you know how long the array is?")
-                .interact()?
-            {
-                let length: usize = Input::with_theme(theme)
-                    .with_prompt("How long?")
-                    .interact()?;
-
-                (1..=length)
-                    .map(|i| get_value_from_stdin(format!("Item {i}:"), theme))
-                    .collect::<Result<Vec<_>, _>>()?
-            } else {
-                let mut res = vec![];
-                let mut i = 1;
-                loop {
-                    let item = get_value_from_stdin(format!("Item {i}: "), theme)?;
-                    res.push(item);
-                    i += 1;
-
-                    if Confirm::with_theme(theme)
-                        .with_prompt("Is that everything?")
-                        .interact()?
-                    {
-                        break;
-                    }
-                }
-                res
-            };
-
-            Value::Array(res)
-        }
-        ValueTy::Map => {
-            let map = if Confirm::with_theme(theme)
-                .with_prompt("Do you know how long the store is?")
-                .interact()?
-            {
-                let length: usize = Input::with_theme(theme)
-                    .with_prompt("Length: ")
-                    .interact()?;
-
-                let mut map = HashMap::new();
-
-                for _ in 0..length {
-                    let key: String = Input::with_theme(theme).with_prompt("Key: ").interact()?;
-                    let value = get_value_from_stdin("Value: ", theme)?;
-
-                    map.insert(key, value);
-                }
-
-                map
-            } else {
-                let mut map = HashMap::new();
-
-                loop {
-                    if Confirm::with_theme(theme)
-                        .with_prompt("Is that all the keys & values?")
-                        .interact()?
-                    {
-                        break;
-                    }
-
-                    let key: String = Input::with_theme(theme).with_prompt("Key: ").interact()?;
-                    let value = get_value_from_stdin("Value: ", theme)?;
-
-                    map.insert(key, value);
-                }
-
-                map
-            };
-
-            Value::Map(map)
-        }
-        ValueTy::Null => Value::Null(()),
-        ValueTy::Float => {
-            let f: f64 = Input::with_theme(theme)
-                .with_prompt("What float?")
-                .interact()?;
-            Value::Float(f)
-        }
-        ValueTy::Timezone => {
-            let chosen_index = FuzzySelect::with_theme(theme)
-                .with_prompt("Timezone: ")
-                .items(&chrono_tz::TZ_VARIANTS)
-                .interact()?;
-            Value::Timezone(chrono_tz::TZ_VARIANTS[chosen_index])
-        }
-        ValueTy::IpV4 => {
-            let addr = Input::with_theme(theme)
-                .with_prompt("Ipv4 Address: ")
-                .interact()?;
-            Value::Ipv4Addr(addr)
-        }
-        ValueTy::IpV6 => {
-            let addr = Input::with_theme(theme)
-                .with_prompt("Ipv6 Address: ")
-                .interact()?;
-            Value::Ipv6Addr(addr)
-        }
-        ValueTy::Duration => {
-            let secs = Input::with_theme(theme)
-                .with_prompt("Seconds: ")
-                .interact()?;
-            let nanos = loop {
-                let trial = Input::with_theme(theme)
-                    .with_prompt("Nanoseconds: ")
-                    .interact()?;
-                if trial >= 1_000_000_000 {
-                    println!("Too big - nanos must be < 1,000,000,000");
-                } else {
-                    break trial;
-                }
-            };
-            let Some(d) = Duration::new(secs, nanos) else {
-                unreachable!("just checked that nanos is acceptable");
-            };
-
-            Value::Duration(d)
-        }
-    })
-}
-
-fn view_all(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
-    match File::open(path.clone()) {
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            if Confirm::with_theme(theme)
-                .with_prompt("No file found. Create new?")
-                .interact()?
-            {
-                new_store_in_file(path, theme)
-            } else {
-                println!("File not created. Exiting...");
-                std::process::exit(0);
-            }
-        }
-        Err(e) => Err(e.into()),
-        Ok(mut file) => {
-            let mut contents: Vec<u8> = vec![];
-            {
-                let mut tmp = [0_u8; 128];
-                loop {
-                    match file.read(&mut tmp)? {
-                        0 => break,
-                        n => contents.extend(&tmp[0..n]),
-                    }
-                }
-            }
-
-            let store = Store::deser(&contents)?;
-            Ok(store)
-        }
-    }
-}
-
-fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
-    let mut file = match File::create_new(path.clone()) {
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-            if Confirm::with_theme(theme)
-                .with_prompt("File already exists. Continue & Overwrite?")
-                .interact()?
-            {
-                File::create(path)?
-            } else {
-                println!("File not overwritten. Exiting...");
-                std::process::exit(0);
-            }
-        }
-        Err(e) => return Err(e.into()),
-        Ok(f) => f,
-    };
-
-    let store = Store::new();
-    file.write_all(&store.ser()?)?;
-    println!("Successfully created new SourisDB.");
+    let rsp = client.get(format!("http://{path}:2256/v1/get_db")).query(&args).send()?.error_for_status()?.bytes()?;
+    let store = Store::deser(rsp.as_ref())?;
 
     Ok(store)
+}
+
+fn new_store(path: String, client: Client, db_name: String, theme: &dyn Theme) -> Result<Store, Error> {
+    let overwrite_existing = FuzzySelect::with_theme(theme).items(&["Overwrite", "Ignore"]).with_prompt("Existing Database: ").interact()? == 0;
+
+    let mut args = HashMap::new();
+    args.insert("overwrite_existing", SJValue::Bool(overwrite_existing));
+    args.insert("name", SJValue::String(db_name.clone()));
+
+    let rsp = client.post(format!("http://{path}:2256/v1/add_db")).query(&args).send()?.error_for_status()?;
+
+    println!("Got response: {rsp:?}");
+
+    get_all(path, client, db_name)
 }

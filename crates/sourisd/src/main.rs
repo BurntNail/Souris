@@ -13,6 +13,7 @@ use axum::{
     Router,
 };
 use std::time::Duration;
+use axum::extract::DefaultBodyLimit;
 use tokio::{
     net::TcpListener,
     signal,
@@ -22,6 +23,7 @@ use tokio::{
 use tower_http::trace::TraceLayer;
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
+use crate::v1_routes::db::add_db_with_content;
 
 mod error;
 mod state;
@@ -113,6 +115,7 @@ async fn main() {
     let v1_router = Router::new()
         .route("/get_db", get(get_db))
         .route("/add_db", post(add_db))
+        .route("/add_db_with_content", put(add_db_with_content))
         .route("/rm_db", post(remove_db))
         .route("/clear_db", post(clear_db))
         .route("/add_kv", put(add_kv))
@@ -121,6 +124,7 @@ async fn main() {
     let router = Router::new()
         .nest("/v1", v1_router)
         .layer(TraceLayer::new_for_http())
+        .layer(DefaultBodyLimit::disable())
         .with_state(state.clone());
 
     let listener = TcpListener::bind("127.0.0.1:2256").await.unwrap();

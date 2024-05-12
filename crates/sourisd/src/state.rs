@@ -58,6 +58,32 @@ impl SourisState {
         Ok(StatusCode::CREATED)
     }
 
+    #[tracing::instrument(level = "trace", skip(self, contents))]
+    pub async fn new_db_with_contents(
+        &self,
+        name: String,
+        overwrite_existing: bool,
+        contents: Store,
+    ) -> StatusCode {
+        let mut stores = self.dbs.lock().await;
+        
+        let mut contained = false;
+        if stores.contains_key(&name) {
+            contained = true;
+            if !overwrite_existing {
+                return StatusCode::OK;
+            }
+        }
+        
+        stores.insert(name, contents);
+        
+        if contained {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        }
+    }
+
     ///returns whether it cleared a database
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn clear_db(&self, name: String) -> Result<(), SourisError> {
