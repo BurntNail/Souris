@@ -21,8 +21,8 @@ pub enum SignedState {
 ///size of the backing integer
 pub type BiggestInt = u128;
 pub type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
-///# of bytes for storing one `BiggestInt`
-const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated and this is clearer
+///number of bytes for storing one `BiggestInt`
+const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated anyways and this is clearer
 ///max size for an integer to be stored by itself
 #[allow(clippy::cast_possible_truncation)]
 const ONE_BYTE_MAX_SIZE: u8 = u8::MAX - (INTEGER_MAX_SIZE as u8);
@@ -36,6 +36,7 @@ pub struct Integer {
 }
 
 impl Integer {
+    ///the minimum number of bits required to store this as an unsigned integer
     fn unsigned_bits(&self) -> u32 {
         let x = BiggestInt::from_le_bytes(self.content);
         if x == 0 {
@@ -45,7 +46,9 @@ impl Integer {
         }
     }
 
-    ///NB: always <= `INTEGER_MAX_SIZE`
+    ///The minimum number of bytes required to store this as an unsigned integer
+    /// 
+    /// NB: always <= `INTEGER_MAX_SIZE`
     fn min_bytes_needed(&self) -> usize {
         ((self.unsigned_bits() / 8) + 1) as usize
     }
@@ -57,7 +60,7 @@ impl Integer {
 
     #[must_use]
     pub fn is_positive(&self) -> bool {
-        !self.is_negative()
+        self.signed_state == SignedState::Positive
     }
 }
 
@@ -89,14 +92,14 @@ impl Debug for Integer {
 
 macro_rules! new_x {
     ($($t:ty => $name:ident),+) => {
-        $(
         impl Integer {
-            #[must_use]
-            pub fn $name(n: $t) -> Self {
-                <Self as From<$t>>::from(n)
-            }
+            $(
+                #[must_use]
+                pub fn $name(n: $t) -> Self {
+                    <Self as From<$t>>::from(n)
+                }
+            )+
         }
-        )+
     };
 }
 
@@ -141,7 +144,7 @@ macro_rules! from_signed {
                     _ => 1,
                 };
 
-                if i.unsigned_bits() > <$t>::BITS {
+                if i.unsigned_bits() > (<$t>::BITS - 1) {
                     return Err(IntegerSerError::WrongType);
                 }
 
@@ -652,7 +655,7 @@ mod tests {
                     };
                 }
             };
-            
+
             prop_assert_eq!(from_raw, to_serde);
             prop_assert_eq!(i, from_serde);
         }

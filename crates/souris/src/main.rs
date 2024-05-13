@@ -1,22 +1,24 @@
 #![warn(clippy::all, clippy::pedantic)]
 
 use clap::{Parser, Subcommand};
-use dialoguer::{theme::{ColorfulTheme, Theme}, Error as DError, FuzzySelect, Confirm, Input};
+use dialoguer::{
+    theme::{ColorfulTheme, Theme},
+    Confirm, Error as DError, FuzzySelect, Input,
+};
+use reqwest::blocking::Client;
 use sourisdb::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
     store::{Store, StoreSerError},
-    values::{ValueSerError},
+    utilities::value_utils::get_value_from_stdin,
+    values::ValueSerError,
 };
 use std::{
     fmt::{Display, Formatter},
     fs::File,
-    io::{Error as IOError, Read},
+    io::{Error as IOError, Read, Write},
     path::PathBuf,
 };
-use std::io::Write;
-use reqwest::blocking::Client;
-use sourisdb::utilities::value_utils::get_value_from_stdin;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -29,7 +31,7 @@ struct Arguments {
 #[derive(Subcommand, Debug, Clone)]
 enum Commands {
     CreateNew {
-        db_name: String
+        db_name: String,
     },
     AddEntry,
     ViewAll,
@@ -115,12 +117,15 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let client = Client::new();
 
     match command {
-        Commands::CreateNew {db_name} => {
+        Commands::CreateNew { db_name } => {
             let all = get_all_dbs(&path, &client)?;
 
             if all.contains(&db_name) {
-                if !Confirm::with_theme(&theme).with_prompt("A database with that name already exists. Overwrite?").interact()? {
-                    return Ok(())
+                if !Confirm::with_theme(&theme)
+                    .with_prompt("A database with that name already exists. Overwrite?")
+                    .interact()?
+                {
+                    return Ok(());
                 }
             }
 
@@ -128,10 +133,13 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             args.insert("overwrite_existing", SJValue::Bool(true));
             args.insert("name", SJValue::String(db_name.clone()));
 
-            let rsp = client.post(format!("http://{path}:2256/v1/add_db")).query(&args).send()?.error_for_status()?;
+            let rsp = client
+                .post(format!("http://{path}:2256/v1/add_db"))
+                .query(&args)
+                .send()?
+                .error_for_status()?;
 
             println!("Got response: {rsp:?}");
-
         }
         Commands::ViewAll => {
             let (_, store) = pick_db(&path, &client, &theme)?;
@@ -164,7 +172,12 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             args.insert("overwrite_existing", SJValue::Bool(true));
             args.insert("name", SJValue::String(db_name.clone()));
 
-            let rsp = client.put(format!("http://{path}:2256/v1/add_db_with_content")).query(&args).body(store_bytes).send()?.error_for_status()?;
+            let rsp = client
+                .put(format!("http://{path}:2256/v1/add_db_with_content"))
+                .query(&args)
+                .body(store_bytes)
+                .send()?
+                .error_for_status()?;
 
             println!("Got contents: {rsp:?}");
         }
@@ -188,10 +201,15 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 let mut args = HashMap::new();
                 args.insert("db", SJValue::String(db_name));
                 args.insert("key", SJValue::String(key));
-                
+
                 let bytes = value.ser()?;
-                
-                let rsp = client.put(format!("http://{path}:2256/v1/add_kv")).query(&args).body(bytes).send()?.error_for_status()?;
+
+                let rsp = client
+                    .put(format!("http://{path}:2256/v1/add_kv"))
+                    .query(&args)
+                    .body(bytes)
+                    .send()?
+                    .error_for_status()?;
                 println!("Got response: {rsp:?}");
             }
         }
@@ -206,7 +224,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 .items(&keys)
                 .interact()?;
             let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
-            
+
             drop(keys);
             drop(store);
 
@@ -217,8 +235,12 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 let mut args = HashMap::new();
                 args.insert("db", SJValue::String(db_name));
                 args.insert("key", SJValue::String(key));
-                
-                let rsp = client.post(format!("http://{path}:2256/v1/rm_key")).query(&args).send()?.error_for_status()?;
+
+                let rsp = client
+                    .post(format!("http://{path}:2256/v1/rm_key"))
+                    .query(&args)
+                    .send()?
+                    .error_for_status()?;
                 println!("Got response: {rsp:?}");
             }
         }
@@ -236,7 +258,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
 
             drop(keys);
             drop(store);
-            
+
             let new_val = get_value_from_stdin("New Value: ", &theme)?;
 
             if Confirm::with_theme(&theme)
@@ -246,10 +268,15 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 let mut args = HashMap::new();
                 args.insert("db", SJValue::String(db_name));
                 args.insert("key", SJValue::String(key));
-                
+
                 let bytes = new_val.ser()?;
 
-                let rsp = client.put(format!("http://{path}:2256/v1/add_kv")).query(&args).body(bytes).send()?.error_for_status()?;
+                let rsp = client
+                    .put(format!("http://{path}:2256/v1/add_kv"))
+                    .query(&args)
+                    .body(bytes)
+                    .send()?
+                    .error_for_status()?;
                 println!("Got response: {rsp:?}");
             }
         }
@@ -257,7 +284,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             let (name, store) = pick_db(&path, &client, &theme)?;
             println!("Received Database {name:?}, converting to JSON");
 
-            let json = serde_json::to_string(&store)?;
+            let json = serde_json::to_string_pretty(&store)?;
             println!("Converted to JSON, writing to {json_location:?}");
 
             let mut file = File::create(json_location)?;
@@ -267,8 +294,12 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             let db_name = pick_db_name(false, &path, &client, &theme)?;
             let mut args = HashMap::new();
             args.insert("name", SJValue::String(db_name));
-            
-            let rsp = client.post(format!("http://{path}:2256/v1/rm_db")).query(&args).send()?.error_for_status()?;
+
+            let rsp = client
+                .post(format!("http://{path}:2256/v1/rm_db"))
+                .query(&args)
+                .send()?
+                .error_for_status()?;
             println!("Got response: {rsp:?}");
         }
     }
@@ -280,40 +311,62 @@ fn get_store(path: &str, client: &Client, db_name: String) -> Result<Store, Erro
     let mut args = HashMap::new();
     args.insert("name", SJValue::String(db_name));
 
-    let rsp = client.get(format!("http://{path}:2256/v1/get_db")).query(&args).send()?.error_for_status()?.bytes()?;
+    let rsp = client
+        .get(format!("http://{path}:2256/v1/get_db"))
+        .query(&args)
+        .send()?
+        .error_for_status()?
+        .bytes()?;
     let store = Store::deser(rsp.as_ref())?;
 
     Ok(store)
 }
 
-fn get_all_dbs (path: &str, client: &Client) -> Result<Vec<String>, reqwest::Error> {
-    client.get(format!("http://{path}:2256/v1/get_all_dbs")).send()?.error_for_status()?.json()
+fn get_all_dbs(path: &str, client: &Client) -> Result<Vec<String>, reqwest::Error> {
+    client
+        .get(format!("http://{path}:2256/v1/get_all_dbs"))
+        .send()?
+        .error_for_status()?
+        .json()
 }
 
-fn pick_db (path: &str, client: &Client, theme: &dyn Theme) -> Result<(String, Store), Error> {
+fn pick_db(path: &str, client: &Client, theme: &dyn Theme) -> Result<(String, Store), Error> {
     let chosen_db_name = pick_db_name(false, path, client, theme)?;
     let chosen_store = get_store(path, client, chosen_db_name.clone())?;
     Ok((chosen_db_name, chosen_store))
 }
 
 #[allow(clippy::collapsible_if)]
-fn pick_db_name (can_pick_new: bool, path: &str, client: &Client, theme: &dyn Theme) -> Result<String, Error> {
+fn pick_db_name(
+    can_pick_new: bool,
+    path: &str,
+    client: &Client,
+    theme: &dyn Theme,
+) -> Result<String, Error> {
     let mut names = get_all_dbs(path, client)?;
 
     if can_pick_new {
-        if Confirm::with_theme(theme).with_prompt("New Database?").interact()? {
+        if Confirm::with_theme(theme)
+            .with_prompt("New Database?")
+            .interact()?
+        {
             return Ok(loop {
-                let trial = Input::with_theme(theme).with_prompt("Database Name: ").interact()?;
+                let trial = Input::with_theme(theme)
+                    .with_prompt("Database Name: ")
+                    .interact()?;
                 if &trial == "meta" {
                     println!("That name is reserved.");
                     continue;
                 }
-                
+
                 if !names.contains(&trial) {
                     break trial;
                 }
 
-                if Confirm::with_theme(theme).with_prompt("This database already exists. Overwrite?").interact()? {
+                if Confirm::with_theme(theme)
+                    .with_prompt("This database already exists. Overwrite?")
+                    .interact()?
+                {
                     break trial;
                 }
             });
@@ -324,6 +377,9 @@ fn pick_db_name (can_pick_new: bool, path: &str, client: &Client, theme: &dyn Th
         return Err(Error::NoDatabasesFound);
     }
 
-    let chosen_index = FuzzySelect::with_theme(theme).items(&names).with_prompt("Which database?").interact()?;
+    let chosen_index = FuzzySelect::with_theme(theme)
+        .items(&names)
+        .with_prompt("Which database?")
+        .interact()?;
     Ok(names.swap_remove(chosen_index))
 }

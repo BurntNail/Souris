@@ -8,8 +8,8 @@ use dialoguer::{
 };
 use sourisdb::{
     store::{Store, StoreSerError},
-    values::{ValueSerError},
     utilities::value_utils::get_value_from_stdin,
+    values::ValueSerError,
 };
 use std::{
     fmt::{Display, Formatter},
@@ -235,7 +235,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         }
         Commands::ExportToJSON { json_location } => {
             let store = view_all(path, &theme)?;
-            let json = serde_json::to_string(&store)?;
+            let json = serde_json::to_string_pretty(&store)?;
 
             let mut file = File::create(json_location)?;
             file.write_all(json.as_bytes())?;

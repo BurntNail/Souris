@@ -2,7 +2,7 @@ use crate::{
     utilities::cursor::Cursor,
     values::{Value, ValueSerError, ValueTy},
 };
-use alloc::{vec, vec::Vec, string::String};
+use alloc::{string::String, vec, vec::Vec};
 use core::{
     fmt::{Display, Formatter},
     ops::{Deref, DerefMut},

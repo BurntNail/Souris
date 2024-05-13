@@ -2,8 +2,8 @@ use crate::{
     types::integer::{Integer, IntegerSerError, SignedState},
     utilities::cursor::Cursor,
 };
-use core::fmt::{Display, Formatter};
 use alloc::vec::Vec;
+use core::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

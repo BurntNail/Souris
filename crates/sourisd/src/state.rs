@@ -21,7 +21,7 @@ mod meta {
     pub const DB_FILE_NAMES_KEY: &str = "existing_dbs";
 }
 use crate::error::SourisError;
-use meta::{META_DB_FILE_NAME, DB_FILE_NAMES_KEY};
+use meta::{DB_FILE_NAMES_KEY, META_DB_FILE_NAME};
 
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
@@ -131,7 +131,9 @@ impl SourisState {
     pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) {
         let mut dbs = self.dbs.lock().await;
 
-        let db = if let Some(d) = dbs.get_mut(&db) { d } else {
+        let db = if let Some(d) = dbs.get_mut(&db) {
+            d
+        } else {
             dbs.insert(db.clone(), Store::default());
             dbs.get_mut(&db).expect("just added this key")
         };
@@ -240,7 +242,9 @@ impl SourisState {
 
         let mut meta = get_store(base_location.join(META_DB_FILE_NAME)).await?;
 
-        let dbs = if let Some(dbs) = get_internal_stores(&meta, base_location.clone()).await { dbs } else {
+        let dbs = if let Some(dbs) = get_internal_stores(&meta, base_location.clone()).await {
+            dbs
+        } else {
             meta.insert(DB_FILE_NAMES_KEY.into(), Value::Array(vec![]));
             HashMap::default()
         };

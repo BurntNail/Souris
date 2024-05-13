@@ -67,8 +67,8 @@ impl From<DurationDef> for Duration {
 macro_rules! as_ty {
     ($($variant:ident $name:ident -> $t:ty),+) => {
         paste::paste!{
-            $(
-                impl Value {
+            impl Value {
+                $(
                     #[must_use]
                     pub fn [<as_ $name>] (&self) -> Option<&$t> {
                         if let Value::$variant(v) = self {
@@ -95,8 +95,8 @@ macro_rules! as_ty {
                             None
                         }
                     }
-                }
-            )+
+                )+
+            }
         }
     };
 }

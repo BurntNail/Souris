@@ -1,18 +1,21 @@
-use chrono::{Duration, Local, NaiveDate, NaiveDateTime, NaiveTime};
-use dialoguer::{theme::{Theme}, Confirm, FuzzySelect, Input};
 use crate::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
     types::{imaginary::Imaginary, integer::Integer},
     values::{Value, ValueTy},
 };
-use std::{fmt::{Display}, format, println};
-use alloc::{vec, vec::Vec, string::String};
+use alloc::{string::String, vec, vec::Vec};
+use chrono::{Duration, Local, NaiveDate, NaiveDateTime, NaiveTime};
+use dialoguer::{theme::Theme, Confirm, FuzzySelect, Input};
+use std::{fmt::Display, format, println};
 
 pub use dialoguer;
 
 #[allow(clippy::too_many_lines)]
-pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value, dialoguer::Error> {
+pub fn get_value_from_stdin(
+    prompt: impl Display,
+    theme: &dyn Theme,
+) -> Result<Value, dialoguer::Error> {
     println!("{prompt}");
 
     let tys = [
@@ -92,7 +95,6 @@ pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<V
                     .with_prompt("%Y-%m-%dT%H:%M:%S%.f")
                     .interact()?
             } else {
-                
                 let date = loop {
                     let y = Input::with_theme(theme).with_prompt("Year: ").interact()?;
                     let m = Input::with_theme(theme).with_prompt("Month: ").interact()?;
@@ -103,7 +105,7 @@ pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<V
                         None => println!("Date must be valid"),
                     }
                 };
-                
+
                 let time = loop {
                     let h = Input::with_theme(theme).with_prompt("Hour: ").interact()?;
                     let m = Input::with_theme(theme)
@@ -118,10 +120,10 @@ pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<V
 
                     match NaiveTime::from_hms_milli_opt(h, m, s, ms) {
                         Some(t) => break t,
-                        None => println!("Time must be valid")
+                        None => println!("Time must be valid"),
                     }
                 };
-                
+
                 NaiveDateTime::new(date, time)
             };
 
