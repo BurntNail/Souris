@@ -12,7 +12,7 @@ use alloc::{
     vec::Vec,
 };
 use cfg_if::cfg_if;
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use chrono_tz::Tz;
 use core::{
     fmt::{Debug, Display, Formatter},
@@ -23,6 +23,11 @@ use core::{
 };
 use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
+
+#[cfg(feature = "axum")]
+mod axum;
+#[cfg(feature = "axum")]
+pub use axum::*;
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -37,31 +42,13 @@ pub enum Value {
     Timestamp(NaiveDateTime),
     JSON(SJValue),
     Null(()),
-    Float(f64),
+    SingleFloat(f32),
+    DoubleFloat(f64),
     Array(Vec<Value>),
     Map(HashMap<String, Value>),
     Timezone(Tz),
     Ipv4Addr(Ipv4Addr),
     Ipv6Addr(Ipv6Addr),
-    #[cfg_attr(feature = "serde", serde(with = "DurationDef"))]
-    Duration(Duration),
-}
-
-#[cfg(feature = "serde")]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(remote = "Duration"))]
-struct DurationDef {
-    #[serde(getter = "Duration::num_seconds")]
-    secs: i64,
-    #[serde(getter = "Duration::subsec_nanos")]
-    nanos: i32,
-}
-#[cfg(feature = "serde")]
-impl From<DurationDef> for Duration {
-    fn from(value: DurationDef) -> Self {
-        Duration::new(value.secs, value.nanos as u32).expect("unable to get duration working")
-        //TODO: check if this is OK
-    }
 }
 
 macro_rules! as_ty {
@@ -95,13 +82,31 @@ macro_rules! as_ty {
                             None
                         }
                     }
+
+                    #[must_use]
+                    pub fn [<is_ $name>] (&self) -> bool {
+                        matches!(self, Value::$variant(_))
+                    }
                 )+
             }
         }
+
+        $(
+        impl TryFrom<Value> for $t {
+            type Error = ValueSerError;
+
+            fn try_from(value: Value) -> Result<Self, Self::Error> {
+                let found = value.as_ty();
+                paste::paste!{
+                    value.[<to_ $name>]().ok_or(ValueSerError::UnexpectedValueType(found, ValueTy::$variant))
+                }
+            }
+        }
+        )+
     };
 }
 
-as_ty!(Character char -> char, String str -> String, Boolean bool -> bool, Integer int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), Float float -> f64, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Duration duration -> Duration, Binary binary -> Vec<u8>);
+as_ty!(Character char -> char, String str -> String, Boolean bool -> bool, Integer int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), DoubleFloat double_float -> f64, SingleFloat single_float -> f32, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Binary binary -> Vec<u8>);
 
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
@@ -119,13 +124,13 @@ impl PartialEq for Value {
             (Self::Timestamp(t), Self::Timestamp(t2)) => t.eq(t2),
             (Self::JSON(j), Self::JSON(j2)) => j.eq(j2),
             (Self::Null(()), Self::Null(())) => true,
-            (Self::Float(f), Self::Float(f2)) => f.eq(f2),
+            (Self::DoubleFloat(f), Self::DoubleFloat(f2)) => f.eq(f2),
             (Self::Array(a), Self::Array(a2)) => a.eq(a2),
             (Self::Map(m), Self::Map(m2)) => m.eq(m2),
             (Self::Timezone(t), Self::Timezone(t2)) => t.eq(t2),
             (Self::Ipv4Addr(t), Self::Ipv4Addr(t2)) => t.eq(t2),
             (Self::Ipv6Addr(t), Self::Ipv6Addr(t2)) => t.eq(t2),
-            (Self::Duration(t), Self::Duration(t2)) => t.eq(t2),
+            (Self::SingleFloat(t), Self::SingleFloat(t2)) => t.eq(t2),
             _ => unreachable!("already checked ty equality"),
         }
     }
@@ -174,7 +179,7 @@ impl Hash for Value {
                     v.hash(state);
                 }
             }
-            Value::Float(f) => {
+            Value::DoubleFloat(f) => {
                 match f.classify() {
                     FpCategory::Nan => 0,
                     FpCategory::Infinite => 1,
@@ -195,8 +200,16 @@ impl Hash for Value {
             Value::Ipv6Addr(a) => {
                 a.hash(state);
             }
-            Value::Duration(d) => {
-                d.hash(state);
+            Value::SingleFloat(f) => {
+                match f.classify() {
+                    FpCategory::Nan => 0,
+                    FpCategory::Infinite => 1,
+                    FpCategory::Zero => 2,
+                    FpCategory::Subnormal => 3,
+                    FpCategory::Normal => 4,
+                }
+                .hash(state);
+                f.to_le_bytes().hash(state);
             }
         }
     }
@@ -217,13 +230,13 @@ impl Debug for Value {
             Self::Imaginary(i) => s.field("content", i),
             Self::Timestamp(ndt) => s.field("content", ndt),
             Self::JSON(v) => s.field("content", v),
-            Self::Float(f) => s.field("content", f),
+            Self::DoubleFloat(f) => s.field("content", f),
             Self::Null(o) => s.field("content", o),
             Self::Array(a) => s.field("content", a),
             Self::Map(m) => s.field("content", m),
             Self::Ipv4Addr(m) => s.field("content", m),
             Self::Ipv6Addr(m) => s.field("content", m),
-            Self::Duration(m) => s.field("content", m),
+            Self::SingleFloat(m) => s.field("content", m),
             Self::Timezone(m) => s.field("content", m),
         };
 
@@ -244,20 +257,19 @@ impl Display for Value {
             Self::Imaginary(i) => write!(f, "{i}"),
             Self::Timestamp(ndt) => write!(f, "{ndt}"),
             Self::JSON(v) => write!(f, "{v}"),
-            Self::Float(fl) => write!(f, "{fl}"),
+            Self::DoubleFloat(fl) => write!(f, "{fl}"),
             Self::Null(_o) => write!(f, "null"),
             Self::Map(m) => {
                 cfg_if! {
                     if #[cfg(feature = "std")] {
-                        use comfy_table::{modifiers::UTF8_ROUND_CORNERS, presets::UTF8_FULL, ContentArrangement, Table};
                         use alloc::format;
 
-                        let mut table = Table::new();
+                        let mut table = comfy_table::Table::new();
                         table
                             .set_header(vec!["Key", "Value"])
-                            .load_preset(UTF8_FULL)
-                            .apply_modifier(UTF8_ROUND_CORNERS)
-                            .set_content_arrangement(ContentArrangement::Dynamic);
+                            .load_preset(comfy_table::presets::UTF8_FULL)
+                            .apply_modifier(comfy_table::modifiers::UTF8_ROUND_CORNERS)
+                            .set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
 
                         for (k, v) in m {
                             table.add_row(vec![format!("{k}"), format!("{v}")]);
@@ -296,50 +308,50 @@ impl Display for Value {
             Self::Timezone(v) => write!(f, "{v}"),
             Self::Ipv4Addr(v) => write!(f, "{v}"),
             Self::Ipv6Addr(v) => write!(f, "{v}"),
-            Self::Duration(v) => write!(f, "{v}"),
+            Self::SingleFloat(v) => write!(f, "{v}"),
         }
     }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ValueTy {
-    Ch,
+    Character,
     String,
     Binary,
-    Bool,
-    Int,
+    Boolean,
+    Integer,
     Imaginary,
     Timestamp,
     JSON,
     Null,
-    Float,
+    DoubleFloat,
     Array,
     Map,
     Timezone,
-    IpV4,
-    IpV6,
-    Duration,
+    Ipv4Addr,
+    Ipv6Addr,
+    SingleFloat,
 }
 
 impl From<ValueTy> for u8 {
     fn from(value: ValueTy) -> Self {
         match value {
-            ValueTy::Ch => 0,
+            ValueTy::Character => 0,
             ValueTy::String => 1,
             ValueTy::Binary => 2,
-            ValueTy::Bool => 3,
-            ValueTy::Int => 4,
+            ValueTy::Boolean => 3,
+            ValueTy::Integer => 4,
             ValueTy::Imaginary => 5,
             ValueTy::Timestamp => 6,
             ValueTy::JSON => 7,
             ValueTy::Map => 8,
             ValueTy::Null => 9,
-            ValueTy::Float => 10,
+            ValueTy::DoubleFloat => 10,
             ValueTy::Array => 11,
             ValueTy::Timezone => 12,
-            ValueTy::IpV4 => 13,
-            ValueTy::IpV6 => 14,
-            ValueTy::Duration => 15,
+            ValueTy::Ipv4Addr => 13,
+            ValueTy::Ipv6Addr => 14,
+            ValueTy::SingleFloat => 15,
         }
     }
 }
@@ -348,22 +360,22 @@ impl TryFrom<u8> for ValueTy {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Ok(match value {
-            0 => ValueTy::Ch,
+            0 => ValueTy::Character,
             1 => ValueTy::String,
             2 => ValueTy::Binary,
-            3 => ValueTy::Bool,
-            4 => ValueTy::Int,
+            3 => ValueTy::Boolean,
+            4 => ValueTy::Integer,
             5 => ValueTy::Imaginary,
             6 => ValueTy::Timestamp,
             7 => ValueTy::JSON,
             8 => ValueTy::Map,
             9 => ValueTy::Null,
-            10 => ValueTy::Float,
+            10 => ValueTy::DoubleFloat,
             11 => ValueTy::Array,
             12 => ValueTy::Timezone,
-            13 => ValueTy::IpV4,
-            14 => ValueTy::IpV6,
-            15 => ValueTy::Duration,
+            13 => ValueTy::Ipv4Addr,
+            14 => ValueTy::Ipv6Addr,
+            15 => ValueTy::SingleFloat,
             _ => return Err(ValueSerError::InvalidType(value)),
         })
     }
@@ -375,18 +387,22 @@ pub enum ValueSerError {
     Empty,
     IntegerSerError(IntegerSerError),
     NotEnoughBytes,
+    TooManyBytes,
     InvalidCharacter,
     NonUTF8String(FromUtf8Error),
     SerdeJson(SJError),
-    UnexpectedValueType(Value, ValueTy),
+    UnexpectedValueType(ValueTy, ValueTy),
     TzError(chrono_tz::ParseError),
     InvalidDateOrTime,
-    NanosecondsOverflow(Duration),
+    #[cfg(feature = "serde")]
+    SerdeCustom(String),
 }
 
 impl Display for ValueSerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
+            #[cfg(feature = "serde")]
+            ValueSerError::SerdeCustom(s) => write!(f, "Serde Error: {s}"),
             ValueSerError::InvalidType(b) => write!(f, "Invalid Type Discriminant found: {b:#b}"),
             ValueSerError::Empty => write!(
                 f,
@@ -394,15 +410,15 @@ impl Display for ValueSerError {
             ),
             ValueSerError::IntegerSerError(e) => write!(f, "Error de/ser-ing integer: {e}"),
             ValueSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
+            ValueSerError::TooManyBytes => write!(f, "Extra bytes provided"),
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e}"),
             ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e}"),
-            ValueSerError::UnexpectedValueType(v, ex) => write!(f, "Expected {ex:?}, found: {v:?}"),
+            ValueSerError::UnexpectedValueType(found, ex) => {
+                write!(f, "Expected {ex:?}, found: {found:?}")
+            }
             ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e}"),
             ValueSerError::InvalidDateOrTime => write!(f, "Error with invalid time given"),
-            ValueSerError::NanosecondsOverflow(d) => {
-                write!(f, "Given duration {d} had too many total nanoseconds")
-            }
         }
     }
 }
@@ -452,7 +468,7 @@ impl From<SJValue> for Value {
                 } else if let Some(pos) = n.as_u64() {
                     Value::Integer(Integer::u64(pos))
                 } else if let Some(float) = n.as_f64() {
-                    Value::Float(float)
+                    Value::DoubleFloat(float)
                 } else {
                     unreachable!("must be one of the three JSON number types")
                 }
@@ -467,22 +483,45 @@ impl From<SJValue> for Value {
 impl Value {
     pub(crate) const fn as_ty(&self) -> ValueTy {
         match self {
-            Self::Character(_) => ValueTy::Ch,
+            Self::Character(_) => ValueTy::Character,
             Self::String(_) => ValueTy::String,
             Self::Binary(_) => ValueTy::Binary,
-            Self::Boolean(_) => ValueTy::Bool,
-            Self::Integer(_) => ValueTy::Int,
+            Self::Boolean(_) => ValueTy::Boolean,
+            Self::Integer(_) => ValueTy::Integer,
             Self::Imaginary(_) => ValueTy::Imaginary,
             Self::Timestamp(_) => ValueTy::Timestamp,
             Self::JSON(_) => ValueTy::JSON,
             Self::Map(_) => ValueTy::Map,
             Self::Array(_) => ValueTy::Array,
-            Self::Float(_) => ValueTy::Float,
+            Self::DoubleFloat(_) => ValueTy::DoubleFloat,
             Self::Null(()) => ValueTy::Null,
             Self::Timezone(_) => ValueTy::Timezone,
-            Self::Ipv4Addr(_) => ValueTy::IpV4,
-            Self::Ipv6Addr(_) => ValueTy::IpV6,
-            Self::Duration(_) => ValueTy::Duration,
+            Self::Ipv4Addr(_) => ValueTy::Ipv4Addr,
+            Self::Ipv6Addr(_) => ValueTy::Ipv6Addr,
+            Self::SingleFloat(_) => ValueTy::SingleFloat,
+        }
+    }
+
+    pub(crate) fn deser_array_or_map_len(
+        byte: u8,
+        input: &mut Cursor<u8>,
+        expected_type: ValueTy,
+    ) -> Result<usize, ValueSerError> {
+        let ty = ValueTy::try_from((byte & 0b1111_0000) >> 4)?;
+        if ty == expected_type {
+            let len = {
+                if (byte & 0b0000_0001) > 0 {
+                    // we used an integer
+                    Integer::deser(SignedState::Positive, input)?.try_into()?
+                } else {
+                    //we encoded it in the byte
+                    ((byte & 0b0000_1110) >> 1) as usize
+                }
+            };
+
+            Ok(len)
+        } else {
+            Err(ValueSerError::UnexpectedValueType(ty, expected_type))
         }
     }
 
@@ -566,12 +605,16 @@ impl Value {
             Self::Null(()) => {
                 res.push(ty);
             }
-            Self::Float(f) => {
-                let bytes = f.to_le_bytes();
+            Self::SingleFloat(f) => {
                 res.push(ty);
-                res.extend(bytes.iter());
+                res.extend(f.to_le_bytes());
+            }
+            Self::DoubleFloat(f) => {
+                res.push(ty);
+                res.extend(f.to_le_bytes());
             }
             Self::Map(m) => {
+                #[allow(clippy::cast_possible_truncation)]
                 if m.len() < ((1_usize << 3) - 1) {
                     ty |= (m.len() as u8) << 1;
                     res.push(ty);
@@ -589,6 +632,7 @@ impl Value {
             }
             Self::Array(a) => {
                 // yes, DRY, but only 2 instances right next to each other so not too bad
+                #[allow(clippy::cast_possible_truncation)]
                 if a.len() < ((1_usize << 3) - 1) {
                     ty |= (a.len() as u8) << 1;
                     res.push(ty);
@@ -616,17 +660,6 @@ impl Value {
                 res.push(ty);
                 res.extend(a.octets());
             }
-            Self::Duration(d) => {
-                let Some(nanos) = d.num_nanoseconds() else {
-                    return Err(ValueSerError::NanosecondsOverflow(*d));
-                };
-                let (nanos_ss, nanos) = Integer::from(nanos).ser();
-
-                ty |= u8::from(nanos_ss);
-
-                res.push(ty);
-                res.extend(nanos);
-            }
         }
 
         Ok(res)
@@ -642,7 +675,7 @@ impl Value {
         //for lengths or single integers
 
         Ok(match ty {
-            ValueTy::Int => {
+            ValueTy::Integer => {
                 let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
                 let int = Integer::deser(signed_state, bytes)?;
                 Self::Integer(int)
@@ -657,7 +690,7 @@ impl Value {
                     bytes,
                 )?)
             }
-            ValueTy::Ch => {
+            ValueTy::Character => {
                 let ch = char::from_u32(Integer::deser(SignedState::Positive, bytes)?.try_into()?)
                     .ok_or(ValueSerError::InvalidCharacter)?;
                 Self::Character(ch)
@@ -693,7 +726,10 @@ impl Value {
             ValueTy::JSON => {
                 let val = Value::deser(bytes)?;
                 let Value::String(s) = val else {
-                    return Err(ValueSerError::UnexpectedValueType(val, ValueTy::String));
+                    return Err(ValueSerError::UnexpectedValueType(
+                        val.as_ty(),
+                        ValueTy::String,
+                    ));
                 };
                 let value: SJValue = serde_json::from_str(&s)?;
                 Self::JSON(value)
@@ -706,65 +742,66 @@ impl Value {
                     .to_vec();
                 Self::Binary(bytes)
             }
-            ValueTy::Bool => Self::Boolean((byte & 0b0000_0001) > 0),
+            ValueTy::Boolean => Self::Boolean((byte & 0b0000_0001) > 0),
             ValueTy::Null => Self::Null(()),
-            ValueTy::Float => {
-                let bytes = match bytes.read_specific::<8>().map(TryInto::try_into) {
-                    None => return Err(ValueSerError::NotEnoughBytes),
-                    Some(Err(_e)) => {
-                        unreachable!("Trying to get 8 bytes into 8 bytes, no?")
-                    }
-                    Some(Ok(b)) => b,
+            ValueTy::SingleFloat => {
+                let Some(bytes) = bytes.read_specific() else {
+                    return Err(ValueSerError::NotEnoughBytes);
                 };
-                Self::Float(f64::from_le_bytes(bytes))
+                Self::SingleFloat(f32::from_le_bytes(*bytes))
             }
-            ValueTy::Map | ValueTy::Array => {
-                let len: usize = {
-                    if (byte & 0b0000_0001) > 0 {
-                        // we used an integer
-                        Integer::deser(SignedState::Positive, bytes)?.try_into()?
-                    } else {
-                        //we encoded it in the byte
-                        ((byte & 0b0000_1110) >> 1) as usize
-                    }
+            ValueTy::DoubleFloat => {
+                let Some(bytes) = bytes.read_specific() else {
+                    return Err(ValueSerError::NotEnoughBytes);
                 };
+                Self::DoubleFloat(f64::from_le_bytes(*bytes))
+            }
+            ValueTy::Map => {
+                let len = Self::deser_array_or_map_len(byte, bytes, ty)?;
 
-                if ty == ValueTy::Map {
-                    let mut map = HashMap::with_capacity(len);
+                let mut map = HashMap::with_capacity(len);
 
-                    for _ in 0..len {
-                        let key = Value::deser(bytes)?;
-                        let Value::String(key) = key else {
-                            return Err(ValueSerError::UnexpectedValueType(key, ValueTy::String));
-                        };
-                        let value = Value::deser(bytes)?;
-                        map.insert(key, value);
-                    }
-
-                    Value::Map(map)
-                } else {
-                    Value::Array(
-                        (0..len)
-                            .map(|_| Value::deser(bytes))
-                            .collect::<Result<_, _>>()?,
-                    )
+                for _ in 0..len {
+                    let key = Value::deser(bytes)?;
+                    let Value::String(key) = key else {
+                        return Err(ValueSerError::UnexpectedValueType(
+                            key.as_ty(),
+                            ValueTy::String,
+                        ));
+                    };
+                    let value = Value::deser(bytes)?;
+                    map.insert(key, value);
                 }
+
+                Value::Map(map)
+            }
+            ValueTy::Array => {
+                let len = Self::deser_array_or_map_len(byte, bytes, ty)?;
+
+                Value::Array(
+                    (0..len)
+                        .map(|_| Value::deser(bytes))
+                        .collect::<Result<_, _>>()?,
+                )
             }
             ValueTy::Timezone => {
                 let val = Value::deser(bytes)?;
                 let Value::String(val) = val else {
-                    return Err(ValueSerError::UnexpectedValueType(val, ValueTy::String));
+                    return Err(ValueSerError::UnexpectedValueType(
+                        val.as_ty(),
+                        ValueTy::String,
+                    ));
                 };
                 let tz = Tz::from_str(&val)?;
                 Self::Timezone(tz)
             }
-            ValueTy::IpV4 => {
-                let Some([a, b, c, d]) = bytes.read_specific::<4>() else {
+            ValueTy::Ipv4Addr => {
+                let Some([a, b, c, d]) = bytes.read_specific() else {
                     return Err(ValueSerError::NotEnoughBytes);
                 };
                 Self::Ipv4Addr(Ipv4Addr::new(*a, *b, *c, *d))
             }
-            ValueTy::IpV6 => {
+            ValueTy::Ipv6Addr => {
                 let Some(bytes) = bytes.read_specific::<16>() else {
                     return Err(ValueSerError::NotEnoughBytes);
                 };
@@ -777,9 +814,6 @@ impl Value {
 
                 Self::Ipv6Addr(Ipv6Addr::new(a, b, c, d, e, f, g, h))
             }
-            ValueTy::Duration => Self::Duration(Duration::nanoseconds(
-                Integer::deser(SignedState::try_from(byte & 0b0000_0001)?, bytes)?.try_into()?,
-            )),
         })
     }
 }

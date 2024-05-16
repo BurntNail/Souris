@@ -31,7 +31,7 @@ impl Store {
 
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreSerError> {
         let mut bytes = Cursor::new(&bytes);
-        let _ = bytes.read_specific::<8>();
+        bytes.seek(8);
 
         let val = Value::deser(&mut bytes)?;
         let ty = val.as_ty();
@@ -53,6 +53,18 @@ impl Store {
         };
 
         Ok(Self(map))
+    }
+}
+
+impl TryFrom<Value> for Store {
+    type Error = StoreSerError;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let ty = value.as_ty();
+        let Some(db) = value.to_map() else {
+            return Err(StoreSerError::ExpectedMap(ty));
+        };
+        Ok(Self(db))
     }
 }
 

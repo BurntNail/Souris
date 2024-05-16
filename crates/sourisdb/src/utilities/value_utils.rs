@@ -5,7 +5,7 @@ use crate::{
     values::{Value, ValueTy},
 };
 use alloc::{string::String, vec, vec::Vec};
-use chrono::{Duration, Local, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
 use dialoguer::{theme::Theme, Confirm, FuzzySelect, Input};
 use std::{fmt::Display, format, println};
 
@@ -19,22 +19,22 @@ pub fn get_value_from_stdin(
     println!("{prompt}");
 
     let tys = [
-        ValueTy::Ch,
+        ValueTy::Character,
         ValueTy::String,
         ValueTy::Binary,
-        ValueTy::Bool,
-        ValueTy::Int,
+        ValueTy::Boolean,
+        ValueTy::Integer,
         ValueTy::Imaginary,
         ValueTy::Timestamp,
         ValueTy::JSON,
         ValueTy::Null,
-        ValueTy::Float,
+        ValueTy::DoubleFloat,
         ValueTy::Array,
         ValueTy::Map,
         ValueTy::Timezone,
-        ValueTy::IpV4,
-        ValueTy::IpV6,
-        ValueTy::Duration,
+        ValueTy::Ipv4Addr,
+        ValueTy::Ipv6Addr,
+        ValueTy::SingleFloat,
     ];
     let selection = FuzzySelect::with_theme(theme)
         .with_prompt("Type: ")
@@ -46,7 +46,7 @@ pub fn get_value_from_stdin(
         )
         .interact()?;
     Ok(match tys[selection] {
-        ValueTy::Ch => {
+        ValueTy::Character => {
             let ch: char = Input::with_theme(theme)
                 .with_prompt("Character: ")
                 .interact()?;
@@ -62,13 +62,13 @@ pub fn get_value_from_stdin(
                 .interact()?;
             Value::Binary(st.as_bytes().to_vec())
         }
-        ValueTy::Bool => {
+        ValueTy::Boolean => {
             let b = FuzzySelect::with_theme(theme)
                 .items(&["False", "True"])
                 .interact()?;
             Value::Boolean(b != 0)
         }
-        ValueTy::Int => {
+        ValueTy::Integer => {
             let i: Integer = Input::with_theme(theme)
                 .with_prompt("Which number: ")
                 .interact()?;
@@ -207,11 +207,13 @@ pub fn get_value_from_stdin(
             Value::Map(map)
         }
         ValueTy::Null => Value::Null(()),
-        ValueTy::Float => {
-            let f: f64 = Input::with_theme(theme)
-                .with_prompt("What float?")
-                .interact()?;
-            Value::Float(f)
+        ValueTy::DoubleFloat => {
+            let f: f64 = Input::with_theme(theme).with_prompt("Value:").interact()?;
+            Value::DoubleFloat(f)
+        }
+        ValueTy::SingleFloat => {
+            let f: f64 = Input::with_theme(theme).with_prompt("Value:").interact()?;
+            Value::DoubleFloat(f)
         }
         ValueTy::Timezone => {
             let chosen_index = FuzzySelect::with_theme(theme)
@@ -220,37 +222,17 @@ pub fn get_value_from_stdin(
                 .interact()?;
             Value::Timezone(chrono_tz::TZ_VARIANTS[chosen_index])
         }
-        ValueTy::IpV4 => {
+        ValueTy::Ipv4Addr => {
             let addr = Input::with_theme(theme)
                 .with_prompt("Ipv4 Address: ")
                 .interact()?;
             Value::Ipv4Addr(addr)
         }
-        ValueTy::IpV6 => {
+        ValueTy::Ipv6Addr => {
             let addr = Input::with_theme(theme)
                 .with_prompt("Ipv6 Address: ")
                 .interact()?;
             Value::Ipv6Addr(addr)
-        }
-        ValueTy::Duration => {
-            let secs = Input::with_theme(theme)
-                .with_prompt("Seconds: ")
-                .interact()?;
-            let nanos = loop {
-                let trial = Input::with_theme(theme)
-                    .with_prompt("Nanoseconds: ")
-                    .interact()?;
-                if trial >= 1_000_000_000 {
-                    println!("Too big - nanos must be < 1,000,000,000");
-                } else {
-                    break trial;
-                }
-            };
-            let Some(d) = Duration::new(secs, nanos) else {
-                unreachable!("just checked that nanos is acceptable");
-            };
-
-            Value::Duration(d)
         }
     })
 }

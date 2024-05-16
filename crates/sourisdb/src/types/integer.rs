@@ -47,7 +47,7 @@ impl Integer {
     }
 
     ///The minimum number of bytes required to store this as an unsigned integer
-    /// 
+    ///
     /// NB: always <= `INTEGER_MAX_SIZE`
     fn min_bytes_needed(&self) -> usize {
         ((self.unsigned_bits() / 8) + 1) as usize
@@ -528,7 +528,7 @@ impl std::error::Error for IntegerSerError {
 
 impl Integer {
     #[must_use]
-    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     pub fn ser(self) -> (SignedState, Vec<u8>) {
         if let Some(smol) = self.to_i8() {
             return if smol < 0 {

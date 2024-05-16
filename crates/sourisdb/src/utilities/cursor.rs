@@ -46,7 +46,7 @@ impl<'a, T> Cursor<'a, T> {
         Some(&self.backing[start..end])
     }
 
-    pub fn read_specific<const N: usize>(&mut self) -> Option<&'a [T]> {
+    pub fn read_specific<const N: usize>(&mut self) -> Option<&'a [T; N]> {
         let start = self.pos;
         let end = start.checked_add(N)?;
         if end > self.backing.len() {
@@ -54,7 +54,7 @@ impl<'a, T> Cursor<'a, T> {
         }
         self.pos = end;
 
-        Some(&self.backing[start..end])
+        (&self.backing[self.pos..end]).try_into().ok()
     }
 
     pub fn peek(&mut self, n: usize) -> Option<&'a [T]> {
@@ -68,8 +68,17 @@ impl<'a, T> Cursor<'a, T> {
     }
 
     #[must_use]
-    pub fn position(&self) -> usize {
+    pub fn pos(&self) -> usize {
         self.pos
+    }
+
+    pub fn set_pos(&mut self, new: usize) {
+        self.pos = new;
+    }
+
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.pos >= self.backing.len()
     }
 }
 
@@ -96,25 +105,25 @@ mod tests {
         let mut cursor = Cursor::new(&data);
 
         assert_eq!(cursor.read(5), Some([0, 1, 2, 3, 4].as_slice()));
-        assert_eq!(cursor.position(), 5);
+        assert_eq!(cursor.pos(), 5);
 
         assert_eq!(cursor.peek(5), Some([5, 6, 7, 8, 9].as_slice()));
-        assert_eq!(cursor.position(), 5);
+        assert_eq!(cursor.pos(), 5);
 
         assert_eq!(cursor.read(5), Some([5, 6, 7, 8, 9].as_slice()));
-        assert_eq!(cursor.position(), 10);
+        assert_eq!(cursor.pos(), 10);
 
         cursor.seek_backwards(4);
-        assert_eq!(cursor.position(), 6);
+        assert_eq!(cursor.pos(), 6);
 
         assert_eq!(cursor.read(2), Some([6, 7].as_slice()));
 
         cursor.seek(2);
-        assert_eq!(cursor.position(), 8);
+        assert_eq!(cursor.pos(), 8);
         assert_eq!(cursor.read(1), Some([8].as_slice()));
-        assert_eq!(cursor.position(), 9);
+        assert_eq!(cursor.pos(), 9);
 
         assert_eq!(cursor.read(10), None);
-        assert_eq!(cursor.position(), 9);
+        assert_eq!(cursor.pos(), 9);
     }
 }

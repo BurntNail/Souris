@@ -1645,6 +1645,7 @@ dependencies = [
 name = "sourisdb"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "cfg-if",
  "chrono",
  "chrono-tz",
