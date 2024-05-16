@@ -34,7 +34,7 @@ pub async fn rm_key(
     Query(KeyAndDb { key, db }): Query<KeyAndDb>,
     State(state): State<SourisState>,
 ) -> Result<StatusCode, SourisError> {
-    state.rm_key(key, db).await?;
+    state.remove_key(key, db).await?;
 
     Ok(StatusCode::OK)
 }

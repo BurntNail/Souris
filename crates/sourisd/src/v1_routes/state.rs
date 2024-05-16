@@ -157,7 +157,7 @@ impl SourisState {
         Ok(key)
     }
 
-    pub async fn rm_key(&self, db: String, key: String) -> Result<(), SourisError> {
+    pub async fn remove_key(&self, db: String, key: String) -> Result<(), SourisError> {
         let mut dbs = self.dbs.lock().await;
 
         let Some(db) = dbs.get_mut(&db) else {
@@ -166,7 +166,7 @@ impl SourisState {
 
         match db.remove(&key) {
             Some(_) => Ok(()),
-            None => Err(SourisError::DatabaseNotFound),
+            None => Err(SourisError::KeyNotFound),
         }
     }
 

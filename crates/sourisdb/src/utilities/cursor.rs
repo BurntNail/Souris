@@ -68,6 +68,26 @@ impl<'a, T> Cursor<'a, T> {
     }
 
     #[must_use]
+    pub fn read_remaining(&mut self) -> &[T] {
+        if self.pos >= self.backing.len() {
+            &[]
+        } else {
+            let backup = self.pos;
+            self.pos = self.backing.len();
+            &self.backing[backup..]
+        }
+    }
+
+    #[must_use]
+    pub fn peek_remaining(&self) -> &[T] {
+        if self.pos >= self.backing.len() {
+            &[]
+        } else {
+            &self.backing[self.pos..]
+        }
+    }
+
+    #[must_use]
     pub fn pos(&self) -> usize {
         self.pos
     }
@@ -112,9 +132,11 @@ mod tests {
 
         assert_eq!(cursor.read(5), Some([5, 6, 7, 8, 9].as_slice()));
         assert_eq!(cursor.pos(), 10);
+        assert_eq!(cursor.peek_remaining(), &[]);
 
         cursor.seek_backwards(4);
         assert_eq!(cursor.pos(), 6);
+        assert_eq!(cursor.peek_remaining(), &[6, 7, 8, 9]);
 
         assert_eq!(cursor.read(2), Some([6, 7].as_slice()));
 

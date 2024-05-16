@@ -12,12 +12,12 @@ pub use chrono;
 pub use hashbrown;
 pub use serde_json;
 
-#[cfg(feature = "axum")]
-mod axum;
 pub mod store;
 pub mod types;
 pub mod utilities;
 pub mod values;
+
+pub mod net;
 
 use crate::{store::StoreSerError, types::integer::IntegerSerError, values::ValueSerError};
 use alloc::{

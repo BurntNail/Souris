@@ -26,7 +26,7 @@ pub async fn add_db(
         overwrite_existing,
     }): Query<NewDB>,
 ) -> Result<StatusCode, SourisError> {
-    state.new_db(name.clone(), overwrite_existing).await
+    state.new_db(name, overwrite_existing).await
 }
 
 pub async fn add_db_with_content(

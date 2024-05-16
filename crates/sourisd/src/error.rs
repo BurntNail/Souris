@@ -2,7 +2,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use sourisdb::{store::StoreSerError, values::ValueSerError};
+use sourisdb::{store::StoreSerError, types::integer::IntegerSerError, values::ValueSerError};
 use std::{
     error::Error,
     fmt::{Display, Formatter},
@@ -18,6 +18,10 @@ pub enum SourisError {
     StoreError(StoreSerError),
     ValueError(ValueSerError),
     InvalidDatabaseName,
+    NotEnoughBytes,
+    InvalidAction(u8),
+    KeyNotFoundInRequest(&'static str),
+    IntegerSerError(IntegerSerError),
 }
 
 impl From<IOError> for SourisError {
@@ -35,6 +39,11 @@ impl From<ValueSerError> for SourisError {
         Self::ValueError(value)
     }
 }
+impl From<IntegerSerError> for SourisError {
+    fn from(value: IntegerSerError) -> Self {
+        Self::IntegerSerError(value)
+    }
+}
 
 impl Error for SourisError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
@@ -42,6 +51,7 @@ impl Error for SourisError {
             Self::IO(e) => Some(e),
             Self::StoreError(e) => Some(e),
             Self::ValueError(e) => Some(e),
+            Self::IntegerSerError(e) => Some(e),
             _ => None,
         }
     }
@@ -55,7 +65,14 @@ impl Display for SourisError {
             Self::DatabaseNotFound => write!(f, "Could not find database with name"),
             Self::KeyNotFound => write!(f, "Could not find value with name in database provided"),
             Self::ValueError(e) => write!(f, "Error with value: {e}"),
-            Self::InvalidDatabaseName => write!(f, "Invalid database name - database names must be ASCII and not equal to `meta`"),
+            Self::InvalidDatabaseName => write!(
+                f,
+                "Invalid database name - database names must be ASCII and not equal to `meta`"
+            ),
+            Self::NotEnoughBytes => write!(f, "Not enough bytes received in TCP stream"),
+            Self::InvalidAction(a) => write!(f, "Received invalid action: {a:?}"),
+            Self::KeyNotFoundInRequest(k) => write!(f, "Expected to see key {k:?} in key, didn't"),
+            Self::IntegerSerError(e) => write!(f, "Error deserialising integer: {e:?}"),
         }
     }
 }
@@ -66,7 +83,7 @@ impl IntoResponse for SourisError {
 
         let code = match self {
             Self::DatabaseNotFound | Self::KeyNotFound => StatusCode::NOT_FOUND,
-            Self::InvalidDatabaseName => StatusCode::BAD_REQUEST,
+            Self::InvalidDatabaseName | Self::NotEnoughBytes => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

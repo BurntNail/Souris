@@ -4,10 +4,13 @@
 #[macro_use]
 extern crate tracing;
 
-use crate::v1_routes::{
-    db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
-    state::SourisState,
-    value::{add_kv, get_value, rm_key},
+use crate::{
+    tcp::handle_tcpstreams,
+    v1_routes::{
+        db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
+        state::SourisState,
+        value::{add_kv, get_value, rm_key},
+    },
 };
 use axum::{
     extract::DefaultBodyLimit,
@@ -18,7 +21,7 @@ use std::time::Duration;
 use tokio::{
     net::TcpListener,
     signal,
-    sync::mpsc::{unbounded_channel, UnboundedSender},
+    sync::{broadcast, broadcast::Sender},
     task::JoinHandle,
 };
 use tower_http::trace::TraceLayer;
@@ -26,6 +29,7 @@ use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 
 mod error;
+mod tcp;
 mod v1_routes;
 
 fn setup() {
@@ -52,7 +56,7 @@ fn setup() {
 }
 
 //from https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs
-async fn shutdown_signal(stop_signal: UnboundedSender<()>, saver: JoinHandle<()>) {
+async fn shutdown_signal(stop_signal: Sender<()>, saver: JoinHandle<()>, tcp: JoinHandle<()>) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -73,11 +77,17 @@ async fn shutdown_signal(stop_signal: UnboundedSender<()>, saver: JoinHandle<()>
     tokio::select! {
         () = ctrl_c => {},
         () = terminate => {},
-    };
+    }
 
     info!("Gracefully Exiting");
     stop_signal.send(()).expect("unable to send stop signal");
-    saver.await.expect("unable to stop saver thread");
+
+    if let Err(e) = saver.await {
+        error!(?e, "Unable to join saver thread");
+    }
+    if let Err(e) = tcp.await {
+        error!(?e, "Unable to join tcp thread");
+    }
 }
 
 #[tokio::main]
@@ -87,13 +97,15 @@ async fn main() {
     let state = SourisState::new().await.expect("unable to create state");
     info!("Found state {state:?}");
 
-    let (stop_tx, mut stop_rx) = unbounded_channel();
+    let (stop_tx, stop_rx) = broadcast::channel(1);
     let saver_state = state.clone();
+
+    let mut saver_stop_rx = stop_rx.resubscribe();
     let saver = tokio::task::spawn(async move {
         let state = saver_state;
         loop {
             tokio::select! {
-                _ = stop_rx.recv() => {
+                _ = saver_stop_rx.recv() => {
                     info!("Stop signal received for saver");
                     break;
                 },
@@ -128,10 +140,15 @@ async fn main() {
         .layer(DefaultBodyLimit::disable())
         .with_state(state.clone());
 
-    let listener = TcpListener::bind("127.0.0.1:2256").await.unwrap();
+    let http_listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+    let tcp_thread = handle_tcpstreams(
+        TcpListener::bind("127.0.0.1:8081").await.unwrap(),
+        stop_rx,
+        state,
+    );
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal(stop_tx, saver))
+    axum::serve(http_listener, router)
+        .with_graceful_shutdown(shutdown_signal(stop_tx, saver, tcp_thread))
         .await
         .unwrap();
 }
