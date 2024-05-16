@@ -27,7 +27,7 @@ use meta::{DB_FILE_NAMES_KEY, META_DB_FILE_NAME};
 #[allow(clippy::module_name_repetitions)]
 pub struct SourisState {
     base_location: PathBuf,
-    dbs: Arc<Mutex<HashMap<String, Store>>>, //only at runtime
+    dbs: Arc<Mutex<HashMap<String, Store>>>,
 }
 
 impl SourisState {
@@ -37,7 +37,7 @@ impl SourisState {
         name: String,
         overwrite_existing: bool,
     ) -> Result<StatusCode, SourisError> {
-        if &name == "meta" || !name.is_ascii() {
+        if name == "meta" || !name.is_ascii() {
             return Err(SourisError::InvalidDatabaseName);
         }
 
@@ -135,7 +135,7 @@ impl SourisState {
             d
         } else {
             dbs.insert(db.clone(), Store::default());
-            dbs.get_mut(&db).expect("just added this key")
+            dbs.get_mut(&db).expect("just added this database key lol")
         };
 
         match db.insert(k, v) {

@@ -182,6 +182,8 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             println!("Got contents: {rsp:?}");
         }
         Commands::AddEntry => {
+            let db_name = pick_db_name(true, &path, &client, &theme)?;
+
             let key = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
             let value = get_value_from_stdin("Value: ", &theme)?;
 
@@ -191,8 +193,6 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             println!("Received Value: {value}");
 
             println!();
-
-            let db_name = pick_db_name(true, &path, &client, &theme)?;
 
             if Confirm::with_theme(&theme)
                 .with_prompt("Confirm Addition?")

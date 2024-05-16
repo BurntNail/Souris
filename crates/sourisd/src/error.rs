@@ -55,7 +55,7 @@ impl Display for SourisError {
             Self::DatabaseNotFound => write!(f, "Could not find database with name"),
             Self::KeyNotFound => write!(f, "Could not find value with name in database provided"),
             Self::ValueError(e) => write!(f, "Error with value: {e}"),
-            Self::InvalidDatabaseName => write!(f, "Invalid database name"),
+            Self::InvalidDatabaseName => write!(f, "Invalid database name - database names must be ASCII and not equal to `meta`"),
         }
     }
 }
