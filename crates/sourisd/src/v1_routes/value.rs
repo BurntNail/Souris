@@ -1,11 +1,10 @@
-use crate::{error::SourisError, state::SourisState};
+use crate::{error::SourisError, v1_routes::state::SourisState};
 use axum::{
-    body::Bytes,
     extract::{Query, State},
     http::StatusCode,
 };
 use serde::Deserialize;
-use sourisdb::{utilities::cursor::Cursor, values::Value};
+use sourisdb::values::Value;
 
 #[derive(Deserialize)]
 pub struct KeyAndDb {
@@ -17,22 +16,17 @@ pub struct KeyAndDb {
 pub async fn add_kv(
     Query(KeyAndDb { db, key }): Query<KeyAndDb>,
     State(state): State<SourisState>,
-    body: Bytes,
-) -> Result<StatusCode, SourisError> {
-    let v = Value::deser(&mut Cursor::new(&body))?;
-
-    state.add_key_value_pair(db, key, v).await;
-    Ok(StatusCode::CREATED)
+    value: Value,
+) -> StatusCode {
+    state.add_key_value_pair(db, key, value).await
 }
 
 #[axum::debug_handler]
 pub async fn get_value(
     Query(KeyAndDb { key, db }): Query<KeyAndDb>,
     State(state): State<SourisState>,
-) -> Result<Vec<u8>, SourisError> {
-    let v = state.get_value(db, &key).await?;
-    let bytes = v.ser()?;
-    Ok(bytes)
+) -> Result<Value, SourisError> {
+    state.get_value(db, &key).await
 }
 
 #[axum::debug_handler]

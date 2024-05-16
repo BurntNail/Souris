@@ -4,12 +4,10 @@
 #[macro_use]
 extern crate tracing;
 
-use crate::{
+use crate::v1_routes::{
+    db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
     state::SourisState,
-    v1_routes::{
-        db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
-        value::{add_kv, get_value, rm_key},
-    },
+    value::{add_kv, get_value, rm_key},
 };
 use axum::{
     extract::DefaultBodyLimit,
@@ -28,7 +26,6 @@ use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 
 mod error;
-mod state;
 mod v1_routes;
 
 fn setup() {

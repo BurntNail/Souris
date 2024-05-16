@@ -128,7 +128,7 @@ impl SourisState {
         dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)
     }
 
-    pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) {
+    pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) -> StatusCode {
         let mut dbs = self.dbs.lock().await;
 
         let db = if let Some(d) = dbs.get_mut(&db) {
@@ -138,7 +138,10 @@ impl SourisState {
             dbs.get_mut(&db).expect("just added this key")
         };
 
-        db.insert(k, v);
+        match db.insert(k, v) {
+            Some(_) => StatusCode::OK,
+            None => StatusCode::CREATED,
+        }
     }
 
     pub async fn get_value(&self, db: String, k: &String) -> Result<Value, SourisError> {

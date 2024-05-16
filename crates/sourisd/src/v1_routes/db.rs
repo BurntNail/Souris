@@ -1,4 +1,4 @@
-use crate::{error::SourisError, state::SourisState};
+use crate::{error::SourisError, v1_routes::state::SourisState};
 use axum::{
     body::Bytes,
     extract::{Query, State},
@@ -63,10 +63,8 @@ pub async fn remove_db(
 pub async fn get_db(
     State(state): State<SourisState>,
     Query(DbByName { name }): Query<DbByName>,
-) -> Result<Vec<u8>, SourisError> {
-    let db = state.get_db(name).await?;
-    let bytes = db.ser()?;
-    Ok(bytes)
+) -> Result<Store, SourisError> {
+    state.get_db(name).await
 }
 
 pub async fn get_all_dbs(State(state): State<SourisState>) -> Json<Vec<String>> {

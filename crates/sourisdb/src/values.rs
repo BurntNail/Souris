@@ -24,11 +24,6 @@ use core::{
 use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
 
-#[cfg(feature = "axum")]
-mod axum;
-#[cfg(feature = "axum")]
-pub use axum::*;
-
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(untagged))]
