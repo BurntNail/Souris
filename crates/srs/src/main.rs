@@ -128,7 +128,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
                 }
             }
 
-            let store = Store::from_json(&bytes)?;
+            let store = Store::from_json_bytes(&bytes)?;
             let store_bytes = store.ser()?;
             println!("Successfully parsed JSON");
 
@@ -235,10 +235,18 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         }
         Commands::ExportToJSON { json_location } => {
             let store = view_all(path, &theme)?;
-            let json = serde_json::to_string_pretty(&store)?;
+            
+            match store.to_json() {
+                Some(json) => {
+                    let json = serde_json::to_string_pretty(&json)?;
 
-            let mut file = File::create(json_location)?;
-            file.write_all(json.as_bytes())?;
+                    let mut file = File::create(json_location)?;
+                    file.write_all(json.as_bytes())?;
+                }
+                None => {
+                    eprintln!("Unable to convert to JSON - ensure there are no NaN/infinite floats or integers which cannot fit into the range from i64::MIN to u64::MAX");
+                }
+            }
         }
     }
 

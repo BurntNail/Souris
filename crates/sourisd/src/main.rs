@@ -5,7 +5,6 @@
 extern crate tracing;
 
 use crate::{
-    tcp::handle_tcpstreams,
     v1_routes::{
         db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
         state::SourisState,
@@ -29,7 +28,6 @@ use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 
 mod error;
-mod tcp;
 mod v1_routes;
 
 fn setup() {
@@ -56,7 +54,7 @@ fn setup() {
 }
 
 //from https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs
-async fn shutdown_signal(stop_signal: Sender<()>, saver: JoinHandle<()>, tcp: JoinHandle<()>) {
+async fn shutdown_signal(stop_signal: Sender<()>, saver: JoinHandle<()>) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -84,9 +82,6 @@ async fn shutdown_signal(stop_signal: Sender<()>, saver: JoinHandle<()>, tcp: Jo
 
     if let Err(e) = saver.await {
         error!(?e, "Unable to join saver thread");
-    }
-    if let Err(e) = tcp.await {
-        error!(?e, "Unable to join tcp thread");
     }
 }
 
@@ -141,14 +136,9 @@ async fn main() {
         .with_state(state.clone());
 
     let http_listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
-    let tcp_thread = handle_tcpstreams(
-        TcpListener::bind("127.0.0.1:8081").await.unwrap(),
-        stop_rx,
-        state,
-    );
 
     axum::serve(http_listener, router)
-        .with_graceful_shutdown(shutdown_signal(stop_tx, saver, tcp_thread))
+        .with_graceful_shutdown(shutdown_signal(stop_tx, saver))
         .await
         .unwrap();
 }

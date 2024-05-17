@@ -22,11 +22,9 @@ use core::{
     str::FromStr,
 };
 use hashbrown::HashMap;
-use serde_json::{Error as SJError, Value as SJValue};
+use serde_json::{Error as SJError, Value as SJValue, Map as SJMap, Number};
 
 #[derive(Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(untagged))]
 pub enum Value {
     Character(char),
     String(String),
@@ -452,28 +450,145 @@ impl std::error::Error for ValueSerError {
     }
 }
 
-impl From<SJValue> for Value {
-    fn from(v: SJValue) -> Self {
-        match v {
-            SJValue::Null => Value::Null(()),
-            SJValue::Bool(b) => Value::Boolean(b),
+impl Value {
+    ///if it is an integer outside of the bounds of i64::MIN to u64::MAX, then it will fail. it will also fail if it was a float that wasn't NaN or infinity
+    pub fn convert_to_json(self) -> Option<SJValue> {
+        Some(match self {
+            Value::Character(c) => SJValue::String(c.into()),
+            Value::String(s) => SJValue::String(s),
+            Value::Boolean(b) => SJValue::Bool(b),
+            Value::Integer(i) => i.to_json()?,
+            Value::JSON(j) => j,
+            Value::Null(()) => SJValue::Null,
+            Value::SingleFloat(f) => SJValue::Number(Number::from_f64(f64::from(f))?),
+            Value::DoubleFloat(f) => SJValue::Number(Number::from_f64(f)?),
+            Value::Array(arr) => SJValue::Array(arr.into_iter().map(Value::convert_to_json).collect::<Option<Vec<_>>>()?),
+            Value::Map(m) => SJValue::Object(m.into_iter().map(|(k, v)| Value::convert_to_json(v).map(|v| (k, v))).collect::<Option<SJMap<_, _>>>()?),
+            Value::Imaginary(Imaginary { real, imaginary }) => {
+                let mut obj = SJMap::new();
+                obj.insert("souris_type".into(), SJValue::Number(Number::from(u8::from(ValueTy::Imaginary))));
+
+                obj.insert("real".into(), real.to_json()?);
+                obj.insert("imaginary".into(), imaginary.to_json()?);
+
+                SJValue::Object(obj)
+            }
+            Value::Timestamp(ts) => {
+                let mut obj = SJMap::new();
+                obj.insert("souris_type".into(), SJValue::Number(Number::from(u8::from(ValueTy::Timestamp))));
+
+                obj.insert("timestamp".into(), SJValue::String(ts.to_string()));
+
+                SJValue::Object(obj)
+            }
+            Value::Timezone(tz) => {
+                let mut obj = SJMap::new();
+                obj.insert("souris_type".into(), SJValue::Number(Number::from(u8::from(ValueTy::Timezone))));
+
+                obj.insert("timezone".into(), SJValue::String(tz.to_string()));
+
+                SJValue::Object(obj)
+            }
+            Value::Binary(b) => {
+                let mut obj = SJMap::new();
+                obj.insert("souris_type".into(), SJValue::Number(Number::from(u8::from(ValueTy::Binary))));
+
+                obj.insert("bytes".into(), SJValue::Array(b.into_iter().map(|n| SJValue::Number(Number::from(n))).collect()));
+
+                SJValue::Object(obj)
+            }
+            Value::Ipv4Addr(a) => {
+                let mut obj = SJMap::new();
+                obj.insert("souris_type".into(), SJValue::Number(Number::from(u8::from(ValueTy::Ipv4Addr))));
+
+                obj.insert("octets".into(), SJValue::Array(a.octets().into_iter().map(|o| SJValue::Number(Number::from(o))).collect()));
+
+                SJValue::Object(obj)
+            }
+            Value::Ipv6Addr(a) => {
+                let mut obj = SJMap::new();
+                obj.insert("souris_type".into(), SJValue::Number(Number::from(u8::from(ValueTy::Ipv6Addr))));
+
+                obj.insert("octets".into(), SJValue::Array(a.segments().into_iter().map(|o| SJValue::Number(Number::from(o))).collect()));
+
+                SJValue::Object(obj)
+            }
+        })
+    }
+
+    pub fn convert_from_json(val: SJValue) -> Self {
+        match val {
+            SJValue::Null => Self::Null(()),
+            SJValue::Bool(b) => Self::Boolean(b),
             SJValue::Number(n) => {
-                if let Some(neg) = n.as_i64() {
-                    Value::Integer(Integer::i64(neg))
-                } else if let Some(pos) = n.as_u64() {
-                    Value::Integer(Integer::u64(pos))
-                } else if let Some(float) = n.as_f64() {
-                    Value::DoubleFloat(float)
+                if let Some(i) = Integer::from_json(n.clone()) {
+                    Self::Integer(i)
                 } else {
-                    unreachable!("must be one of the three JSON number types")
+                    let Some(float) = n.as_f64() else {
+                        unreachable!("just checked if was integer");
+                    };
+                    Self::DoubleFloat(float)
                 }
             }
-            SJValue::String(s) => Value::String(s.to_string()),
-            SJValue::Array(a) => Value::Array(a.into_iter().map(Self::from).collect()),
-            SJValue::Object(o) => Value::Map(o.into_iter().map(|(k, v)| (k, v.into())).collect()),
+            SJValue::String(s) => Value::String(s),
+            SJValue::Array(a) => Value::Array(a.into_iter().map(Value::convert_from_json).collect()),
+            SJValue::Object(obj) => {
+                if let Some(SJValue::Number(n)) = obj.get("souris_type").cloned() {
+                    if let Some(ty) = n.as_u64().map(u8::try_from).and_then(Result::ok).map(ValueTy::try_from).and_then(Result::ok) {
+                        match ty {
+                            ValueTy::Imaginary => {
+                                if let Some((SJValue::Number(real), SJValue::Number(imaginary))) = obj.get("real").cloned().zip(obj.get("imaginary").cloned()) {
+                                    if let Some((real, imaginary)) = Integer::from_json(real).zip(Integer::from_json(imaginary)) {
+                                        return Value::Imaginary(Imaginary { real, imaginary });
+                                    }
+                                }
+                            },
+                            ValueTy::Timestamp => {
+                                if let Some(SJValue::String(timestamp)) = obj.get("timestamp") {
+                                    if let Ok(timestamp) = NaiveDateTime::from_str(timestamp) {
+                                        return Value::Timestamp(timestamp);
+                                    }
+                                }
+                            },
+                            ValueTy::Timezone => {
+                                if let Some(SJValue::String(tz)) = obj.get("timezone") {
+                                    if let Ok(tz) = Tz::from_str(tz) {
+                                        return Value::Timezone(tz);
+                                    }
+                                }
+                            },
+                            ValueTy::Binary => {
+                                if let Some(SJValue::Array(bytes)) = obj.get("bytes") {
+                                    if let Some(bytes) = bytes.iter().map(|x| x.as_u64().and_then(|x| u8::try_from(x).ok())).collect::<Option<Vec<_>>>() {
+                                        return Value::Binary(bytes);
+                                    }
+                                }
+                            },
+                            ValueTy::Ipv4Addr => {
+                                if let Some(SJValue::Array(bytes)) = obj.get("octets") {
+                                    if let Some([a, b, c, d]) = bytes.iter().map(|x| x.as_u64().and_then(|x| u8::try_from(x).ok())).collect::<Option<Vec<_>>>().and_then(|x| <[u8; 4]>::try_from(x).ok()) {
+                                        return Value::Ipv4Addr(Ipv4Addr::new(a, b, c, d));
+                                    }
+                                }
+                            },
+                            ValueTy::Ipv6Addr => {
+                                if let Some(SJValue::Array(bytes)) = obj.get("octets") {
+                                    if let Some([a, b, c, d, e, f, g, h]) = bytes.iter().map(|x| x.as_u64().and_then(|x| u16::try_from(x).ok())).collect::<Option<Vec<_>>>().and_then(|x| <[u16; 8]>::try_from(x).ok()) {
+                                        return Value::Ipv6Addr(Ipv6Addr::new(a, b, c, d, e, f, g, h));
+                                    }
+                                }
+                            },
+                            _ => {}
+                        }
+                    }
+                }
+
+                Self::Map(obj.into_iter().map(|(k, v)| (k, Value::convert_from_json(v))).collect())
+            }
         }
     }
 }
+
 
 impl Value {
     pub(crate) const fn as_ty(&self) -> ValueTy {
@@ -653,7 +768,7 @@ impl Value {
             }
             Self::Ipv6Addr(a) => {
                 res.push(ty);
-                res.extend(a.octets());
+                res.extend(a.segments().into_iter().flat_map(u16::to_le_bytes));
             }
         }
 

@@ -163,7 +163,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 }
             }
 
-            let store = Store::from_json(&bytes)?;
+            let store = Store::from_json_bytes(&bytes)?;
             let store_bytes = store.ser()?;
 
             let db_name = pick_db_name(true, &path, &client, &theme)?;
@@ -284,11 +284,19 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             let (name, store) = pick_db(&path, &client, &theme)?;
             println!("Received Database {name:?}, converting to JSON");
 
-            let json = serde_json::to_string_pretty(&store)?;
-            println!("Converted to JSON, writing to {json_location:?}");
+            match store.to_json() {
+                Some(json) => {
+                    let json = serde_json::to_string_pretty(&json)?;
 
-            let mut file = File::create(json_location)?;
-            file.write_all(json.as_bytes())?;
+                    println!("Converted to JSON, writing to {json_location:?}");
+
+                    let mut file = File::create(json_location)?;
+                    file.write_all(json.as_bytes())?;
+                }
+                None => {
+                    eprintln!("Unable to convert to JSON - ensure there are no NaN/infinite floats or integers which cannot fit into the range from i64::MIN to u64::MAX");
+                }
+            }
         }
         Commands::RemoveDatabase => {
             let db_name = pick_db_name(false, &path, &client, &theme)?;

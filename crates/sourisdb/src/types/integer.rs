@@ -11,6 +11,7 @@ use core::{
     str::FromStr,
 };
 use num_traits::{Bounded, ConstOne, ConstZero, NumCast, One, ToPrimitive, Zero};
+use serde_json::{Number, Value as SJValue};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SignedState {
@@ -61,6 +62,28 @@ impl Integer {
     #[must_use]
     pub fn is_positive(&self) -> bool {
         self.signed_state == SignedState::Positive
+    }
+    
+    ///fails if doesn't fit into i64 or u64
+    pub fn to_json (self) -> Option<SJValue> {
+        Some(if self.is_negative() {
+            let n = i64::try_from(self).ok()?;
+            SJValue::Number(Number::from(n))
+        } else {
+            let n = u64::try_from(self).ok()?;
+            SJValue::Number(Number::from(n))
+        })
+    }
+    
+    ///fails if it was a floating point number
+    pub fn from_json (n: Number) -> Option<Self> {
+        if let Some(u) = n.as_u64() {
+            Some(u.into())
+        } else if let Some(i) = n.as_i64() {
+            Some(i.into())
+        } else {
+            None
+        }
     }
 }
 

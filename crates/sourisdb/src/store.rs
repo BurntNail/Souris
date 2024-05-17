@@ -8,10 +8,11 @@ use core::{
     ops::{Deref, DerefMut},
 };
 use hashbrown::HashMap;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::{Error as SJError, Value as SJValue};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Store(HashMap<String, Value>);
 
 impl Store {
@@ -41,18 +42,42 @@ impl Store {
         Ok(Self(map))
     }
 
-    pub fn from_json(json: &[u8]) -> Result<Self, StoreSerError> {
-        let val: SJValue = serde_json::from_slice(json)?;
-        let map = match Value::from(val) {
+    pub fn from_json_bytes(json: &[u8]) -> Result<Self, StoreSerError> {
+        let val = serde_json::from_slice(json)?;
+        Ok(Self::from_json(val))
+    }
+
+    pub fn from_bytes<T: DeserializeOwned> (bytes: &[u8]) -> Result<T, StoreSerError> {
+        let s = Self::deser(bytes)?;
+        let v = s.to_json().ok_or(StoreSerError::UnableToConvertToJson)?;
+        Ok(serde_json::from_value(v)?)
+    }
+    pub fn to_bytes<T: Serialize> (t: &impl Serialize) -> Result<Vec<u8>, StoreSerError> {
+        let v = serde_json::to_value(t)?;
+        let s = Self::from_json(v);
+        s.ser()
+    }
+
+    ///fails if integer out of range, or float is NaN or infinite
+    #[must_use] pub fn to_json (mut self) -> Option<SJValue> {
+        if self.len() == 1 {
+            if let Some(v) = self.0.remove("JSON") {
+                return v.convert_to_json();
+            }
+        }
+
+        Some(SJValue::Object(self.0.into_iter().map(|(k, v)| v.convert_to_json().map(|v| (k, v))).collect::<Option<_>>()?))
+    }
+    
+    pub fn from_json (val: SJValue) -> Self {
+        Self(match Value::convert_from_json(val) {
             Value::Map(m) => m,
             v => {
                 let mut map = HashMap::new();
                 map.insert("JSON".into(), v);
                 map
             }
-        };
-
-        Ok(Self(map))
+        })
     }
 }
 
@@ -93,6 +118,7 @@ pub enum StoreSerError {
     ExpectedMap(ValueTy),
     Value(ValueSerError),
     SerdeJson(SJError),
+    UnableToConvertToJson,
 }
 
 impl Display for StoreSerError {
@@ -104,6 +130,7 @@ impl Display for StoreSerError {
             ),
             StoreSerError::Value(e) => write!(f, "Error with values: {e}"),
             StoreSerError::SerdeJson(e) => write!(f, "Error with serde_json: {e}"),
+            StoreSerError::UnableToConvertToJson => write!(f, "Unable to convert self to JSON"),
         }
     }
 }
@@ -125,7 +152,7 @@ impl std::error::Error for StoreSerError {
         match self {
             Self::Value(e) => Some(e),
             Self::SerdeJson(e) => Some(e),
-            Self::ExpectedMap(_) => None,
+            _ => None
         }
     }
 }

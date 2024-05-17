@@ -18,9 +18,6 @@ pub enum SourisError {
     StoreError(StoreSerError),
     ValueError(ValueSerError),
     InvalidDatabaseName,
-    NotEnoughBytes,
-    InvalidAction(u8),
-    KeyNotFoundInRequest(&'static str),
     IntegerSerError(IntegerSerError),
 }
 
@@ -69,9 +66,6 @@ impl Display for SourisError {
                 f,
                 "Invalid database name - database names must be ASCII and not equal to `meta`"
             ),
-            Self::NotEnoughBytes => write!(f, "Not enough bytes received in TCP stream"),
-            Self::InvalidAction(a) => write!(f, "Received invalid action: {a:?}"),
-            Self::KeyNotFoundInRequest(k) => write!(f, "Expected to see key {k:?} in key, didn't"),
             Self::IntegerSerError(e) => write!(f, "Error deserialising integer: {e:?}"),
         }
     }
@@ -83,7 +77,7 @@ impl IntoResponse for SourisError {
 
         let code = match self {
             Self::DatabaseNotFound | Self::KeyNotFound => StatusCode::NOT_FOUND,
-            Self::InvalidDatabaseName | Self::NotEnoughBytes => StatusCode::BAD_REQUEST,
+            Self::InvalidDatabaseName => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
