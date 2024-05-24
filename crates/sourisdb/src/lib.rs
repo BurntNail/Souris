@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![warn(missing_docs)]
 #![warn(clippy::all, clippy::pedantic)]
-#![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
 extern crate alloc;
 extern crate core;
@@ -17,7 +17,8 @@ pub mod types;
 pub mod utilities;
 pub mod values;
 
-pub mod net;
+#[cfg(feature = "axum")]
+pub mod axum;
 
 use crate::{store::StoreSerError, types::integer::IntegerSerError, values::ValueSerError};
 use alloc::{

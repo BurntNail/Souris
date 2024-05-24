@@ -1,3 +1,5 @@
+//! Provides the main key-value store designed to be used for communications.
+
 use crate::{
     utilities::cursor::Cursor,
     values::{Value, ValueSerError, ValueTy},
@@ -8,19 +10,18 @@ use core::{
     ops::{Deref, DerefMut},
 };
 use hashbrown::HashMap;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_json::{Error as SJError, Value as SJValue};
 
+///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
+/// 
+/// The expectation is that if you need an in-memory key-value database, you do one of two things:
+/// - Spin up a server running `sourisd` and make HTTP requests to it. Then, serialise or deserialise the values appropriately.
+/// - Create a `Store` and keep it in the state of your program. To access values just use it as a HashMap. When your program exits (or periodically to allow for if the program quits unexpectedly), serialise the database and write it to a file. Then, when starting the program again read the database in. 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Store(HashMap<String, Value>);
 
 impl Store {
-    #[must_use]
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
+    ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
     pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
         let mut res = vec![];
 
@@ -47,12 +48,15 @@ impl Store {
         Ok(Self::from_json(val))
     }
 
-    pub fn from_bytes<T: DeserializeOwned> (bytes: &[u8]) -> Result<T, StoreSerError> {
+    #[cfg(feature = "serde")]
+    pub fn from_bytes<T: serde::de::DeserializeOwned> (bytes: &[u8]) -> Result<T, StoreSerError> {
         let s = Self::deser(bytes)?;
         let v = s.to_json().ok_or(StoreSerError::UnableToConvertToJson)?;
         Ok(serde_json::from_value(v)?)
     }
-    pub fn to_bytes<T: Serialize> (t: &impl Serialize) -> Result<Vec<u8>, StoreSerError> {
+
+    #[cfg(feature = "serde")]
+    pub fn to_bytes(t: &impl serde::Serialize) -> Result<Vec<u8>, StoreSerError> {
         let v = serde_json::to_value(t)?;
         let s = Self::from_json(v);
         s.ser()
