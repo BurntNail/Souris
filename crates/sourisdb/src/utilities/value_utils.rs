@@ -1,7 +1,7 @@
 use crate::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
-    types::{imaginary::Imaginary, integer::Integer},
+    types::{imaginary::Imaginary},
     values::{Value, ValueTy},
 };
 use alloc::{string::String, vec, vec::Vec};
@@ -69,20 +69,39 @@ pub fn get_value_from_stdin(
             Value::Boolean(b != 0)
         }
         ValueTy::Integer => {
-            let i: Integer = Input::with_theme(theme)
+            let i = Input::with_theme(theme)
                 .with_prompt("Which number: ")
                 .interact()?;
             Value::Integer(i)
         }
         ValueTy::Imaginary => {
-            let real: Integer = Input::with_theme(theme)
-                .with_prompt("Real Part: ")
-                .interact()?;
-            let imaginary: Integer = Input::with_theme(theme)
-                .with_prompt("Imaginary Part: ")
-                .interact()?;
+            if FuzzySelect::with_theme(theme)
+                .with_prompt("Form?")
+                .items(&["Polar (re^(θi)) Form", "Cartesian (a+bi) Form"])
+                .interact()?
+                == 0
+            {
+                let modulus = Input::with_theme(theme)
+                    .with_prompt("Modulus: ")
+                    .interact()?;
+                let argument = Input::with_theme(theme)
+                    .with_prompt("Argument: ")
+                    .interact()?;
 
-            Value::Imaginary(Imaginary { real, imaginary })
+                Value::Imaginary(Imaginary::PolarForm {
+                    modulus,
+                    argument,
+                })
+            } else {
+                let real = Input::with_theme(theme)
+                    .with_prompt("Real Part: ")
+                    .interact()?;
+                let imaginary = Input::with_theme(theme)
+                    .with_prompt("Imaginary Part: ")
+                    .interact()?;
+
+                Value::Imaginary(Imaginary::IntegerCoefficients { real, imaginary })
+            }
         }
         ValueTy::Timestamp => {
             let ts: NaiveDateTime = if Confirm::with_theme(theme).with_prompt("Now?").interact()? {

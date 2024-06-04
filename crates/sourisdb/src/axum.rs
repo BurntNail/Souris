@@ -7,7 +7,8 @@
 //! use axum::{extract::State, http::StatusCode};
 //! use sourisdb::{types::integer::Integer, values::Value};
 //!
-//! fn fn_add_if_number (State(mut state): State<Vec<Integer>>, value: Value) -> StatusCode {
+//! #[axum::debug_handler]
+//! async fn fn_add_if_number (State(mut state): State<Vec<Integer>>, value: Value) -> StatusCode {
 //!    match value.to_int() {
 //!        Some(i) => {
 //!            state.push(i);
@@ -23,13 +24,13 @@
 //! use axum::extract::State;
 //! use sourisdb::{store::Store, types::integer::Integer, values::Value};
 //!
-//! fn get_numbers(State(state): State<Vec<Integer>>) -> Store {
+//! #[axum::debug_handler]
+//! async fn get_numbers(State(state): State<Vec<Integer>>) -> Store {
 //!    let mut store = Store::default();
 //!    store.insert("numbers".to_string(), Value::Array(state.into_iter().map(Value::Integer).collect()));
 //!    store
 //! }
 //! ```
-
 
 use crate::{
     store::{Store, StoreSerError},
@@ -37,7 +38,6 @@ use crate::{
     values::{Value, ValueSerError},
 };
 use alloc::{boxed::Box, format, string::String};
-use core::fmt::{Display, Formatter}; //boxed::Box is used for async_trait
 use axum::{
     async_trait,
     body::Bytes,
@@ -45,6 +45,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use core::fmt::{Display, Formatter}; //boxed::Box is used for async_trait
 
 impl IntoResponse for Value {
     fn into_response(self) -> Response {

@@ -235,7 +235,7 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
         }
         Commands::ExportToJSON { json_location } => {
             let store = view_all(path, &theme)?;
-            
+
             match store.to_json() {
                 Some(json) => {
                     let json = serde_json::to_string_pretty(&json)?;
@@ -302,7 +302,7 @@ fn new_store_in_file(path: PathBuf, theme: &dyn Theme) -> Result<Store, Error> {
         Ok(f) => f,
     };
 
-    let store = Store::new();
+    let store = Store::default();
     file.write_all(&store.ser()?)?;
     println!("Successfully created new SourisDB.");
 

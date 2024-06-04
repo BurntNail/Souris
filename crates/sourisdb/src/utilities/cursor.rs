@@ -132,7 +132,8 @@ mod tests {
 
         assert_eq!(cursor.read(5), Some([5, 6, 7, 8, 9].as_slice()));
         assert_eq!(cursor.pos(), 10);
-        assert_eq!(cursor.peek_remaining(), &[]);
+        let empty: &[i32] = &[];
+        assert_eq!(cursor.peek_remaining(), empty);
 
         cursor.seek_backwards(4);
         assert_eq!(cursor.pos(), 6);

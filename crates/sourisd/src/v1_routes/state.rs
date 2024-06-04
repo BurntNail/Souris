@@ -58,7 +58,7 @@ impl SourisState {
             return Ok(StatusCode::OK);
         }
 
-        dbs.insert(name.clone(), Store::new());
+        dbs.insert(name.clone(), Store::default());
 
         Ok(StatusCode::CREATED)
     }
@@ -184,7 +184,7 @@ impl SourisState {
                 Err(e) => {
                     return if e.kind() == ErrorKind::NotFound {
                         trace!(?location, "File not found, getting empty store.");
-                        return Ok(Store::new());
+                        return Ok(Store::default());
                     } else {
                         Err(e.into())
                     };
@@ -274,7 +274,7 @@ impl SourisState {
             }
         }
 
-        let mut meta = Store::new();
+        let mut meta = Store::default();
         meta.insert(DB_FILE_NAMES_KEY.into(), Value::Array(names));
 
         let location = self.base_location.join(META_DB_FILE_NAME);

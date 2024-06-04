@@ -13,10 +13,10 @@ use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
 
 ///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
-/// 
+///
 /// The expectation is that if you need an in-memory key-value database, you do one of two things:
 /// - Spin up a server running `sourisd` and make HTTP requests to it. Then, serialise or deserialise the values appropriately.
-/// - Create a `Store` and keep it in the state of your program. To access values just use it as a HashMap. When your program exits (or periodically to allow for if the program quits unexpectedly), serialise the database and write it to a file. Then, when starting the program again read the database in. 
+/// - Create a `Store` and keep it in the state of your program. To access values just use it as a [`hashbrown::HashMap`]. When your program exits (or periodically to allow for if the program quits unexpectedly), serialise the database and write it to a file. Then, when starting the program again read the database in.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Store(HashMap<String, Value>);
 
@@ -49,7 +49,7 @@ impl Store {
     }
 
     #[cfg(feature = "serde")]
-    pub fn from_bytes<T: serde::de::DeserializeOwned> (bytes: &[u8]) -> Result<T, StoreSerError> {
+    pub fn from_bytes<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, StoreSerError> {
         let s = Self::deser(bytes)?;
         let v = s.to_json().ok_or(StoreSerError::UnableToConvertToJson)?;
         Ok(serde_json::from_value(v)?)
@@ -63,17 +63,24 @@ impl Store {
     }
 
     ///fails if integer out of range, or float is NaN or infinite
-    #[must_use] pub fn to_json (mut self) -> Option<SJValue> {
+    #[must_use]
+    pub fn to_json(mut self) -> Option<SJValue> {
         if self.len() == 1 {
             if let Some(v) = self.0.remove("JSON") {
                 return v.convert_to_json();
             }
         }
 
-        Some(SJValue::Object(self.0.into_iter().map(|(k, v)| v.convert_to_json().map(|v| (k, v))).collect::<Option<_>>()?))
+        Some(SJValue::Object(
+            self.0
+                .into_iter()
+                .map(|(k, v)| v.convert_to_json().map(|v| (k, v)))
+                .collect::<Option<_>>()?,
+        ))
     }
-    
-    pub fn from_json (val: SJValue) -> Self {
+
+    #[must_use]
+    pub fn from_json(val: SJValue) -> Self {
         Self(match Value::convert_from_json(val) {
             Value::Map(m) => m,
             v => {
@@ -156,7 +163,7 @@ impl std::error::Error for StoreSerError {
         match self {
             Self::Value(e) => Some(e),
             Self::SerdeJson(e) => Some(e),
-            _ => None
+            _ => None,
         }
     }
 }

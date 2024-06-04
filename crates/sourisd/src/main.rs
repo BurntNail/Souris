@@ -4,12 +4,10 @@
 #[macro_use]
 extern crate tracing;
 
-use crate::{
-    v1_routes::{
-        db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
-        state::SourisState,
-        value::{add_kv, get_value, rm_key},
-    },
+use crate::v1_routes::{
+    db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
+    state::SourisState,
+    value::{add_kv, get_value, rm_key},
 };
 use axum::{
     extract::DefaultBodyLimit,

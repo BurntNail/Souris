@@ -63,9 +63,10 @@ impl Integer {
     pub fn is_positive(&self) -> bool {
         self.signed_state == SignedState::Positive
     }
-    
+
     ///fails if doesn't fit into i64 or u64
-    pub fn to_json (self) -> Option<SJValue> {
+    #[must_use]
+    pub fn to_json(self) -> Option<SJValue> {
         Some(if self.is_negative() {
             let n = i64::try_from(self).ok()?;
             SJValue::Number(Number::from(n))
@@ -74,9 +75,9 @@ impl Integer {
             SJValue::Number(Number::from(n))
         })
     }
-    
+
     ///fails if it was a floating point number
-    pub fn from_json (n: Number) -> Option<Self> {
+    pub fn from_json(n: &Number) -> Option<Self> {
         if let Some(u) = n.as_u64() {
             Some(u.into())
         } else if let Some(i) = n.as_i64() {
