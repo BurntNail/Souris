@@ -15,6 +15,7 @@ use axum::{
     Router,
 };
 use std::time::Duration;
+use axum::http::StatusCode;
 use tokio::{
     net::TcpListener,
     signal,
@@ -128,6 +129,7 @@ async fn main() {
         .route("/get_value", get(get_value));
 
     let router = Router::new()
+        .route("/healthcheck", get(async { StatusCode::OK }))
         .nest("/v1", v1_router)
         .layer(TraceLayer::new_for_http())
         .layer(DefaultBodyLimit::disable())
