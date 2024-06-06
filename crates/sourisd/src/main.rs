@@ -84,6 +84,10 @@ async fn shutdown_signal(stop_signal: Sender<()>, saver: JoinHandle<()>) {
     }
 }
 
+async fn healthcheck () -> StatusCode {
+    StatusCode::OK
+}
+
 #[tokio::main]
 async fn main() {
     setup();
@@ -129,7 +133,7 @@ async fn main() {
         .route("/get_value", get(get_value));
 
     let router = Router::new()
-        .route("/healthcheck", get(async { StatusCode::OK }))
+        .route("/healthcheck", get(healthcheck))
         .nest("/v1", v1_router)
         .layer(TraceLayer::new_for_http())
         .layer(DefaultBodyLimit::disable())
