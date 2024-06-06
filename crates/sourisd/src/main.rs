@@ -135,7 +135,7 @@ async fn main() {
         .layer(DefaultBodyLimit::disable())
         .with_state(state.clone());
 
-    let http_listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+    let http_listener = TcpListener::bind("127.0.0.1:2256").await.unwrap();
 
     axum::serve(http_listener, router)
         .with_graceful_shutdown(shutdown_signal(stop_tx, saver))
