@@ -19,6 +19,7 @@ use std::{
     io::{Error as IOError, Read, Write},
     path::PathBuf,
 };
+use reqwest::StatusCode;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -115,6 +116,20 @@ impl From<reqwest::Error> for Error {
 fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
     let client = Client::new();
+
+    {
+        let rsp = match client.get(format!("http://{path}:2256/healthcheck")).send() {
+            Ok(rsp) => rsp,
+            Err(e) => {
+                eprintln!("Error connecting to server: {e:?}");
+                return Ok(());
+            }
+        };
+        if rsp.status() != StatusCode::OK {
+            eprintln!("Server is not healthy.");
+            return Ok(());
+        }
+    }
 
     match command {
         Commands::CreateNew { db_name } => {
