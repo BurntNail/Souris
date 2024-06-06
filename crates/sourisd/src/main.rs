@@ -23,16 +23,17 @@ use tokio::{
     task::JoinHandle,
 };
 use tower_http::trace::TraceLayer;
-use tracing::Level;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::prelude::*;
 
 mod error;
 mod v1_routes;
 
 fn setup() {
-    tracing_subscriber::fmt()
-        .with_max_level(Level::TRACE)
-        .with_span_events(FmtSpan::NEW)
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(EnvFilter::from_default_env())
         .init();
     color_eyre::install().expect("unable to install color-eyre");
 
