@@ -10,7 +10,10 @@ use core::{
     ops::{Deref, DerefMut},
 };
 use hashbrown::HashMap;
+use lz4_flex::block::DecompressError;
+use lz4_flex::{compress, decompress};
 use serde_json::{Error as SJError, Value as SJValue};
+use crate::types::integer::{Integer, IntegerSerError, SignedState};
 
 ///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
 ///
@@ -20,22 +23,92 @@ use serde_json::{Error as SJError, Value as SJValue};
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Store(HashMap<String, Value>);
 
+enum CompressionType {
+    None,
+    Lz4
+}
+impl From<CompressionType> for u8 {
+    fn from(value: CompressionType) -> Self {
+        match value {
+            CompressionType::None => 0,
+            CompressionType::Lz4 => 1,
+        }
+    }
+}
+impl TryFrom<u8> for CompressionType {
+    type Error = StoreSerError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::None,
+            1 => Self::Lz4,
+            _ => return Err(StoreSerError::UnsupportedCompression(value))
+        })
+    }
+}
+
 impl Store {
+    fn compress (bytes: &[u8]) -> (Option<Vec<u8>>, CompressionType) {
+        let raw = bytes;
+        let lz4 = compress(bytes);
+
+        if lz4.len() < raw.len() {
+            let mut lz4_with_original_len = Integer::from(raw.len()).ser().1;
+            lz4_with_original_len.extend(lz4);
+            (Some(lz4_with_original_len), CompressionType::Lz4)
+        } else {
+            (None, CompressionType::None)
+        }
+    }
+    fn decompress (bytes: &[u8], compression_type: CompressionType) -> Result<Vec<u8>, StoreSerError> {
+        match compression_type {
+            CompressionType::None => Ok(bytes.to_vec()),
+            CompressionType::Lz4 => {
+                let mut cursor = Cursor::new(&bytes);
+                let original_len: usize = Integer::deser(SignedState::Positive, &mut cursor)?.try_into()?;
+
+                Ok(decompress(cursor.as_ref(), original_len)?)
+            }
+        }
+    }
+
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
     pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
+        let raw_map = Value::Map(self.0.clone()).ser()?;
+        let (map, compression_ty) = Self::compress(&raw_map);
+
         let mut res = vec![];
 
         res.extend(b"SOURISDB");
-        res.extend(Value::Map(self.0.clone()).ser()?);
+        res.push(u8::from(compression_ty));
+        if let Some(map) = map {
+            res.extend(map);
+        } else {
+            res.extend(raw_map);
+        }
 
         Ok(res)
     }
 
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreSerError> {
         let mut bytes = Cursor::new(&bytes);
-        bytes.seek(8);
+        {
+            let Some(magic_bytes) = bytes.read_specific() else {
+                return Err(StoreSerError::NotEnoughBytes);
+            };
+            if magic_bytes != b"SOURISDB" {
+                return Err(StoreSerError::ExpectedMagicBytes);
+            }
+        }
+        let Some(compression_ty) = bytes.next().copied() else {
+            return Err(StoreSerError::NotEnoughBytes);
+        };
+        let compression_ty = CompressionType::try_from(compression_ty)?;
 
-        let val = Value::deser(&mut bytes)?;
+        let uncompressed_bytes = Self::decompress(bytes.as_ref(), compression_ty)?;
+        drop(bytes);
+        
+        let val = Value::deser(&mut Cursor::new(&uncompressed_bytes))?;
         let ty = val.as_ty();
         let Some(map) = val.to_map() else {
             return Err(StoreSerError::ExpectedMap(ty));
@@ -127,9 +200,14 @@ impl Display for Store {
 #[allow(clippy::module_name_repetitions)]
 pub enum StoreSerError {
     ExpectedMap(ValueTy),
+    ExpectedMagicBytes,
+    NotEnoughBytes,
     Value(ValueSerError),
+    Integer(IntegerSerError),
     SerdeJson(SJError),
     UnableToConvertToJson,
+    UnsupportedCompression(u8),
+    Decompress(DecompressError),
 }
 
 impl Display for StoreSerError {
@@ -139,9 +217,14 @@ impl Display for StoreSerError {
                 f,
                 "Expected to find a map when deserialising, found {t:?} instead"
             ),
+            StoreSerError::NotEnoughBytes => write!(f, "Not enough bytes"),
+            StoreSerError::ExpectedMagicBytes => write!(f, "Unable to find starting magic bytes"),
+            StoreSerError::Integer(i) => write!(f, "Error with integer: {i}"),
             StoreSerError::Value(e) => write!(f, "Error with values: {e}"),
             StoreSerError::SerdeJson(e) => write!(f, "Error with serde_json: {e}"),
             StoreSerError::UnableToConvertToJson => write!(f, "Unable to convert self to JSON"),
+            StoreSerError::UnsupportedCompression(b) => write!(f, "Unable to read compression type: {b:#b}"),
+            StoreSerError::Decompress(d) => write!(f, "Error with decompression: {d}"),
         }
     }
 }
@@ -156,13 +239,25 @@ impl From<SJError> for StoreSerError {
         Self::SerdeJson(value)
     }
 }
+impl From<IntegerSerError> for StoreSerError {
+    fn from(value: IntegerSerError) -> Self {
+        Self::Integer(value)
+    }
+}
+impl From<DecompressError> for StoreSerError {
+    fn from(value: DecompressError) -> Self {
+        Self::Decompress(value)
+    }
+}
 
 #[cfg(feature = "std")]
 impl std::error::Error for StoreSerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Integer(i) => Some(i),
             Self::Value(e) => Some(e),
             Self::SerdeJson(e) => Some(e),
+            Self::Decompress(d) => Some(d),
             _ => None,
         }
     }

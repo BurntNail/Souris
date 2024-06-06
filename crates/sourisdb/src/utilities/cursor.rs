@@ -103,6 +103,12 @@ impl<'a, T> Cursor<'a, T> {
     }
 }
 
+impl<'a, T> AsRef<[T]> for Cursor<'a, T> {
+    fn as_ref(&self) -> &'a [T] {
+        &self.backing[self.pos..]
+    }
+}
+    
 impl<'a, T> core::iter::Iterator for Cursor<'a, T> {
     type Item = &'a T;
 
