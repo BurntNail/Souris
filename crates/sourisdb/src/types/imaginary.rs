@@ -1,5 +1,5 @@
 //! A module containing a struct designed to represent imaginary numbers.
-//! 
+//!
 //! Imaginary numbers can either be represented by two integer coefficients using the [`Integer`] type, or in polar form using two `f64`s.
 
 use crate::{
@@ -109,9 +109,9 @@ impl Imaginary {
     }
 
     pub fn deser(magic_bits: u8, bytes: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
-        if magic_bits & 1 == 0 {
+        if magic_bits & 0b0001 == 0 {
             let real_signed_state = SignedState::try_from((magic_bits & 0b0010) >> 1)?;
-            let imaginary_signed_state = SignedState::try_from((magic_bits & 0b01000) >> 2)?;
+            let imaginary_signed_state = SignedState::try_from((magic_bits & 0b0100) >> 2)?;
 
             let real = Integer::deser(real_signed_state, bytes)?;
             let imaginary = Integer::deser(imaginary_signed_state, bytes)?;

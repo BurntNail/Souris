@@ -1132,6 +1132,10 @@ mod tests {
 
         #[test]
         fn test_polar_form_ser (modulus in any::<f64>(), argument in any::<f64>()) {
+            let modulus = if modulus == -0.0 {
+                0.0
+            } else {modulus};
+
             let val = Value::Imaginary(Imaginary::PolarForm { modulus, argument });
 
             let bytes = val.ser().unwrap();

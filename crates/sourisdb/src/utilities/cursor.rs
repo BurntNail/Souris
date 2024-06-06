@@ -54,7 +54,8 @@ impl<'a, T> Cursor<'a, T> {
         }
         self.pos = end;
 
-        (&self.backing[self.pos..end]).try_into().ok()
+
+        (&self.backing[start..end]).try_into().ok()
     }
 
     pub fn peek(&mut self, n: usize) -> Option<&'a [T]> {
