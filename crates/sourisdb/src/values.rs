@@ -15,7 +15,6 @@ use cfg_if::cfg_if;
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use chrono_tz::Tz;
 use core::{
-    f64::consts::PI,
     fmt::{Debug, Display, Formatter},
     hash::{Hash, Hasher},
     net::{Ipv4Addr, Ipv6Addr},

@@ -12,9 +12,9 @@ use core::{
     hash::Hash,
     num::FpCategory,
 };
-use std::f64::consts::PI;
 use crate::types::integer::FloatToIntegerConversionError;
-use crate::values::Value;
+use core::f64::consts::PI;
+
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -106,14 +106,14 @@ impl Imaginary {
                     Err(e) => {
                         return Err((Self::PolarForm {modulus, argument}, e));
                     }
-                }
+                };
 
                 let imaginary = match Integer::try_from(modulus * argument.sin()) {
                     Ok(i) => i,
                     Err(e) => {
                         return Err((Self::PolarForm {modulus, argument}, e));
                     }
-                }
+                };
                 
                 Ok(Self::IntegerCoefficients {real, imaginary})
             }
