@@ -651,22 +651,7 @@ impl Value {
                                     if let Some((real, imaginary)) =
                                         real.as_f64().zip(imaginary.as_f64())
                                     {
-                                        let modulus = real.hypot(imaginary);
-                                        let phi = (imaginary.abs() / real.abs()).atan();
-                                        let argument = match (
-                                            real.is_sign_negative(),
-                                            imaginary.is_sign_negative(),
-                                        ) {
-                                            (true, true) => -PI + phi,
-                                            (true, false) => PI - phi,
-                                            (false, true) => -phi,
-                                            (false, false) => phi,
-                                        };
-
-                                        return Value::Imaginary(Imaginary::PolarForm {
-                                            modulus,
-                                            argument,
-                                        });
+                                        return Value::Imaginary(Imaginary::polar_from_real_and_imaginary(real, imaginary));
                                     }
                                 }
                             }

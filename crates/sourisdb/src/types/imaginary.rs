@@ -12,9 +12,13 @@ use core::{
     hash::Hash,
     num::FpCategory,
 };
+use std::f64::consts::PI;
+use crate::types::integer::FloatToIntegerConversionError;
+use crate::values::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+///This struct represents imaginary numbers
 pub enum Imaginary {
     IntegerCoefficients {
         real: Integer,
@@ -84,6 +88,57 @@ impl Display for Imaginary {
 }
 
 impl Imaginary {
+    #[must_use] pub fn to_polar_form (self) -> Self {
+        match self {
+            pf @ Self::PolarForm {.. } => pf,
+            Self::IntegerCoefficients {real, imaginary} => {
+                Self::polar_from_real_and_imaginary(real.into(), imaginary.into())
+            }
+        }
+    }
+    
+    #[must_use] pub fn to_integer_coefficients(self) -> Result<Self, (Self, FloatToIntegerConversionError)> {
+        match self {
+            ic @ Self::IntegerCoefficients {..} => Ok(ic),
+            Self::PolarForm {modulus, argument} => {
+                let real = match Integer::try_from(modulus * argument.cos()) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        return Err((Self::PolarForm {modulus, argument}, e));
+                    }
+                }
+
+                let imaginary = match Integer::try_from(modulus * argument.sin()) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        return Err((Self::PolarForm {modulus, argument}, e));
+                    }
+                }
+                
+                Ok(Self::IntegerCoefficients {real, imaginary})
+            }
+        }
+    } 
+    
+    #[must_use] pub fn polar_from_real_and_imaginary (real: f64, imaginary: f64) -> Self {
+        let modulus = real.hypot(imaginary);
+        let phi = (imaginary.abs() / real.abs()).atan();
+        let argument = match (
+            real.is_sign_negative(),
+            imaginary.is_sign_negative(),
+        ) {
+            (true, true) => -PI + phi,
+            (true, false) => PI - phi,
+            (false, true) => -phi,
+            (false, false) => phi,
+        };
+
+        Imaginary::PolarForm {
+            modulus,
+            argument,
+        }
+    }
+    
     #[must_use]
     pub fn ser(&self) -> (u8, Vec<u8>) {
         match self {

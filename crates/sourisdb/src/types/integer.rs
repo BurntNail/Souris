@@ -237,6 +237,105 @@ new_x!(u8 => u8, i8 => i8, u16 => u16, i16 => i16, u32 => u32, i32 => i32, usize
 from_signed!(i8, i16, i32, i64, isize, i128);
 from_unsigned!(u8, u16, u32, u64, usize, u128);
 
+impl From<Integer> for f64 {
+    fn from(value: Integer) -> Self {
+        match value.signed_state {
+            SignedState::Positive => {
+                let u = value.to_u128().expect("just checked for sign");
+                u as f64
+            }
+            SignedState::Negative => {
+                let s = value.to_i128().expect("just checked for sign");
+                s as f64
+            }
+        }
+    }
+}
+impl From<Integer> for f32 {
+    fn from(value: Integer) -> Self {
+        match value.signed_state {
+            SignedState::Positive => {
+                let u = value.to_u128().expect("just checked for sign");
+                u as f32
+            }
+            SignedState::Negative => {
+                let s = value.to_i128().expect("just checked for sign");
+                s as f32
+            }
+        }
+    }
+}
+
+
+#[derive(Debug, Copy, Clone)]
+pub enum FloatToIntegerConversionError {
+    DecimalsNotSupported,
+    TooLarge,
+}
+impl Display for FloatToIntegerConversionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::DecimalsNotSupported => write!(f, "floating point decimals not supported for integer values"),
+            Self::TooLarge => write!(f, "Floating point number was too large")
+        }
+    }
+}
+#[cfg(feature = "std")]
+impl std::error::Error for FloatToIntegerConversionError {}
+
+impl TryFrom<f64> for Integer {
+    type Error = FloatToIntegerConversionError;
+
+    #[allow(clippy::collapsible_else_if)]
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        if value.fract() > f64::EPSILON {
+            return Err(FloatToIntegerConversionError::DecimalsNotSupported);
+        }
+        
+        let floored = value.floor();
+        if floored < 0.0 {
+            if floored > i128::MIN as f64 {
+                Ok((floored as i128).into())
+            } else {
+                Err(FloatToIntegerConversionError::TooLarge)
+            }
+        } else {
+            if floored > u128::MAX as f64 {
+                Ok((floored as u128).into())
+            } else {
+                Err(FloatToIntegerConversionError::TooLarge)
+            }
+
+        }
+    }
+}
+impl TryFrom<f32> for Integer {
+    type Error = FloatToIntegerConversionError;
+
+    #[allow(clippy::collapsible_else_if)]
+    fn try_from(value: f32) -> Result<Self, Self::Error> {
+        if value.fract() > f32::EPSILON {
+            return Err(FloatToIntegerConversionError::DecimalsNotSupported);
+        }
+
+        let floored = value.floor();
+        if floored < 0.0 {
+            if floored > i128::MIN as f32 {
+                Ok((floored as i128).into())
+            } else {
+                Err(FloatToIntegerConversionError::TooLarge)
+            }
+        } else {
+            if floored > u128::MAX as f32 {
+                Ok((floored as u128).into())
+            } else {
+                Err(FloatToIntegerConversionError::TooLarge)
+            }
+
+        }
+    }
+}
+
 macro_rules! integer_trait_impl {
     ($t:ident, $f:ident) => {
         impl $t<Self> for Integer {
