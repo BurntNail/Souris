@@ -23,9 +23,10 @@ dialoguer = {version = "0.11", optional = true, features = [  "fuzzy-matcher",
 ] }
 cfg-if = "1.0"
 paste = "1.0"
+lz4_flex = "0.11.3"
 
 [features]
 default = []
-std = ["dep:comfy-table", "dep:dialoguer"]
+std = ["comfy-table", "dialoguer"]
 axum = ["std", "dep:axum", "serde"]
 serde = ["dep:serde", "chrono/serde", "hashbrown/serde", "chrono-tz/serde"]
