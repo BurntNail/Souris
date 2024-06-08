@@ -10,10 +10,13 @@ use core::{
     ops::{Deref, DerefMut},
 };
 use hashbrown::HashMap;
-use lz4_flex::block::DecompressError;
+use lz4_flex::block::DecompressError as Lz4DecompressError;
 use lz4_flex::{compress, decompress};
+use miniz_oxide::deflate::compress_to_vec;
+use miniz_oxide::inflate::decompress_to_vec;
 use serde_json::{Error as SJError, Value as SJValue};
 use crate::types::integer::{Integer, IntegerSerError, SignedState};
+use miniz_oxide::inflate::DecompressError as MinizDecompressError;
 
 ///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
 ///
@@ -25,13 +28,15 @@ pub struct Store(HashMap<String, Value>);
 
 enum CompressionType {
     None,
-    Lz4
+    Lz4,
+    Miniz,
 }
 impl From<CompressionType> for u8 {
     fn from(value: CompressionType) -> Self {
         match value {
             CompressionType::None => 0,
             CompressionType::Lz4 => 1,
+            CompressionType::Miniz => 2,
         }
     }
 }
@@ -42,6 +47,7 @@ impl TryFrom<u8> for CompressionType {
         Ok(match value {
             0 => Self::None,
             1 => Self::Lz4,
+            2 => Self::Miniz,
             _ => return Err(StoreSerError::UnsupportedCompression(value))
         })
     }
@@ -50,14 +56,20 @@ impl TryFrom<u8> for CompressionType {
 impl Store {
     fn compress (bytes: &[u8]) -> (Option<Vec<u8>>, CompressionType) {
         let raw = bytes;
-        let lz4 = compress(bytes);
 
-        if lz4.len() < raw.len() {
-            let mut lz4_with_original_len = Integer::from(raw.len()).ser().1;
-            lz4_with_original_len.extend(lz4);
-            (Some(lz4_with_original_len), CompressionType::Lz4)
-        } else {
+
+        let mut lz4 = Integer::from(raw.len()).ser().1;
+        lz4.extend(compress(bytes));
+
+        let miniz = compress_to_vec(bytes, 10);
+
+
+        if [miniz.len(), lz4.len()].iter().into_iter().all(|x| *x >= raw.len()) {
             (None, CompressionType::None)
+        } else if miniz.len() < lz4.len() {
+            (Some(miniz), CompressionType::Miniz)
+        } else {
+            (Some(lz4), CompressionType::Lz4)
         }
     }
     fn decompress (bytes: &[u8], compression_type: CompressionType) -> Result<Vec<u8>, StoreSerError> {
@@ -68,6 +80,9 @@ impl Store {
                 let original_len: usize = Integer::deser(SignedState::Positive, &mut cursor)?.try_into()?;
 
                 Ok(decompress(cursor.as_ref(), original_len)?)
+            }
+            CompressionType::Miniz => {
+                Ok(decompress_to_vec(bytes)?)
             }
         }
     }
@@ -207,7 +222,8 @@ pub enum StoreSerError {
     SerdeJson(SJError),
     UnableToConvertToJson,
     UnsupportedCompression(u8),
-    Decompress(DecompressError),
+    Lz4Decompress(Lz4DecompressError),
+    MinizDecompresss(MinizDecompressError)
 }
 
 impl Display for StoreSerError {
@@ -224,7 +240,8 @@ impl Display for StoreSerError {
             StoreSerError::SerdeJson(e) => write!(f, "Error with serde_json: {e}"),
             StoreSerError::UnableToConvertToJson => write!(f, "Unable to convert self to JSON"),
             StoreSerError::UnsupportedCompression(b) => write!(f, "Unable to read compression type: {b:#b}"),
-            StoreSerError::Decompress(d) => write!(f, "Error with decompression: {d}"),
+            StoreSerError::Lz4Decompress(d) => write!(f, "Error with Lz4 decompression: {d}"),
+            StoreSerError::MinizDecompresss(d) => write!(f, "Error with miniz decompression: {d}")
         }
     }
 }
@@ -244,9 +261,14 @@ impl From<IntegerSerError> for StoreSerError {
         Self::Integer(value)
     }
 }
-impl From<DecompressError> for StoreSerError {
-    fn from(value: DecompressError) -> Self {
-        Self::Decompress(value)
+impl From<Lz4DecompressError> for StoreSerError {
+    fn from(value: Lz4DecompressError) -> Self {
+        Self::Lz4Decompress(value)
+    }
+}
+impl From<MinizDecompressError> for StoreSerError {
+    fn from(value: MinizDecompressError) -> Self {
+        Self::MinizDecompresss(value)
     }
 }
 
@@ -257,7 +279,8 @@ impl std::error::Error for StoreSerError {
             Self::Integer(i) => Some(i),
             Self::Value(e) => Some(e),
             Self::SerdeJson(e) => Some(e),
-            Self::Decompress(d) => Some(d),
+            Self::Lz4Decompress(d) => Some(d),
+            Self::MinizDecompresss(d) => Some(d),
             _ => None,
         }
     }

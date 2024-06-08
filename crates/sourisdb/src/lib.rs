@@ -12,9 +12,6 @@
 extern crate alloc;
 extern crate core;
 
-#[cfg(feature = "std")]
-extern crate std;
-
 pub use chrono;
 pub use hashbrown;
 pub use serde_json;
