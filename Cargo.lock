@@ -1442,7 +1442,6 @@ dependencies = [
  "http",
  "lz4_flex",
  "miniz_oxide",
- "num-traits",
  "paste",
  "proptest",
  "serde",

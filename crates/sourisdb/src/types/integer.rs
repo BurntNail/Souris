@@ -10,7 +10,6 @@ use core::{
     ops::{Add, Div, Mul, Sub},
     str::FromStr,
 };
-use num_traits::{Bounded, ConstOne, ConstZero, NumCast, One, ToPrimitive, Zero};
 use serde_json::{Number, Value as SJValue};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
@@ -241,11 +240,11 @@ impl From<Integer> for f64 {
     fn from(value: Integer) -> Self {
         match value.signed_state {
             SignedState::Positive => {
-                let u = value.to_u128().expect("just checked for sign");
+                let u = u128::try_from(value).expect("just checked for sign");
                 u as f64
             }
             SignedState::Negative => {
-                let s = value.to_i128().expect("just checked for sign");
+                let s = i128::try_from(value).expect("just checked for sign");
                 s as f64
             }
         }
@@ -255,11 +254,11 @@ impl From<Integer> for f32 {
     fn from(value: Integer) -> Self {
         match value.signed_state {
             SignedState::Positive => {
-                let u = value.to_u128().expect("just checked for sign");
+                let u = u128::try_from(value).expect("just checked for sign");
                 u as f32
             }
             SignedState::Negative => {
-                let s = value.to_i128().expect("just checked for sign");
+                let s = i128::try_from(value).expect("just checked for sign");
                 s as f32
             }
         }
@@ -377,74 +376,6 @@ integer_trait_impl!(Add, add);
 integer_trait_impl!(Sub, sub);
 integer_trait_impl!(Mul, mul);
 integer_trait_impl!(Div, div);
-
-impl Bounded for Integer {
-    fn min_value() -> Self {
-        <Integer as From<BiggestIntButSigned>>::from(BiggestIntButSigned::MIN)
-    }
-
-    fn max_value() -> Self {
-        <Integer as From<BiggestInt>>::from(BiggestInt::MAX)
-    }
-}
-impl ToPrimitive for Integer {
-    fn to_i64(&self) -> Option<i64> {
-        (*self).try_into().ok()
-    }
-
-    fn to_i128(&self) -> Option<i128> {
-        (*self).try_into().ok()
-    }
-
-    fn to_u64(&self) -> Option<u64> {
-        (*self).try_into().ok()
-    }
-    fn to_u128(&self) -> Option<u128> {
-        (*self).try_into().ok()
-    }
-}
-impl NumCast for Integer {
-    #[allow(clippy::manual_map)]
-    fn from<T: ToPrimitive>(n: T) -> Option<Self> {
-        if let Some(i) = n.to_i128() {
-            Some(<Self as From<BiggestIntButSigned>>::from(i))
-        } else if let Some(u) = n.to_u128() {
-            Some(<Self as From<BiggestInt>>::from(u))
-        } else {
-            None
-        }
-    }
-}
-
-impl One for Integer {
-    fn one() -> Self {
-        1_u128.into()
-    }
-}
-
-impl ConstOne for Integer {
-    const ONE: Self = Self {
-        signed_state: SignedState::Positive,
-        content: 1_u128.to_le_bytes(),
-    };
-}
-
-impl Zero for Integer {
-    fn zero() -> Self {
-        0_u128.into()
-    }
-
-    fn is_zero(&self) -> bool {
-        self.content.iter().all(|x| *x == 0)
-    }
-}
-
-impl ConstZero for Integer {
-    const ZERO: Self = Self {
-        signed_state: SignedState::Positive,
-        content: [0; (BiggestInt::BITS / 8) as usize],
-    };
-}
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Integer {
@@ -653,13 +584,13 @@ impl Integer {
     #[must_use]
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     pub fn ser(self) -> (SignedState, Vec<u8>) {
-        if let Some(smol) = self.to_i8() {
+        if let Ok(smol) = i8::try_from(self) {
             return if smol < 0 {
                 (SignedState::Negative, vec![(-smol) as u8])
             } else {
                 (SignedState::Positive, vec![smol as u8])
             };
-        } else if let Some(pos_smol) = self.to_u8() {
+        } else if let Ok(pos_smol) = u8::try_from(self) {
             if pos_smol < ONE_BYTE_MAX_SIZE {
                 return (SignedState::Positive, vec![pos_smol]);
             }
