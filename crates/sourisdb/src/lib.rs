@@ -27,6 +27,9 @@ pub mod values;
 #[cfg(feature = "axum")]
 pub mod axum;
 
+#[cfg(feature = "client")]
+pub mod client;
+
 use crate::{store::StoreSerError, types::integer::IntegerSerError, values::ValueSerError};
 use alloc::{
     format,
