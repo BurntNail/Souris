@@ -11,11 +11,11 @@ use crate::v1_routes::{
 };
 use axum::{
     extract::DefaultBodyLimit,
+    http::StatusCode,
     routing::{get, post, put},
     Router,
 };
 use std::time::Duration;
-use axum::http::StatusCode;
 use tokio::{
     net::TcpListener,
     signal,
@@ -23,9 +23,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::fmt::format::FmtSpan;
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt::format::FmtSpan, prelude::*, EnvFilter};
 
 mod error;
 mod v1_routes;
@@ -85,7 +83,7 @@ async fn shutdown_signal(stop_signal: Sender<()>, saver: JoinHandle<()>) {
     }
 }
 
-async fn healthcheck () -> StatusCode {
+async fn healthcheck() -> StatusCode {
     StatusCode::OK
 }
 

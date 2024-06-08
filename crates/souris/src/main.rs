@@ -6,6 +6,7 @@ use dialoguer::{
     Confirm, Error as DError, FuzzySelect, Input,
 };
 use sourisdb::{
+    client::{ClientError, SourisClient},
     store::{Store, StoreSerError},
     utilities::value_utils::get_value_from_stdin,
     values::ValueSerError,
@@ -16,7 +17,6 @@ use std::{
     io::{Error as IOError, Read, Write},
     path::PathBuf,
 };
-use sourisdb::client::{ClientError, SourisClient};
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
@@ -118,7 +118,7 @@ impl std::error::Error for Error {
             Error::Value(e) => Some(e),
             Error::Store(e) => Some(e),
             Error::Client(e) => Some(e),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -127,7 +127,7 @@ impl std::error::Error for Error {
 fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
     let client = SourisClient::new(path.clone(), 2256)?;
-    
+
     match command {
         Commands::CreateNew { db_name } => {
             let all = client.get_all_dbs()?;
@@ -141,7 +141,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                     return Ok(());
                 }
             }
-            
+
             if client.create_new_db(true, db_name)? {
                 println!("Database successfully created");
             } else {

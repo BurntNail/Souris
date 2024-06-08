@@ -1,7 +1,7 @@
 use crate::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
-    types::{imaginary::Imaginary},
+    types::imaginary::Imaginary,
     values::{Value, ValueTy},
 };
 use alloc::{string::String, vec, vec::Vec};
@@ -88,10 +88,7 @@ pub fn get_value_from_stdin(
                     .with_prompt("Argument: ")
                     .interact()?;
 
-                Value::Imaginary(Imaginary::PolarForm {
-                    modulus,
-                    argument,
-                })
+                Value::Imaginary(Imaginary::PolarForm { modulus, argument })
             } else {
                 let real = Input::with_theme(theme)
                     .with_prompt("Real Part: ")

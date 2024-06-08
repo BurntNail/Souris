@@ -54,7 +54,6 @@ impl<'a, T> Cursor<'a, T> {
         }
         self.pos = end;
 
-
         (&self.backing[start..end]).try_into().ok()
     }
 
@@ -108,7 +107,7 @@ impl<'a, T> AsRef<[T]> for Cursor<'a, T> {
         &self.backing[self.pos..]
     }
 }
-    
+
 impl<'a, T> core::iter::Iterator for Cursor<'a, T> {
     type Item = &'a T;
 

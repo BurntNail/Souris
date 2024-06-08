@@ -1,6 +1,7 @@
 //! Provides the main key-value store designed to be used for communications.
 
 use crate::{
+    types::integer::{Integer, IntegerSerError, SignedState},
     utilities::cursor::Cursor,
     values::{Value, ValueSerError, ValueTy},
 };
@@ -10,13 +11,12 @@ use core::{
     ops::{Deref, DerefMut},
 };
 use hashbrown::HashMap;
-use lz4_flex::block::DecompressError as Lz4DecompressError;
-use lz4_flex::{compress, decompress};
-use miniz_oxide::deflate::compress_to_vec;
-use miniz_oxide::inflate::decompress_to_vec;
+use lz4_flex::{block::DecompressError as Lz4DecompressError, compress, decompress};
+use miniz_oxide::{
+    deflate::compress_to_vec,
+    inflate::{decompress_to_vec, DecompressError as MinizDecompressError},
+};
 use serde_json::{Error as SJError, Value as SJValue};
-use crate::types::integer::{Integer, IntegerSerError, SignedState};
-use miniz_oxide::inflate::DecompressError as MinizDecompressError;
 
 ///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
 ///
@@ -48,23 +48,25 @@ impl TryFrom<u8> for CompressionType {
             0 => Self::None,
             1 => Self::Lz4,
             2 => Self::Miniz,
-            _ => return Err(StoreSerError::UnsupportedCompression(value))
+            _ => return Err(StoreSerError::UnsupportedCompression(value)),
         })
     }
 }
 
 impl Store {
-    fn compress (bytes: &[u8]) -> (Option<Vec<u8>>, CompressionType) {
+    fn compress(bytes: &[u8]) -> (Option<Vec<u8>>, CompressionType) {
         let raw = bytes;
-
 
         let mut lz4 = Integer::from(raw.len()).ser().1;
         lz4.extend(compress(bytes));
 
         let miniz = compress_to_vec(bytes, 10);
 
-
-        if [miniz.len(), lz4.len()].iter().into_iter().all(|x| *x >= raw.len()) {
+        if [miniz.len(), lz4.len()]
+            .iter()
+            .into_iter()
+            .all(|x| *x >= raw.len())
+        {
             (None, CompressionType::None)
         } else if miniz.len() < lz4.len() {
             (Some(miniz), CompressionType::Miniz)
@@ -72,18 +74,20 @@ impl Store {
             (Some(lz4), CompressionType::Lz4)
         }
     }
-    fn decompress (bytes: &[u8], compression_type: CompressionType) -> Result<Vec<u8>, StoreSerError> {
+    fn decompress(
+        bytes: &[u8],
+        compression_type: CompressionType,
+    ) -> Result<Vec<u8>, StoreSerError> {
         match compression_type {
             CompressionType::None => Ok(bytes.to_vec()),
             CompressionType::Lz4 => {
                 let mut cursor = Cursor::new(&bytes);
-                let original_len: usize = Integer::deser(SignedState::Positive, &mut cursor)?.try_into()?;
+                let original_len: usize =
+                    Integer::deser(SignedState::Positive, &mut cursor)?.try_into()?;
 
                 Ok(decompress(cursor.as_ref(), original_len)?)
             }
-            CompressionType::Miniz => {
-                Ok(decompress_to_vec(bytes)?)
-            }
+            CompressionType::Miniz => Ok(decompress_to_vec(bytes)?),
         }
     }
 
@@ -122,7 +126,7 @@ impl Store {
 
         let uncompressed_bytes = Self::decompress(bytes.as_ref(), compression_ty)?;
         drop(bytes);
-        
+
         let val = Value::deser(&mut Cursor::new(&uncompressed_bytes))?;
         let ty = val.as_ty();
         let Some(map) = val.to_map() else {
@@ -223,7 +227,7 @@ pub enum StoreSerError {
     UnableToConvertToJson,
     UnsupportedCompression(u8),
     Lz4Decompress(Lz4DecompressError),
-    MinizDecompresss(MinizDecompressError)
+    MinizDecompresss(MinizDecompressError),
 }
 
 impl Display for StoreSerError {
@@ -239,9 +243,11 @@ impl Display for StoreSerError {
             StoreSerError::Value(e) => write!(f, "Error with values: {e}"),
             StoreSerError::SerdeJson(e) => write!(f, "Error with serde_json: {e}"),
             StoreSerError::UnableToConvertToJson => write!(f, "Unable to convert self to JSON"),
-            StoreSerError::UnsupportedCompression(b) => write!(f, "Unable to read compression type: {b:#b}"),
+            StoreSerError::UnsupportedCompression(b) => {
+                write!(f, "Unable to read compression type: {b:#b}")
+            }
             StoreSerError::Lz4Decompress(d) => write!(f, "Error with Lz4 decompression: {d}"),
-            StoreSerError::MinizDecompresss(d) => write!(f, "Error with miniz decompression: {d}")
+            StoreSerError::MinizDecompresss(d) => write!(f, "Error with miniz decompression: {d}"),
         }
     }
 }

@@ -650,7 +650,11 @@ impl Value {
                                     if let Some((real, imaginary)) =
                                         real.as_f64().zip(imaginary.as_f64())
                                     {
-                                        return Value::Imaginary(Imaginary::polar_from_real_and_imaginary(real, imaginary));
+                                        return Value::Imaginary(
+                                            Imaginary::polar_from_real_and_imaginary(
+                                                real, imaginary,
+                                            ),
+                                        );
                                     }
                                 }
                             }

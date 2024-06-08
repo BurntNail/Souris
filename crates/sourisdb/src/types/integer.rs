@@ -265,7 +265,6 @@ impl From<Integer> for f32 {
     }
 }
 
-
 #[derive(Debug, Copy, Clone)]
 pub enum FloatToIntegerConversionError {
     DecimalsNotSupported,
@@ -274,8 +273,11 @@ pub enum FloatToIntegerConversionError {
 impl Display for FloatToIntegerConversionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::DecimalsNotSupported => write!(f, "floating point decimals not supported for integer values"),
-            Self::TooLarge => write!(f, "Floating point number was too large")
+            Self::DecimalsNotSupported => write!(
+                f,
+                "floating point decimals not supported for integer values"
+            ),
+            Self::TooLarge => write!(f, "Floating point number was too large"),
         }
     }
 }
@@ -290,7 +292,7 @@ impl TryFrom<f64> for Integer {
         if value.fract() > f64::EPSILON {
             return Err(FloatToIntegerConversionError::DecimalsNotSupported);
         }
-        
+
         let floored = value.floor();
         if floored < 0.0 {
             if floored > i128::MIN as f64 {
@@ -304,7 +306,6 @@ impl TryFrom<f64> for Integer {
             } else {
                 Err(FloatToIntegerConversionError::TooLarge)
             }
-
         }
     }
 }
@@ -330,7 +331,6 @@ impl TryFrom<f32> for Integer {
             } else {
                 Err(FloatToIntegerConversionError::TooLarge)
             }
-
         }
     }
 }
