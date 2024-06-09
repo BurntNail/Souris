@@ -1,3 +1,5 @@
+//! A module containing a struct [`Integer`] designed to minimise size when serialised.
+
 use crate::utilities::cursor::Cursor;
 use alloc::{
     string::{String, ToString},
@@ -12,14 +14,38 @@ use core::{
 };
 use serde_json::{Number, Value as SJValue};
 
+///This represents whether a number is positive or negative. There are conversions to/from [`u8`]s where `1` represents negative and `0` represents positive.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SignedState {
+    #[allow(missing_docs)]
     Positive,
+    #[allow(missing_docs)]
     Negative,
 }
 
-///size of the backing integer
+impl From<SignedState> for u8 {
+    fn from(value: SignedState) -> Self {
+        match value {
+            SignedState::Positive => 0b0,
+            SignedState::Negative => 0b1,
+        }
+    }
+}
+impl TryFrom<u8> for SignedState {
+    type Error = IntegerSerError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0b0 => Ok(Self::Positive),
+            0b1 => Ok(Self::Negative),
+            _ => Err(IntegerSerError::InvalidSignedStateDiscriminant(value)),
+        }
+    }
+}
+
+///The largest unsigned integer that can be stored using [`Integer`].
 pub type BiggestInt = u128;
+///The largest signed integer that can be stored using [`Integer`].
 pub type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
 ///number of bytes for storing one `BiggestInt`
 const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated anyways and this is clearer
@@ -27,6 +53,15 @@ const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could 
 #[allow(clippy::cast_possible_truncation)]
 const ONE_BYTE_MAX_SIZE: u8 = u8::MAX - (INTEGER_MAX_SIZE as u8);
 
+///A type that represents an integer designed to be the smallest when serialised.
+/// 
+/// NB: the private `content` is always unsigned and the `signed_state` must be applied to get a valid integer out. The `TryFrom` implementations always do this.
+/// 
+/// To create an `Integer`, there are many `From` implementations for every integer type in the standard library. To get a type out, there are many `TryFrom` implementations for those same integers. These are `TryFrom` as the stored content could be too large or be have a sign and not be able to be represented by an unsigned integer.
+/// 
+/// When converting to a floating point number, precision can be lost. When converting from a floating number, it can fail if:
+/// - The floating point number was too large.
+/// - The floating point number had a decimal part (currently checked using [`f64::fract`], [`f64::EPSILON`] and the [`f32`] equivalents).
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Integer {
     ///whether the number is negative
@@ -53,17 +88,21 @@ impl Integer {
         ((self.unsigned_bits() / 8) + 1) as usize
     }
 
+    ///Whether the number is negative.
     #[must_use]
     pub fn is_negative(&self) -> bool {
         self.signed_state == SignedState::Negative
     }
 
+    ///Whether the number is positive.
     #[must_use]
     pub fn is_positive(&self) -> bool {
         self.signed_state == SignedState::Positive
     }
 
-    ///fails if doesn't fit into i64 or u64
+    ///Converts the `Integer` to a [`serde_json::Value`].
+    /// 
+    /// This can fail if the integer doesn't fit into i64 or u64 as those are the limits for [`Number`].
     #[must_use]
     pub fn to_json(self) -> Option<SJValue> {
         Some(if self.is_negative() {
@@ -75,15 +114,13 @@ impl Integer {
         })
     }
 
-    ///fails if it was a floating point number
-    pub fn from_json(n: &Number) -> Option<Self> {
+    ///Gets an `Integer` from a [`Number`].
+    /// 
+    /// Can fail if the number was representing a floating point number.
+    #[must_use] pub fn from_json(n: &Number) -> Option<Self> {
         if let Some(u) = n.as_u64() {
             Some(u.into())
-        } else if let Some(i) = n.as_i64() {
-            Some(i.into())
-        } else {
-            None
-        }
+        } else { n.as_i64().map(Into::into) }
     }
 }
 
@@ -104,10 +141,8 @@ impl Display for Integer {
 impl Debug for Integer {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let displayed = self.to_string();
-        let signed_state = self.signed_state;
 
         f.debug_struct("Integer")
-            .field("signed_state", &signed_state)
             .field("value", &displayed)
             .finish()
     }
@@ -117,6 +152,7 @@ macro_rules! new_x {
     ($($t:ty => $name:ident),+) => {
         impl Integer {
             $(
+                ///Creates an `Integer` 
                 #[must_use]
                 pub fn $name(n: $t) -> Self {
                     <Self as From<$t>>::from(n)
@@ -266,8 +302,11 @@ impl From<Integer> for f32 {
 }
 
 #[derive(Debug, Copy, Clone)]
+///An error enum to represent why a conversion from floating point number to integer failed.
 pub enum FloatToIntegerConversionError {
+    ///Integers cannot hold any decimal parts.
     DecimalsNotSupported,
+    ///Integers can only hold positive numbers up within [`BiggestInt`] and negative numbers within [`BiggestIntButSigned`]. 
     TooLarge,
 }
 impl Display for FloatToIntegerConversionError {
@@ -511,26 +550,6 @@ impl FromStr for Integer {
     }
 }
 
-impl From<SignedState> for u8 {
-    fn from(value: SignedState) -> Self {
-        match value {
-            SignedState::Positive => 0b0,
-            SignedState::Negative => 0b1,
-        }
-    }
-}
-impl TryFrom<u8> for SignedState {
-    type Error = IntegerSerError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0b0 => Ok(Self::Positive),
-            0b1 => Ok(Self::Negative),
-            _ => Err(IntegerSerError::InvalidSignedStateDiscriminant(value)),
-        }
-    }
-}
-
 #[derive(Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub enum IntegerSerError {
@@ -584,16 +603,16 @@ impl Integer {
     #[must_use]
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     pub fn ser(self) -> (SignedState, Vec<u8>) {
-        if let Ok(smol) = i8::try_from(self) {
+        if let Ok(smol) = u8::try_from(self) {
+            if smol < ONE_BYTE_MAX_SIZE {
+                return (SignedState::Positive, vec![smol]);
+            }
+        } else if let Ok(smol) = i8::try_from(self) {
             return if smol < 0 {
                 (SignedState::Negative, vec![(-smol) as u8])
             } else {
                 (SignedState::Positive, vec![smol as u8])
             };
-        } else if let Ok(pos_smol) = u8::try_from(self) {
-            if pos_smol < ONE_BYTE_MAX_SIZE {
-                return (SignedState::Positive, vec![pos_smol]);
-            }
         }
 
         let stored_size = self.min_bytes_needed();

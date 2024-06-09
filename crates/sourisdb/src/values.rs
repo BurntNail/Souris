@@ -502,7 +502,7 @@ impl Value {
                 );
 
                 match im {
-                    Imaginary::IntegerCoefficients { real, imaginary } => {
+                    Imaginary::CartesianForm { real, imaginary } => {
                         obj.insert("real".into(), real.to_json()?);
                         obj.insert("imaginary".into(), imaginary.to_json()?);
                     }
@@ -641,7 +641,7 @@ impl Value {
                                     if let Some((real, imaginary)) = Integer::from_json(&real)
                                         .zip(Integer::from_json(&imaginary))
                                     {
-                                        return Value::Imaginary(Imaginary::IntegerCoefficients {
+                                        return Value::Imaginary(Imaginary::CartesianForm {
                                             real,
                                             imaginary,
                                         });
@@ -650,11 +650,9 @@ impl Value {
                                     if let Some((real, imaginary)) =
                                         real.as_f64().zip(imaginary.as_f64())
                                     {
-                                        return Value::Imaginary(
-                                            Imaginary::polar_from_real_and_imaginary(
-                                                real, imaginary,
-                                            ),
-                                        );
+                                        return Value::Imaginary(Imaginary::polar_from_cartesian(
+                                            real, imaginary,
+                                        ));
                                     }
                                 }
                             }

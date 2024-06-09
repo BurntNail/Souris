@@ -97,7 +97,7 @@ pub fn get_value_from_stdin(
                     .with_prompt("Imaginary Part: ")
                     .interact()?;
 
-                Value::Imaginary(Imaginary::IntegerCoefficients { real, imaginary })
+                Value::Imaginary(Imaginary::CartesianForm { real, imaginary })
             }
         }
         ValueTy::Timestamp => {
