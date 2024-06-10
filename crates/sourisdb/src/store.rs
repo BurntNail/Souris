@@ -1,15 +1,11 @@
 //! Provides the main key-value store designed to be used for communications.
 
-use crate::{
-    types::integer::{Integer, IntegerSerError, SignedState},
-    utilities::cursor::Cursor,
-    values::{Value, ValueSerError, ValueTy},
-};
 use alloc::{string::String, vec, vec::Vec};
 use core::{
     fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
 };
+
 use hashbrown::HashMap;
 use lz4_flex::{block::DecompressError as Lz4DecompressError, compress, decompress};
 use miniz_oxide::{
@@ -17,6 +13,12 @@ use miniz_oxide::{
     inflate::{decompress_to_vec, DecompressError as MinizDecompressError},
 };
 use serde_json::{Error as SJError, Value as SJValue};
+
+use crate::{
+    types::integer::{Integer, IntegerSerError, SignedState},
+    utilities::cursor::Cursor,
+    values::{Value, ValueSerError, ValueTy},
+};
 
 ///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
 ///

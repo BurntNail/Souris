@@ -1,16 +1,32 @@
+//! `value_utils` currently only provides one function - `get_value_from_stdin` which allows you to easily get a value from `stdin` using `dialoguer`.
+
+use alloc::{string::String, vec, vec::Vec};
+use std::{fmt::Display, format, println};
+
+use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
+use dialoguer::{Confirm, FuzzySelect, Input, theme::Theme};
+pub use dialoguer;
+
 use crate::{
     hashbrown::HashMap,
     serde_json::Value as SJValue,
     types::imaginary::Imaginary,
     values::{Value, ValueTy},
 };
-use alloc::{string::String, vec, vec::Vec};
-use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
-use dialoguer::{theme::Theme, Confirm, FuzzySelect, Input};
-use std::{fmt::Display, format, println};
 
-pub use dialoguer;
-
+///Get a [`Value`] from stdin using `dialoguer`. NB: a theme should be provided, but these are easy to construct.
+///
+///```rust
+/// use dialoguer::theme::ColorfulTheme;
+/// use sourisdb::utilities::value_utils::get_value_from_stdin;
+///
+/// let theme = ColorfulTheme::default();
+/// let val = get_value_from_stdin("Value: ", &theme).unwrap();
+/// println!("Received value: {val:?}");
+/// ```
+///
+/// ## Errors
+/// This function can return a `dialoguer::Error`, which *(as of 0.11.0)* is only a wrapper over [`std::io::Error`]. This means that the function only fails with IO errors, like `stdin` being unusual.
 #[allow(clippy::too_many_lines)]
 pub fn get_value_from_stdin(
     prompt: impl Display,

@@ -1,6 +1,5 @@
 //! A module containing a struct [`Integer`] designed to minimise size when serialised.
 
-use crate::utilities::cursor::Cursor;
 use alloc::{
     string::{String, ToString},
     vec,
@@ -12,7 +11,10 @@ use core::{
     ops::{Add, Div, Mul, Sub},
     str::FromStr,
 };
+
 use serde_json::{Number, Value as SJValue};
+
+use crate::{display_bytes_as_hex_array, utilities::cursor::Cursor};
 
 ///This represents whether a number is positive or negative. There are conversions to/from [`u8`]s where `1` represents negative and `0` represents positive.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
@@ -47,11 +49,11 @@ impl TryFrom<u8> for SignedState {
 pub type BiggestInt = u128;
 ///The largest signed integer that can be stored using [`Integer`].
 pub type BiggestIntButSigned = i128; //convenience so it's all at the top of the file
-///number of bytes for storing one `BiggestInt`
+///The number of bytes required for storing one [`BiggestInt`]
 const INTEGER_MAX_SIZE: usize = (BiggestInt::BITS / 8) as usize; //yes, I could >> 3, but it gets compile-time evaluated anyways and this is clearer
-///max size for an integer to be stored by itself
+///The maximum size for an integer to be stored without a size before it
 #[allow(clippy::cast_possible_truncation)]
-const ONE_BYTE_MAX_SIZE: u8 = u8::MAX - (INTEGER_MAX_SIZE as u8);
+pub const ONE_BYTE_MAX_SIZE: u8 = u8::MAX - (INTEGER_MAX_SIZE as u8);
 
 ///A type that represents an integer designed to be the smallest when serialised.
 ///
@@ -71,13 +73,22 @@ pub struct Integer {
 }
 
 impl Integer {
-    ///the minimum number of bits required to store this as an unsigned integer
-    fn unsigned_bits(&self) -> u32 {
-        let x = BiggestInt::from_le_bytes(self.content);
-        if x == 0 {
+    ///The minimum number of bits required to store this integer as an unsigned integer
+    ///
+    ///```rust
+    /// use sourisdb::types::integer::Integer;
+    ///
+    /// let n: Integer = 257.into();
+    /// let min_bits = n.unsigned_bits();
+    /// assert_eq!(min_bits, 9);
+    /// ```
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    pub fn unsigned_bits(&self) -> u32 {
+        let x = f64::from(*self);
+        if x == 0.0 {
             0
         } else {
-            x.ilog2()
+            x.log2().ceil() as u32
         }
     }
 
@@ -143,10 +154,14 @@ impl Display for Integer {
 #[allow(clippy::missing_fields_in_debug)]
 impl Debug for Integer {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let displayed = self.to_string();
+        let ss = self.signed_state;
+        let hex = display_bytes_as_hex_array(&self.content);
+        let content = self.to_string();
 
         f.debug_struct("Integer")
-            .field("value", &displayed)
+            .field("signed_state", &ss)
+            .field("content", &hex)
+            .field("content", &content)
             .finish()
     }
 }
@@ -201,11 +216,6 @@ macro_rules! from_signed {
             type Error = IntegerSerError;
 
             fn try_from(i: Integer) -> Result<Self, Self::Error> {
-                let multiplier = match i.signed_state {
-                    SignedState::Negative => -1,
-                    _ => 1,
-                };
-
                 if i.unsigned_bits() > (<$t>::BITS - 1) {
                     return Err(IntegerSerError::WrongType);
                 }
@@ -220,7 +230,14 @@ macro_rules! from_signed {
                     out[i] = b;
                 }
 
-                Ok(<$t>::from_le_bytes(out) * multiplier)
+                let raw = <$t>::from_le_bytes(out);
+                let out = if i.signed_state == SignedState::Negative {
+                    -raw
+                } else {
+                    raw
+                };
+
+                Ok(out)
             }
         }
         )+
@@ -276,30 +293,19 @@ from_signed!(i8, i16, i32, i64, isize, i128);
 from_unsigned!(u8, u16, u32, u64, usize, u128);
 
 impl From<Integer> for f64 {
+    #[allow(clippy::cast_precision_loss)]
     fn from(value: Integer) -> Self {
         match value.signed_state {
-            SignedState::Positive => {
-                let u = u128::try_from(value).expect("just checked for sign");
-                u as f64
-            }
-            SignedState::Negative => {
-                let s = i128::try_from(value).expect("just checked for sign");
-                s as f64
-            }
+            SignedState::Positive => u128::from_le_bytes(value.content) as f64,
+            SignedState::Negative => (-i128::from_le_bytes(value.content)) as f64,
         }
     }
 }
 impl From<Integer> for f32 {
     fn from(value: Integer) -> Self {
         match value.signed_state {
-            SignedState::Positive => {
-                let u = u128::try_from(value).expect("just checked for sign");
-                u as f32
-            }
-            SignedState::Negative => {
-                let s = i128::try_from(value).expect("just checked for sign");
-                s as f32
-            }
+            SignedState::Positive => u128::from_le_bytes(value.content) as f32,
+            SignedState::Negative => (-i128::from_le_bytes(value.content)) as f32,
         }
     }
 }
@@ -561,12 +567,17 @@ impl FromStr for Integer {
 
 #[derive(Debug)]
 #[allow(clippy::module_name_repetitions)]
+///Error type for dealing with serialisation errors related to [`Integer`]s.
 pub enum IntegerSerError {
+    ///An invalid signed state was found - these should only be `0b1` and `0b0`
     InvalidSignedStateDiscriminant(u8),
-    InvalidIntegerSizeDiscriminant(u8),
+    ///Not enough bytes were within the cursor to deserialise the integer
     NotEnoughBytes,
+    ///Integers can only be turned back into rust integers that they actually fit inside - this can be caused by sign errors (eg. fitting `-12` into a `usize`) or size concerns (eg. fitting `123456789101112131415` into a `u8`)
     WrongType,
+    ///Error parsing an integer from a string using the standard library.
     IntegerParseError(ParseIntError),
+    ///Custom Serde error for use serialising and deserialising with `serde`.
     SerdeCustom(String),
 }
 
@@ -581,9 +592,6 @@ impl Display for IntegerSerError {
         match self {
             IntegerSerError::InvalidSignedStateDiscriminant(b) => {
                 write!(f, "Invalid signed state discriminant found: {b:#b}")
-            }
-            IntegerSerError::InvalidIntegerSizeDiscriminant(b) => {
-                write!(f, "Invalid integer size discriminant found: {b:#b}")
             }
             IntegerSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
             IntegerSerError::WrongType => write!(
@@ -609,6 +617,12 @@ impl std::error::Error for IntegerSerError {
 }
 
 impl Integer {
+    ///Serialises an integer into a signed state and bytes.
+    ///
+    ///Follows the following logic:
+    /// - Is the integer less than or equal to [`ONE_BYTE_MAX_SIZE`]. If it is, just return it in a byte vector.
+    /// - Store the number of bytes required to hold the integer.
+    /// - Store the bytes of the integer, skipping leading zero bytes
     #[must_use]
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     pub fn ser(self) -> (SignedState, Vec<u8>) {
@@ -636,6 +650,10 @@ impl Integer {
         (self.signed_state, res)
     }
 
+    ///Deserialise bytes inside a [`Cursor`] into an Integer.
+    ///
+    /// ## Errors
+    /// - Can fail with [`IntegerSerError`] if there aren't enough bytes
     pub fn deser(
         signed_state: SignedState,
         reader: &mut Cursor<u8>,
@@ -673,13 +691,15 @@ impl Integer {
 
 #[cfg(test)]
 mod tests {
+    use alloc::{format, string::ToString};
+    use core::str::FromStr;
+
+    use proptest::prelude::*;
+
     use crate::{
         types::integer::{BiggestInt, BiggestIntButSigned, Integer},
         utilities::cursor::Cursor,
     };
-    use alloc::{format, string::ToString};
-    use core::str::FromStr;
-    use proptest::prelude::*;
 
     proptest! {
         #[test]

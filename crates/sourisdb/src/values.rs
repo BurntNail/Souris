@@ -1,3 +1,22 @@
+use alloc::{
+    string::{FromUtf8Error, String, ToString},
+    vec,
+    vec::Vec,
+};
+use core::{
+    fmt::{Debug, Display, Formatter},
+    hash::{Hash, Hasher},
+    net::{Ipv4Addr, Ipv6Addr},
+    num::FpCategory,
+    str::FromStr,
+};
+
+use cfg_if::cfg_if;
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono_tz::Tz;
+use hashbrown::HashMap;
+use serde_json::{Error as SJError, Map as SJMap, Number, Value as SJValue};
+
 use crate::{
     display_bytes_as_hex_array,
     types::{
@@ -6,23 +25,6 @@ use crate::{
     },
     utilities::cursor::Cursor,
 };
-use alloc::{
-    string::{FromUtf8Error, String, ToString},
-    vec,
-    vec::Vec,
-};
-use cfg_if::cfg_if;
-use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
-use chrono_tz::Tz;
-use core::{
-    fmt::{Debug, Display, Formatter},
-    hash::{Hash, Hasher},
-    net::{Ipv4Addr, Ipv6Addr},
-    num::FpCategory,
-    str::FromStr,
-};
-use hashbrown::HashMap;
-use serde_json::{Error as SJError, Map as SJMap, Number, Value as SJValue};
 
 #[derive(Clone)]
 pub enum Value {
@@ -1056,7 +1058,14 @@ impl Value {
 
 #[cfg(test)]
 mod tests {
-    use super::Value;
+    use alloc::{
+        format,
+        string::{String, ToString},
+        vec::Vec,
+    };
+
+    use proptest::{arbitrary::any, prop_assert_eq, proptest};
+
     use crate::{
         types::{
             imaginary::Imaginary,
@@ -1064,12 +1073,8 @@ mod tests {
         },
         utilities::cursor::Cursor,
     };
-    use alloc::{
-        format,
-        string::{String, ToString},
-        vec::Vec,
-    };
-    use proptest::{arbitrary::any, prop_assert_eq, proptest};
+
+    use super::Value;
 
     proptest! {
         #[test]
@@ -1137,7 +1142,7 @@ mod tests {
         #[test]
         fn test_int (a in any::<BiggestInt>(), b in any::<BiggestIntButSigned>()) {
             {
-                let v = Value::Integer(a.clone().into());
+                let v = Value::Integer(a.into());
 
                 let bytes = v.ser().unwrap();
                 let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
@@ -1146,7 +1151,7 @@ mod tests {
                 prop_assert_eq!(a, out);
             }
             {
-                let v = Value::Integer(b.clone().into());
+                let v = Value::Integer(b.into());
 
                 let bytes = v.ser().unwrap();
                 let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
