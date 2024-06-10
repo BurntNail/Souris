@@ -311,15 +311,18 @@ pub enum FloatToIntegerConversionError {
     DecimalsNotSupported,
     ///Integers can only hold positive numbers up within [`BiggestInt`] and negative numbers within [`BiggestIntButSigned`].
     TooLarge,
+    ///Only finite numbers are supported for conversion into integers - there's no meaningful representation for `NaN` or infinite numbers.
+    NotFinite,
 }
 impl Display for FloatToIntegerConversionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::DecimalsNotSupported => write!(
                 f,
-                "floating point decimals not supported for integer values"
+                "Floating point decimals not supported for integer values"
             ),
             Self::TooLarge => write!(f, "Floating point number was too large"),
+            Self::NotFinite => write!(f, "Floating point number was not finite"),
         }
     }
 }
@@ -331,6 +334,9 @@ impl TryFrom<f64> for Integer {
 
     #[allow(clippy::collapsible_else_if)]
     fn try_from(value: f64) -> Result<Self, Self::Error> {
+        if !value.is_finite() {
+            return Err(FloatToIntegerConversionError::NotFinite);
+        }
         if value.fract() > f64::EPSILON {
             return Err(FloatToIntegerConversionError::DecimalsNotSupported);
         }
@@ -343,7 +349,7 @@ impl TryFrom<f64> for Integer {
                 Err(FloatToIntegerConversionError::TooLarge)
             }
         } else {
-            if floored > u128::MAX as f64 {
+            if floored < u128::MAX as f64 {
                 Ok((floored as u128).into())
             } else {
                 Err(FloatToIntegerConversionError::TooLarge)
