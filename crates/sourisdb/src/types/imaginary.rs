@@ -130,6 +130,7 @@ impl Imaginary {
     ///
     /// let expected_real = 12.into();
     /// let expected_imaginary = (-5).into();
+    ///
     /// assert_eq!(real, expected_real);
     /// assert_eq!(imaginary, expected_imaginary);
     /// ```
@@ -195,29 +196,55 @@ impl Imaginary {
     /// The 4 magic bits are kept inside the range `0b0000_0000` to `0b0000_1111`.
     ///
     /// ## Polar Form
-    /// - The magic bits only contain `0b0001` which represents that it is polar form.
+    /// - The magic bits only contain `0` which represents that it is polar form.
     /// - The modulus and argument are directly written into the vector in that order and so the vector is guaranteed to be 16 bytes.
     ///
     /// ## Cartesian Form
-    /// - The magic bits contain values inside `0b0110` - the first `1` represents the sign of the imaginary part and the second `1` represents the sign of the real part.
     /// - The real and imaginary parts are serialised into the vector in that order using [`Integer::ser`]
+    /// - The magic bits contain values inside contain the following contents when turned into a u8:
+    ///
+    /// `u` = unsigned integer, `sp` = signed positive integer, `sn` = signed negative integer
+    /// 1. `u,u`
+    /// 2. `u,sp`
+    /// 3. `sp,u`
+    /// 4. `u,sn`
+    /// 5. `sn,u`
+    /// 6. `sp,sp`
+    /// 7. `sp,sn`
+    /// 8. `sn, sp`
+    /// 9. `sn, sn`
     #[must_use]
     pub fn ser(&self) -> (u8, Vec<u8>) {
+        use SignedState::{SignedNegative as SN, SignedPositive as SP, Unsigned as U};
+
         match self {
             Imaginary::CartesianForm { real, imaginary } => {
+                //serialise
                 let (re_ss, mut re_bytes) = real.ser();
                 let (im_ss, im_bytes) = imaginary.ser();
 
+                let magic_bytes = match (re_ss, im_ss) {
+                    (U, U) => 1,
+                    (U, SP) => 2,
+                    (SP, U) => 3,
+                    (U, SN) => 4,
+                    (SN, U) => 5,
+                    (SP, SP) => 6,
+                    (SP, SN) => 7,
+                    (SN, SP) => 8,
+                    (SN, SN) => 9,
+                };
+
                 re_bytes.extend(im_bytes.iter());
 
-                ((u8::from(re_ss) << 1) | (u8::from(im_ss) << 2), re_bytes)
+                (magic_bytes, re_bytes)
             }
             Imaginary::PolarForm { modulus, argument } => {
                 let mut bytes = Vec::with_capacity(16);
                 bytes.extend(modulus.to_le_bytes());
                 bytes.extend(argument.to_le_bytes());
 
-                (1, bytes)
+                (0, bytes)
             }
         }
     }
@@ -229,9 +256,22 @@ impl Imaginary {
     /// - If it fails to deserialise the [`Integer`], it will fail using [`IntegerSerError`].
     /// - If it fails to deserialise the [`SignedState`], it will fail using [`IntegerSerError::InvalidSignedStateDiscriminant`].
     pub fn deser(magic_bits: u8, bytes: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
-        if magic_bits & 0b0001 == 0 {
-            let real_signed_state = SignedState::try_from((magic_bits & 0b0010) >> 1)?;
-            let imaginary_signed_state = SignedState::try_from((magic_bits & 0b0100) >> 2)?;
+        use SignedState::{SignedNegative as SN, SignedPositive as SP, Unsigned as U};
+
+        if magic_bits > 0 {
+            let (real_signed_state, imaginary_signed_state) = match magic_bits {
+                0 => unreachable!(),
+                1 => (U, U),
+                2 => (U, SP),
+                3 => (SP, U),
+                4 => (U, SN),
+                5 => (SN, U),
+                6 => (SP, SP),
+                7 => (SP, SN),
+                8 => (SN, SP),
+                9 => (SN, SN),
+                _ => return Err(IntegerSerError::InvalidSignedStateDiscriminant(magic_bits)),
+            };
 
             let real = Integer::deser(real_signed_state, bytes)?;
             let imaginary = Integer::deser(imaginary_signed_state, bytes)?;

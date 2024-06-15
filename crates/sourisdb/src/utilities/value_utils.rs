@@ -4,8 +4,8 @@ use alloc::{string::String, vec, vec::Vec};
 use std::{fmt::Display, format, println};
 
 use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
-use dialoguer::{Confirm, FuzzySelect, Input, theme::Theme};
 pub use dialoguer;
+use dialoguer::{theme::Theme, Confirm, FuzzySelect, Input};
 
 use crate::{
     hashbrown::HashMap,
@@ -16,7 +16,7 @@ use crate::{
 
 ///Get a [`Value`] from stdin using `dialoguer`. NB: a theme should be provided, but these are easy to construct.
 ///
-///```rust
+///```rust,no_run
 /// use dialoguer::theme::ColorfulTheme;
 /// use sourisdb::utilities::value_utils::get_value_from_stdin;
 ///

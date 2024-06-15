@@ -475,7 +475,8 @@ impl std::error::Error for ValueSerError {
 }
 
 impl Value {
-    ///if it is an integer outside of the bounds of [`i64::MIN`] to [`u64::MAX`], then it will fail. it will also fail if it was a float that wasn't NaN or infinity
+    ///if it is an integer outside the bounds of [`i64::MIN`] to [`u64::MAX`], then it will fail. it will also fail if it was a float that wasn't NaN or infinity
+    #[allow(clippy::too_many_lines)]
     pub fn convert_to_json(self) -> Option<SJValue> {
         Some(match self {
             Value::Character(c) => SJValue::String(c.into()),
@@ -608,6 +609,7 @@ impl Value {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn convert_from_json(val: SJValue) -> Self {
         match val {
             SJValue::Null => Self::Null(()),
@@ -756,7 +758,7 @@ impl Value {
             let len = {
                 if (byte & 0b0000_0001) > 0 {
                     // we used an integer
-                    Integer::deser(SignedState::Positive, input)?.try_into()?
+                    Integer::deser(SignedState::Unsigned, input)?.try_into()?
                 } else {
                     //we encoded it in the byte
                     ((byte & 0b0000_1110) >> 1) as usize
@@ -919,7 +921,7 @@ impl Value {
 
         Ok(match ty {
             ValueTy::Integer => {
-                let signed_state = SignedState::try_from(byte & 0b0000_0001)?;
+                let signed_state = SignedState::try_from(byte & 0b0000_0011)?;
                 let int = Integer::deser(signed_state, bytes)?;
                 Self::Integer(int)
             }
@@ -929,7 +931,7 @@ impl Value {
                 Self::Imaginary(Imaginary::deser(magic_bits, bytes)?)
             }
             ValueTy::Character => {
-                let ch = char::from_u32(Integer::deser(SignedState::Positive, bytes)?.try_into()?)
+                let ch = char::from_u32(Integer::deser(SignedState::Unsigned, bytes)?.try_into()?)
                     .ok_or(ValueSerError::InvalidCharacter)?;
                 Self::Character(ch)
             }
@@ -937,16 +939,16 @@ impl Value {
                 let year_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
 
                 let year = Integer::deser(year_signed_state, bytes)?.try_into()?;
-                let month = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
-                let day = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let month = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                let day = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
 
                 let date = NaiveDate::from_ymd_opt(year, month, day)
                     .ok_or(ValueSerError::InvalidDateOrTime)?;
 
-                let hour = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
-                let min = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
-                let sec = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
-                let ns = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let hour = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                let min = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                let sec = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                let ns = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
 
                 let time = NaiveTime::from_hms_nano_opt(hour, min, sec, ns)
                     .ok_or(ValueSerError::InvalidDateOrTime)?;
@@ -954,7 +956,7 @@ impl Value {
                 Self::Timestamp(NaiveDateTime::new(date, time))
             }
             ValueTy::String => {
-                let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
                 let str_bytes = bytes
                     .read(len)
                     .ok_or(ValueSerError::NotEnoughBytes)?
@@ -973,7 +975,7 @@ impl Value {
                 Self::JSON(value)
             }
             ValueTy::Binary => {
-                let len: usize = Integer::deser(SignedState::Positive, bytes)?.try_into()?;
+                let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
                 let bytes = bytes
                     .read(len)
                     .ok_or(ValueSerError::NotEnoughBytes)?
@@ -1067,10 +1069,7 @@ mod tests {
     use proptest::{arbitrary::any, prop_assert_eq, proptest};
 
     use crate::{
-        types::{
-            imaginary::Imaginary,
-            integer::{BiggestInt, BiggestIntButSigned},
-        },
+        types::{imaginary::Imaginary, integer::BiggestIntButSigned},
         utilities::cursor::Cursor,
     };
 
@@ -1140,25 +1139,16 @@ mod tests {
         }
 
         #[test]
-        fn test_int (a in any::<BiggestInt>(), b in any::<BiggestIntButSigned>()) {
-            {
-                let v = Value::Integer(a.into());
+        fn test_int (i in any::<BiggestIntButSigned>()) {
+            let v = Value::Integer(i.into());
 
-                let bytes = v.ser().unwrap();
-                let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
-                let out = BiggestInt::try_from(out_value.to_int().unwrap()).unwrap();
+            let bytes = v.ser().unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            prop_assert_eq!(v, out_value.clone());
 
-                prop_assert_eq!(a, out);
-            }
-            {
-                let v = Value::Integer(b.into());
+            let out = BiggestIntButSigned::try_from(out_value.to_int().unwrap()).unwrap();
 
-                let bytes = v.ser().unwrap();
-                let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
-                let out = BiggestIntButSigned::try_from(out_value.to_int().unwrap()).unwrap();
-
-                prop_assert_eq!(b, out);
-            }
+            prop_assert_eq!(out, i);
         }
 
         //TODO: more tests :)

@@ -6,3 +6,6 @@
 # everyone who runs the test benefits from these saved cases.
 cc 2949c4702048e93654492708748c2d486766af242be4c1755ba4a61cc90d37c3 # shrinks to modulus = -0.0, argument = 0.0
 cc db0e4549629e448620f589b70e3789d5e0c36d6bd32ed3612c5a106857d586c4 # shrinks to c = '¡'
+cc 6cca99d44ca328a54d7fda882829fc10949828abbebad0f59630a9f0be7be524 # shrinks to c = 'Ā'
+cc 80a3539b026cbf6480b83084ae809d35981f44ea0f07a88ea8cfe42a849fc6a4 # shrinks to a = 0, b = -1
+cc 90c92fdf150511fe916906c59bdb7378ff3b734132fb6c320dc294aacd09359b # shrinks to i = -1

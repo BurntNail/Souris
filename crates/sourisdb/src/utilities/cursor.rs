@@ -110,6 +110,7 @@ impl<'a, T> Cursor<'a, T> {
     }
 
     ///Peeks at a certain number of bytes - follows the exact same behaviour as [`Cursor::read`] but without changing the position of the pointer.
+    #[must_use]
     pub fn peek(&self, n: usize) -> Option<&'a [T]> {
         let start = self.pos;
         let end = start.checked_add(n)?;
@@ -209,12 +210,7 @@ impl<'a, T> std::io::Seek for Cursor<'a, T> {
                 }
             }
             std::io::SeekFrom::End(offset) => {
-                if offset > 0 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "Goes out of bounds".to_string(),
-                    ));
-                } else if !self.seek_backwards((-offset) as usize) {
+                if offset > 0 || !self.seek_backwards((-offset) as usize) {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         "Goes out of bounds".to_string(),

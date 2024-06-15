@@ -4,18 +4,14 @@
 #[macro_use]
 extern crate tracing;
 
-use crate::v1_routes::{
-    db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
-    state::SourisState,
-    value::{add_kv, get_value, rm_key},
-};
+use std::time::Duration;
+
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
     routing::{get, post, put},
     Router,
 };
-use std::time::Duration;
 use tokio::{
     net::TcpListener,
     signal,
@@ -23,7 +19,13 @@ use tokio::{
     task::JoinHandle,
 };
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{fmt::format::FmtSpan, prelude::*, EnvFilter};
+use tracing_subscriber::{prelude::*, EnvFilter};
+
+use crate::v1_routes::{
+    db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
+    state::SourisState,
+    value::{add_kv, get_value, rm_key},
+};
 
 mod error;
 mod v1_routes;

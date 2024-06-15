@@ -7,6 +7,7 @@ use alloc::{
 };
 use core::{
     fmt::{Debug, Display, Formatter},
+    hash::{Hash, Hasher},
     num::ParseIntError,
     ops::{Add, Div, Mul, Sub},
     str::FromStr,
@@ -16,20 +17,21 @@ use serde_json::{Number, Value as SJValue};
 
 use crate::{display_bytes_as_hex_array, utilities::cursor::Cursor};
 
-///This represents whether a number is positive or negative. There are conversions to/from [`u8`]s where `1` represents negative and `0` represents positive.
+///This represents whether a number is signed or unsigned. There are conversions to/from [`u8`]s which use two bytes.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub enum SignedState {
     #[allow(missing_docs)]
-    Positive,
-    #[allow(missing_docs)]
-    Negative,
+    Unsigned,
+    SignedPositive,
+    SignedNegative,
 }
 
 impl From<SignedState> for u8 {
     fn from(value: SignedState) -> Self {
         match value {
-            SignedState::Positive => 0b0,
-            SignedState::Negative => 0b1,
+            SignedState::Unsigned => 0,
+            SignedState::SignedPositive => 1,
+            SignedState::SignedNegative => 2,
         }
     }
 }
@@ -38,8 +40,9 @@ impl TryFrom<u8> for SignedState {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0b0 => Ok(Self::Positive),
-            0b1 => Ok(Self::Negative),
+            0 => Ok(Self::Unsigned),
+            1 => Ok(Self::SignedPositive),
+            2 => Ok(Self::SignedNegative),
             _ => Err(IntegerSerError::InvalidSignedStateDiscriminant(value)),
         }
     }
@@ -57,58 +60,61 @@ pub const ONE_BYTE_MAX_SIZE: u8 = u8::MAX - (INTEGER_MAX_SIZE as u8);
 
 ///A type that represents an integer designed to be the smallest when serialised.
 ///
-/// NB: the private `content` is always unsigned and the `signed_state` must be applied to get a valid integer out. The `TryFrom` implementations always do this.
-///
 /// To create an `Integer`, there are many `From` implementations for every integer type in the standard library. To get a type out, there are many `TryFrom` implementations for those same integers. These are `TryFrom` as the stored content could be too large or be have a sign and not be able to be represented by an unsigned integer.
 ///
 /// When converting to a floating point number, precision can be lost. When converting from a floating number, it can fail if:
 /// - The floating point number was too large.
 /// - The floating point number had a decimal part (currently checked using [`f64::fract`], [`f64::EPSILON`] and the [`f32`] equivalents).
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone)]
 pub struct Integer {
-    ///whether the number is negative
     signed_state: SignedState,
-    ///positive little endian bytes
+    ///bytes - follows the signed-ness of `signed_state`
     content: [u8; INTEGER_MAX_SIZE],
+    number_of_bytes_used: usize,
+}
+
+impl PartialEq for Integer {
+    fn eq(&self, other: &Self) -> bool {
+        if self.content[0..self.number_of_bytes_used]
+            != other.content[0..other.number_of_bytes_used]
+        {
+            return false;
+        }
+
+        match self.signed_state {
+            SignedState::Unsigned | SignedState::SignedPositive => {
+                other.signed_state != SignedState::SignedNegative
+            }
+            SignedState::SignedNegative => other.signed_state == SignedState::SignedNegative,
+        }
+    }
+}
+impl Eq for Integer {}
+
+impl Hash for Integer {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let ss_to_be_hashed = if self.signed_state == SignedState::SignedNegative {
+            SignedState::SignedNegative
+        } else {
+            SignedState::SignedPositive
+        };
+        ss_to_be_hashed.hash(state);
+        self.content[0..self.number_of_bytes_used].hash(state);
+        self.number_of_bytes_used.hash(state);
+    }
 }
 
 impl Integer {
-    ///The minimum number of bits required to store this integer as an unsigned integer
-    ///
-    ///```rust
-    /// use sourisdb::types::integer::Integer;
-    ///
-    /// let n: Integer = 257.into();
-    /// let min_bits = n.unsigned_bits();
-    /// assert_eq!(min_bits, 9);
-    /// ```
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    pub fn unsigned_bits(&self) -> u32 {
-        let x = f64::from(*self);
-        if x == 0.0 {
-            0
-        } else {
-            x.log2().ceil() as u32
-        }
-    }
-
-    ///The minimum number of bytes required to store this as an unsigned integer
-    ///
-    /// NB: always <= `INTEGER_MAX_SIZE`
-    fn min_bytes_needed(&self) -> usize {
-        ((self.unsigned_bits() / 8) + 1) as usize
-    }
-
     ///Whether the number is negative.
     #[must_use]
     pub fn is_negative(&self) -> bool {
-        self.signed_state == SignedState::Negative
+        self.signed_state == SignedState::SignedNegative
     }
 
     ///Whether the number is positive.
     #[must_use]
     pub fn is_positive(&self) -> bool {
-        self.signed_state == SignedState::Positive
+        self.signed_state != SignedState::SignedNegative
     }
 
     ///Converts the `Integer` to a [`serde_json::Value`].
@@ -141,12 +147,16 @@ impl Integer {
 impl Display for Integer {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.signed_state {
-            SignedState::Negative => {
-                write!(f, "{}", -BiggestIntButSigned::from_le_bytes(self.content))
+            SignedState::SignedPositive | SignedState::SignedNegative => {
+                match BiggestIntButSigned::try_from(*self) {
+                    Ok(i) => write!(f, "{i}"),
+                    Err(e) => write!(f, "{e}"),
+                }
             }
-            SignedState::Positive => {
-                write!(f, "{}", BiggestInt::from_le_bytes(self.content))
-            }
+            SignedState::Unsigned => match BiggestInt::try_from(*self) {
+                Ok(i) => write!(f, "{i}"),
+                Err(e) => write!(f, "{e}"),
+            },
         }
     }
 }
@@ -154,14 +164,14 @@ impl Display for Integer {
 #[allow(clippy::missing_fields_in_debug)]
 impl Debug for Integer {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let ss = self.signed_state;
         let hex = display_bytes_as_hex_array(&self.content);
         let content = self.to_string();
 
         f.debug_struct("Integer")
-            .field("signed_state", &ss)
-            .field("content", &hex)
+            .field("signed_state", &self.signed_state)
+            .field("bytes_used", &self.number_of_bytes_used)
             .field("content", &content)
+            .field("bytes", &hex)
             .finish()
     }
 }
@@ -187,26 +197,42 @@ macro_rules! from_signed {
             fn from(n: $t) -> Self {
                 if n == 0 {
                     Self {
-                        signed_state: SignedState::Positive,
+                        signed_state: SignedState::SignedPositive,
                         content: [0; INTEGER_MAX_SIZE],
+                        number_of_bytes_used: 0,
                     }
                 } else if n < 0 {
-                    let mut content = [0_u8; INTEGER_MAX_SIZE];
-                    for (i, b) in (-n).to_le_bytes().into_iter().enumerate() {
-                        content[i] = b;
-                    }
-                    Self {
-                        signed_state: SignedState::Negative,
-                        content,
-                    }
-                } else {
-                    let mut content = [0_u8; INTEGER_MAX_SIZE];
+                    let mut content = [u8::MAX; INTEGER_MAX_SIZE];
+                    let mut last_non_filled_byte = 0;
+
                     for (i, b) in n.to_le_bytes().into_iter().enumerate() {
                         content[i] = b;
+
+                        if b != u8::MAX {
+                            last_non_filled_byte = i + 1;
+                        }
                     }
+
                     Self {
-                        signed_state: SignedState::Positive,
+                        signed_state: SignedState::SignedNegative,
                         content,
+                        number_of_bytes_used: last_non_filled_byte,
+                    }
+                } else {
+                    let mut content = [0; INTEGER_MAX_SIZE];
+                    let mut last_non_zero_byte = 0;
+
+                    for (i, b) in n.to_le_bytes().into_iter().enumerate() {
+                        content[i] = b;
+                        if b != 0 {
+                            last_non_zero_byte = i + 1;
+                        }
+                    }
+
+                    Self {
+                        signed_state: SignedState::SignedPositive,
+                        content,
+                        number_of_bytes_used: last_non_zero_byte,
                     }
                 }
             }
@@ -216,28 +242,40 @@ macro_rules! from_signed {
             type Error = IntegerSerError;
 
             fn try_from(i: Integer) -> Result<Self, Self::Error> {
-                if i.unsigned_bits() > (<$t>::BITS - 1) {
-                    return Err(IntegerSerError::WrongType);
+                const T_BYTES: usize = (<$t>::BITS / 8) as usize;
+                if i.number_of_bytes_used > T_BYTES {
+                    return Err(IntegerSerError::TooBigToFit);
                 }
 
-                let mut out = [0_u8; (<$t>::BITS / 8) as usize];
-                for (i, b) in i
-                    .content
-                    .into_iter()
-                    .enumerate()
-                    .take((<$t>::BITS / 8) as usize)
-                {
-                    out[i] = b;
-                }
+                let out = if i.signed_state == SignedState::SignedNegative {
+                    let mut start = [u8::MAX; T_BYTES];
 
-                let raw = <$t>::from_le_bytes(out);
-                let out = if i.signed_state == SignedState::Negative {
-                    -raw
+                    for (i, b) in i.content
+                        .into_iter()
+                        .enumerate()
+                        .take(i.number_of_bytes_used)
+                    {
+                        start[i] = b;
+                    }
+
+                    start
                 } else {
-                    raw
+                    let mut start = [0; T_BYTES];
+
+                    for (i, b) in i
+                        .content
+                        .into_iter()
+                        .enumerate()
+                        .take(i.number_of_bytes_used)
+                    {
+                        start[i] = b;
+                    }
+
+
+                    start
                 };
 
-                Ok(out)
+                Ok(<$t>::from_le_bytes(out))
             }
         }
         )+
@@ -249,12 +287,18 @@ macro_rules! from_unsigned {
         impl From<$t> for Integer {
             fn from(n: $t) -> Self {
                 let mut content = [0_u8; INTEGER_MAX_SIZE];
+                let mut last_non_zero_byte = 0;
                 for (i, b) in n.to_le_bytes().into_iter().enumerate() {
                     content[i] = b;
+                    if b != 0 {
+                        last_non_zero_byte = i;
+                    }
                 }
+
                 Self {
-                    signed_state: SignedState::Positive,
+                    signed_state: SignedState::Unsigned,
                     content,
+                    number_of_bytes_used: last_non_zero_byte + 1
                 }
             }
         }
@@ -262,25 +306,26 @@ macro_rules! from_unsigned {
             type Error = IntegerSerError;
 
             fn try_from(i: Integer) -> Result<Self, Self::Error> {
-                if i.signed_state == SignedState::Negative {
-                    return Err(IntegerSerError::WrongType);
+                const T_BYTES: usize = (<$t>::BITS / 8) as usize;
+                if i.number_of_bytes_used > T_BYTES {
+                    return Err(IntegerSerError::TooBigToFit);
+                }
+                if i.signed_state == SignedState::SignedNegative {
+                    return Err(IntegerSerError::SignError);
                 }
 
-                if i.unsigned_bits() > <$t>::BITS {
-                    return Err(IntegerSerError::WrongType);
-                }
-
-                let mut out = [0_u8; (<$t>::BITS / 8) as usize];
+                let mut out = [0_u8; T_BYTES];
                 for (i, b) in i
                     .content
                     .into_iter()
                     .enumerate()
-                    .take((<$t>::BITS / 8) as usize)
+                    .take(T_BYTES)
                 {
                     out[i] = b;
                 }
 
                 Ok(<$t>::from_le_bytes(out))
+
             }
         }
         )+
@@ -296,16 +341,28 @@ impl From<Integer> for f64 {
     #[allow(clippy::cast_precision_loss)]
     fn from(value: Integer) -> Self {
         match value.signed_state {
-            SignedState::Positive => u128::from_le_bytes(value.content) as f64,
-            SignedState::Negative => (-i128::from_le_bytes(value.content)) as f64,
+            SignedState::Unsigned => BiggestInt::try_from(value).unwrap_or_else(|_| {
+                unreachable!("somehow failed to convert unsigned into BiggestInt")
+            }) as f64,
+            SignedState::SignedPositive | SignedState::SignedNegative => {
+                BiggestIntButSigned::try_from(value).unwrap_or_else(|_| {
+                    unreachable!("somehow failed to convert signed into BiggestIntButSigned")
+                }) as f64
+            }
         }
     }
 }
 impl From<Integer> for f32 {
     fn from(value: Integer) -> Self {
         match value.signed_state {
-            SignedState::Positive => u128::from_le_bytes(value.content) as f32,
-            SignedState::Negative => (-i128::from_le_bytes(value.content)) as f32,
+            SignedState::Unsigned => BiggestInt::try_from(value).unwrap_or_else(|_| {
+                unreachable!("somehow failed to convert unsigned into BiggestInt")
+            }) as f32,
+            SignedState::SignedPositive | SignedState::SignedNegative => {
+                BiggestIntButSigned::try_from(value).unwrap_or_else(|_| {
+                    unreachable!("somehow failed to convert signed into BiggestIntButSigned")
+                }) as f32
+            }
         }
     }
 }
@@ -314,7 +371,7 @@ impl From<Integer> for f32 {
 ///An error enum to represent why a conversion from floating point number to integer failed.
 pub enum FloatToIntegerConversionError {
     ///Integers cannot hold any decimal parts.
-    DecimalsNotSupported,
+    DecimalsNotSupported(f64),
     ///Integers can only hold positive numbers up within [`BiggestInt`] and negative numbers within [`BiggestIntButSigned`].
     TooLarge,
     ///Only finite numbers are supported for conversion into integers - there's no meaningful representation for `NaN` or infinite numbers.
@@ -323,9 +380,9 @@ pub enum FloatToIntegerConversionError {
 impl Display for FloatToIntegerConversionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::DecimalsNotSupported => write!(
+            Self::DecimalsNotSupported(decimals) => write!(
                 f,
-                "Floating point decimals not supported for integer values"
+                "Floating point decimals not supported for integer values: {decimals}"
             ),
             Self::TooLarge => write!(f, "Floating point number was too large"),
             Self::NotFinite => write!(f, "Floating point number was not finite"),
@@ -344,19 +401,21 @@ impl TryFrom<f64> for Integer {
             return Err(FloatToIntegerConversionError::NotFinite);
         }
         if value.fract() > f64::EPSILON {
-            return Err(FloatToIntegerConversionError::DecimalsNotSupported);
+            return Err(FloatToIntegerConversionError::DecimalsNotSupported(
+                value.fract(),
+            ));
         }
 
         let floored = value.floor();
         if floored < 0.0 {
-            if floored > i128::MIN as f64 {
-                Ok((floored as i128).into())
+            if floored > BiggestIntButSigned::MIN as f64 {
+                Ok((floored as BiggestIntButSigned).into())
             } else {
                 Err(FloatToIntegerConversionError::TooLarge)
             }
         } else {
-            if floored < u128::MAX as f64 {
-                Ok((floored as u128).into())
+            if floored < BiggestInt::MAX as f64 {
+                Ok((floored as BiggestInt).into())
             } else {
                 Err(FloatToIntegerConversionError::TooLarge)
             }
@@ -369,7 +428,9 @@ impl TryFrom<f32> for Integer {
     #[allow(clippy::collapsible_else_if)]
     fn try_from(value: f32) -> Result<Self, Self::Error> {
         if value.fract() > f32::EPSILON {
-            return Err(FloatToIntegerConversionError::DecimalsNotSupported);
+            return Err(FloatToIntegerConversionError::DecimalsNotSupported(
+                value.fract() as f64,
+            ));
         }
 
         let floored = value.floor();
@@ -395,32 +456,29 @@ macro_rules! integer_trait_impl {
             type Output = Self;
 
             fn $f(self, rhs: Self) -> Self::Output {
-                let ss_to_use = match (self.signed_state, rhs.signed_state) {
-                    (SignedState::Positive, SignedState::Positive) => SignedState::Positive,
-                    _ => SignedState::Negative,
+                let use_unsigned = match (self.signed_state, rhs.signed_state) {
+                    (SignedState::Unsigned, SignedState::Unsigned) => true,
+                    _ => false,
                 };
 
-                match ss_to_use {
-                    SignedState::Positive => {
-                        let Ok(lhs) = BiggestInt::try_from(self) else {
-                            panic!("integer too big to fit into u128")
-                        };
-                        let Ok(rhs) = BiggestInt::try_from(rhs) else {
-                            panic!("integer too big to fit into u128")
-                        };
+                if use_unsigned {
+                    let Ok(lhs) = BiggestInt::try_from(self) else {
+                        panic!("integer too big to fit into u128")
+                    };
+                    let Ok(rhs) = BiggestInt::try_from(rhs) else {
+                        panic!("integer too big to fit into u128")
+                    };
 
-                        <Self as From<BiggestInt>>::from($t::$f(lhs, rhs))
-                    }
-                    SignedState::Negative => {
-                        let Ok(lhs) = BiggestIntButSigned::try_from(self) else {
-                            panic!("integer too big to fit into i128")
-                        };
-                        let Ok(rhs) = BiggestIntButSigned::try_from(rhs) else {
-                            panic!("integer too big to fit into i128")
-                        };
+                    <Self as From<BiggestInt>>::from($t::$f(lhs, rhs))
+                } else {
+                    let Ok(lhs) = BiggestIntButSigned::try_from(self) else {
+                        panic!("integer too big to fit into i128")
+                    };
+                    let Ok(rhs) = BiggestIntButSigned::try_from(rhs) else {
+                        panic!("integer too big to fit into i128")
+                    };
 
-                        <Self as From<BiggestIntButSigned>>::from($t::$f(lhs, rhs))
-                    }
+                    <Self as From<BiggestIntButSigned>>::from($t::$f(lhs, rhs))
                 }
             }
         }
@@ -438,7 +496,7 @@ impl serde::Serialize for Integer {
         S: serde::Serializer,
     {
         let s = *self;
-        if self.signed_state == SignedState::Positive {
+        if self.signed_state == SignedState::Unsigned {
             serialiser.serialize_u128(s.try_into().map_err(serde::ser::Error::custom)?)
         } else {
             serialiser.serialize_i128(s.try_into().map_err(serde::ser::Error::custom)?)
@@ -545,23 +603,19 @@ impl FromStr for Integer {
 
         if s == "0" {
             return Ok(Self {
-                signed_state: SignedState::Positive,
+                signed_state: SignedState::Unsigned,
                 content: [0; INTEGER_MAX_SIZE],
+                number_of_bytes_used: 0,
             });
         }
 
-        let (s, signed_state) = if s.as_bytes()[0] == b'-' {
-            (&s[1..], SignedState::Negative)
+        if s.as_bytes()[0] == b'-' {
+            let content: BiggestIntButSigned = s.parse()?;
+            Ok(Self::from(content))
         } else {
-            (s, SignedState::Positive)
-        };
-
-        let content: BiggestInt = s.parse()?;
-
-        Ok(Self {
-            signed_state,
-            content: content.to_le_bytes(),
-        })
+            let content: BiggestInt = s.parse()?;
+            Ok(Self::from(content))
+        }
     }
 }
 
@@ -573,8 +627,10 @@ pub enum IntegerSerError {
     InvalidSignedStateDiscriminant(u8),
     ///Not enough bytes were within the cursor to deserialise the integer
     NotEnoughBytes,
-    ///Integers can only be turned back into rust integers that they actually fit inside - this can be caused by sign errors (eg. fitting `-12` into a `usize`) or size concerns (eg. fitting `123456789101112131415` into a `u8`)
-    WrongType,
+    ///Integers can only be turned back into rust integers that they actually fit inside.
+    TooBigToFit,
+    ///Integers can only be turned back to their original sign
+    SignError,
     ///Error parsing an integer from a string using the standard library.
     IntegerParseError(ParseIntError),
     ///Custom Serde error for use serialising and deserialising with `serde`.
@@ -594,10 +650,10 @@ impl Display for IntegerSerError {
                 write!(f, "Invalid signed state discriminant found: {b:#b}")
             }
             IntegerSerError::NotEnoughBytes => write!(f, "Not enough bytes provided"),
-            IntegerSerError::WrongType => write!(
-                f,
-                "Attempted to deserialise into different type than was originally serialised from"
-            ),
+            IntegerSerError::TooBigToFit => {
+                write!(f, "Attempted to deserialise into size too small to fit")
+            }
+            IntegerSerError::SignError => write!(f, "Tried to fit integer into incorrect sign"),
             IntegerSerError::IntegerParseError(e) => {
                 write!(f, "Error parsing from base-10 string: {e}")
             }
@@ -626,26 +682,22 @@ impl Integer {
     #[must_use]
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     pub fn ser(self) -> (SignedState, Vec<u8>) {
-        if let Ok(smol) = u8::try_from(self) {
-            if smol < ONE_BYTE_MAX_SIZE {
-                return (SignedState::Positive, vec![smol]);
+        if self.number_of_bytes_used <= 1 {
+            let first_byte = self.content[0];
+            if first_byte <= ONE_BYTE_MAX_SIZE {
+                return (self.signed_state, vec![first_byte]);
             }
-        } else if let Ok(smol) = i8::try_from(self) {
-            return if smol < 0 {
-                (SignedState::Negative, vec![(-smol) as u8])
-            } else {
-                (SignedState::Positive, vec![smol as u8])
-            };
         }
 
-        let stored_size = self.min_bytes_needed();
+        let stored_size = self.number_of_bytes_used;
         let bytes = self.content;
 
-        let discriminant = ONE_BYTE_MAX_SIZE + stored_size as u8;
+        let size = ONE_BYTE_MAX_SIZE + stored_size as u8;
 
-        let mut res = vec![];
-        res.push(discriminant);
-        res.extend(&bytes[0..stored_size]);
+        let mut res = vec![size];
+        if stored_size != 0 {
+            res.extend(&bytes[0..stored_size]);
+        }
 
         (self.signed_state, res)
     }
@@ -663,21 +715,32 @@ impl Integer {
         };
 
         if first_byte <= ONE_BYTE_MAX_SIZE {
-            let mut content = [0; INTEGER_MAX_SIZE];
+            let mut content = if signed_state == SignedState::SignedNegative {
+                [u8::MAX; INTEGER_MAX_SIZE]
+            } else {
+                [0; INTEGER_MAX_SIZE]
+            };
             content[0] = first_byte;
+            let number_of_bytes_used =
+                usize::from(signed_state == SignedState::SignedNegative || content[0] != 0);
 
             return Ok(Self {
                 signed_state,
                 content,
+                number_of_bytes_used,
             });
         }
 
-        let bytes_stored = first_byte - ONE_BYTE_MAX_SIZE;
-        let Some(bytes_stored) = reader.read(bytes_stored as usize) else {
+        let number_of_bytes_used = (first_byte - ONE_BYTE_MAX_SIZE) as usize;
+        let Some(bytes_stored) = reader.read(number_of_bytes_used) else {
             return Err(IntegerSerError::NotEnoughBytes);
         };
 
-        let mut content = [0; INTEGER_MAX_SIZE];
+        let mut content = if signed_state == SignedState::SignedNegative {
+            [u8::MAX; INTEGER_MAX_SIZE]
+        } else {
+            [0; INTEGER_MAX_SIZE]
+        };
         for (i, b) in bytes_stored.iter().copied().enumerate() {
             content[i] = b;
         }
@@ -685,6 +748,7 @@ impl Integer {
         Ok(Self {
             signed_state,
             content,
+            number_of_bytes_used,
         })
     }
 }
@@ -708,35 +772,39 @@ mod tests {
         }
 
         #[test]
-        fn parse_valids (i in any::<i32>()) {
-            let int = Integer::from_str(&i.to_string()).unwrap();
-            prop_assert_eq!(i32::try_from(int).unwrap(), i);
+        fn parse_valid_u32 (i in any::<u32>()) {
+            let int = Integer::from(i);
+            prop_assert_eq!(u32::try_from(int).expect("unable to get u32 from integer"), i);
+        }
+
+        #[test]
+        fn parse_valid_i32 (i in any::<i32>()) {
+            let int = Integer::from(i);
+            prop_assert_eq!(i32::try_from(int).expect("unable to get i32 from integer"), i);
         }
 
         #[test]
         fn back_to_original (i in any::<BiggestIntButSigned>()) {
             let s = i.to_string();
 
-            let parsed = Integer::from_str(&s).unwrap();
-
+            let parsed = Integer::from_str(&s).expect("unable to get integer from string");
             let (s, sered) = parsed.ser();
-            let got_back = Integer::deser(s, &mut Cursor::new(&sered)).unwrap();
+            let got_back = Integer::deser(s, &mut Cursor::new(&sered)).expect("unable to parse integer from bytes");
             prop_assert_eq!(parsed, got_back);
 
-            prop_assert_eq!(BiggestIntButSigned::try_from(got_back).unwrap(), i);
+            prop_assert_eq!(BiggestIntButSigned::try_from(got_back).expect("unable to get BIBS from integer"), i);
         }
 
         #[test]
         fn back_to_original_other_size (i in any::<u8>()) {
             let s = i.to_string();
-
-            let parsed = Integer::from_str(&s).unwrap();
+            let parsed = Integer::from_str(&s).expect("unable to get integer from string");
 
             let (s, sered) = parsed.ser();
-            let got_back = Integer::deser(s, &mut Cursor::new(&sered)).unwrap();
+            let got_back = Integer::deser(s, &mut Cursor::new(&sered)).expect("unable to parse integer from bytes");
             prop_assert_eq!(parsed, got_back);
 
-            prop_assert_eq!(u32::try_from(got_back).unwrap(), u32::from(i));
+            prop_assert_eq!(u32::try_from(got_back).expect("unable to get u32 from integer"), u32::from(i));
         }
 
         #[test]

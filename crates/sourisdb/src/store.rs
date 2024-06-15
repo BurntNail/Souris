@@ -28,7 +28,9 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Store(HashMap<String, Value>);
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 enum CompressionType {
+    #[default]
     None,
     Lz4,
     Miniz,
@@ -64,11 +66,7 @@ impl Store {
 
         let miniz = compress_to_vec(bytes, 10);
 
-        if [miniz.len(), lz4.len()]
-            .iter()
-            .into_iter()
-            .all(|x| *x >= raw.len())
-        {
+        if [miniz.len(), lz4.len()].iter().all(|x| *x >= raw.len()) {
             (None, CompressionType::None)
         } else if miniz.len() < lz4.len() {
             (Some(miniz), CompressionType::Miniz)
@@ -85,7 +83,7 @@ impl Store {
             CompressionType::Lz4 => {
                 let mut cursor = Cursor::new(&bytes);
                 let original_len: usize =
-                    Integer::deser(SignedState::Positive, &mut cursor)?.try_into()?;
+                    Integer::deser(SignedState::Unsigned, &mut cursor)?.try_into()?;
 
                 Ok(decompress(cursor.as_ref(), original_len)?)
             }

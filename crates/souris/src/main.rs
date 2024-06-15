@@ -1,21 +1,23 @@
 #![warn(clippy::all, clippy::pedantic)]
 
-use clap::{Parser, Subcommand};
-use dialoguer::{
-    theme::{ColorfulTheme, Theme},
-    Confirm, Error as DError, FuzzySelect, Input,
-};
-use sourisdb::{
-    client::{ClientError, SourisClient},
-    store::{Store, StoreSerError},
-    utilities::value_utils::get_value_from_stdin,
-    values::ValueSerError,
-};
 use std::{
     fmt::{Display, Formatter},
     fs::File,
     io::{Error as IOError, Read, Write},
     path::PathBuf,
+};
+
+use clap::{Parser, Subcommand};
+use dialoguer::{
+    theme::{ColorfulTheme, Theme},
+    Confirm, Error as DError, FuzzySelect, Input,
+};
+
+use sourisdb::{
+    client::{ClientError, SourisClient},
+    store::{Store, StoreSerError},
+    utilities::value_utils::get_value_from_stdin,
+    values::ValueSerError,
 };
 
 #[derive(Parser, Debug)]
@@ -118,7 +120,7 @@ impl std::error::Error for Error {
             Error::Value(e) => Some(e),
             Error::Store(e) => Some(e),
             Error::Client(e) => Some(e),
-            _ => None,
+            Error::NoDatabasesFound => None,
         }
     }
 }
