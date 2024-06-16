@@ -5,7 +5,7 @@
 //! `sourisdb` can also be used for storage on-disk as it is entirely byte-order-agnostic as it deliberately stores everything using little-endian bytes.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 #![warn(clippy::all, clippy::pedantic)]
 
 extern crate alloc;
@@ -15,7 +15,6 @@ use alloc::{
     format,
     string::{String, ToString},
 };
-use core::fmt::Display;
 
 pub use chrono;
 pub use hashbrown;
