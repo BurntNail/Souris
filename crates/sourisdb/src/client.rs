@@ -104,7 +104,6 @@ impl SourisClient {
             .get(&format!("http://{path}:{port}/healthcheck"))
             .call()?;
         if rsp.status() != StatusCode::OK {
-            eprintln!("Server is not healthy.");
             return Err(ClientError::ServerNotHealthy(StatusCode::try_from(
                 rsp.status(),
             )?));
@@ -168,7 +167,7 @@ impl SourisClient {
         let store = store.ser()?;
         let rsp = self
             .agent
-            .get("http://{}:{}/v1/add_db_with_content")
+            .get(&format!("http://{}:{}/v1/add_db_with_content", self.path, self.port))
             .query(
                 "overwrite_existing",
                 if overwrite_existing { "true" } else { "false" },
