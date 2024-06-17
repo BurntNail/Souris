@@ -167,7 +167,10 @@ impl SourisClient {
         let store = store.ser()?;
         let rsp = self
             .agent
-            .get(&format!("http://{}:{}/v1/add_db_with_content", self.path, self.port))
+            .get(&format!(
+                "http://{}:{}/v1/add_db_with_content",
+                self.path, self.port
+            ))
             .query(
                 "overwrite_existing",
                 if overwrite_existing { "true" } else { "false" },
