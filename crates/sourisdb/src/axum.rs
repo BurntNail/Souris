@@ -38,7 +38,7 @@ use core::fmt::{Display, Formatter};
 use axum::{
     async_trait,
     body::Bytes,
-    extract::{FromRequest, rejection::BytesRejection, Request},
+    extract::{rejection::BytesRejection, FromRequest, Request},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
