@@ -96,10 +96,12 @@ impl Bits {
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.valid_bits
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.valid_bits == 0
     }
@@ -109,6 +111,7 @@ impl Bits {
         self.backing.clear();
     }
 
+    #[must_use]
     pub fn ser(&self) -> Vec<u8> {
         let (_, mut size) = Integer::usize(self.valid_bits).ser();
         size.extend(&self.backing);
@@ -116,10 +119,15 @@ impl Bits {
         size
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
         let valid_bits: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
         let to_be_read = (valid_bits as f32 / 8.0).ceil() as usize;
-        let Some(backing) = bytes.read(to_be_read).map(|x| x.to_vec()) else {
+        let Some(backing) = bytes.read(to_be_read).map(<[u8]>::to_vec) else {
             return Err(IntegerSerError::NotEnoughBytes);
         };
 

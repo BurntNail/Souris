@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct SourisClient {
+pub struct Client {
     path: Arc<str>, //path is never changed, so just use arc<str> for cloning benefits
     port: u32,
     agent: Agent, //also internally arc-ed, so easy to clone
@@ -97,7 +97,7 @@ impl std::error::Error for ClientError {
     }
 }
 
-impl SourisClient {
+impl Client {
     pub fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
         let path = path.to_string().into();
         let agent = Agent::new();
@@ -128,11 +128,7 @@ impl SourisClient {
         Ok(serde_json::from_slice(&body)?)
     }
 
-    pub fn create_new_db(
-        &self,
-        overwrite_existing: bool,
-        name: String,
-    ) -> Result<bool, ClientError> {
+    pub fn create_new_db(&self, overwrite_existing: bool, name: &str) -> Result<bool, ClientError> {
         let rsp = self
             .agent
             .post(&format!("http://{}:{}/v1/add_db", self.path, self.port))
@@ -140,7 +136,7 @@ impl SourisClient {
                 "overwrite_existing",
                 if overwrite_existing { "true" } else { "false" },
             )
-            .query("name", name.as_str())
+            .query("name", name)
             .call()?;
         Ok(match rsp.error_for_status()? {
             StatusCode::OK => false,
@@ -149,11 +145,11 @@ impl SourisClient {
         })
     }
 
-    pub fn get_store(&self, db_name: String) -> Result<Store, ClientError> {
+    pub fn get_store(&self, db_name: &str) -> Result<Store, ClientError> {
         let rsp = self
             .agent
             .get(&format!("http://{}:{}/v1/get_db", self.path, self.port))
-            .query("name", db_name.as_str())
+            .query("name", db_name)
             .call()?;
         rsp.error_for_status()?;
         let body = rsp.body()?;
@@ -164,8 +160,8 @@ impl SourisClient {
     pub fn add_db_with_contents(
         &self,
         overwrite_existing: bool,
-        name: String,
-        store: Store,
+        name: &str,
+        store: &Store,
     ) -> Result<bool, ClientError> {
         let store = store.ser()?;
         println!("Serialised store to {}", store.len());
@@ -180,7 +176,7 @@ impl SourisClient {
                 "overwrite_existing",
                 if overwrite_existing { "true" } else { "false" },
             )
-            .query("name", name.as_str())
+            .query("name", name)
             .send_bytes(&store)?;
         Ok(match rsp.error_for_status()? {
             StatusCode::OK => false,
@@ -191,16 +187,16 @@ impl SourisClient {
 
     pub fn add_entry_to_db(
         &self,
-        database_name: String,
-        key: String,
-        value: Value,
+        database_name: &str,
+        key: &str,
+        value: &Value,
     ) -> Result<bool, ClientError> {
         let value = value.ser(None)?; //TODO: huffman-ser this
         let rsp = self
             .agent
             .put(&format!("http://{}:{}/v1/add_kv", self.path, self.port))
-            .query("db", database_name.as_str())
-            .query("key", key.as_str())
+            .query("db", database_name)
+            .query("key", key)
             .send_bytes(&value)?;
         rsp.error_for_status()?;
         Ok(match rsp.error_for_status()? {
@@ -210,26 +206,22 @@ impl SourisClient {
         })
     }
 
-    pub fn remove_entry_from_db(
-        &self,
-        database_name: String,
-        key: String,
-    ) -> Result<(), ClientError> {
+    pub fn remove_entry_from_db(&self, database_name: &str, key: &str) -> Result<(), ClientError> {
         let rsp = self
             .agent
             .post(&format!("http://{}:{}/v1/rm_key", self.path, self.port))
-            .query("db", database_name.as_str())
-            .query("key", key.as_str())
+            .query("db", database_name)
+            .query("key", key)
             .call()?;
         rsp.error_for_status()?;
         Ok(())
     }
 
-    pub fn remove_db(&self, database_name: String) -> Result<(), ClientError> {
+    pub fn remove_db(&self, database_name: &str) -> Result<(), ClientError> {
         let rsp = self
             .agent
             .post(&format!("http://{}:{}/v1/rm_db", self.path, self.port))
-            .query("name", database_name.as_str())
+            .query("name", database_name)
             .call()?;
         rsp.error_for_status()?;
         Ok(())

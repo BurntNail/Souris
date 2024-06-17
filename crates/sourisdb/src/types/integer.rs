@@ -353,6 +353,7 @@ impl From<Integer> for f64 {
     }
 }
 impl From<Integer> for f32 {
+    #[allow(clippy::cast_precision_loss)]
     fn from(value: Integer) -> Self {
         match value.signed_state {
             SignedState::Unsigned => BiggestInt::try_from(value).unwrap_or_else(|_| {
@@ -395,7 +396,12 @@ impl std::error::Error for FloatToIntegerConversionError {}
 impl TryFrom<f64> for Integer {
     type Error = FloatToIntegerConversionError;
 
-    #[allow(clippy::collapsible_else_if)]
+    #[allow(
+        clippy::collapsible_else_if,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn try_from(value: f64) -> Result<Self, Self::Error> {
         if !value.is_finite() {
             return Err(FloatToIntegerConversionError::NotFinite);
@@ -425,11 +431,16 @@ impl TryFrom<f64> for Integer {
 impl TryFrom<f32> for Integer {
     type Error = FloatToIntegerConversionError;
 
-    #[allow(clippy::collapsible_else_if)]
+    #[allow(
+        clippy::collapsible_else_if,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn try_from(value: f32) -> Result<Self, Self::Error> {
         if value.fract() > f32::EPSILON {
             return Err(FloatToIntegerConversionError::DecimalsNotSupported(
-                value.fract() as f64,
+                f64::from(value.fract()),
             ));
         }
 

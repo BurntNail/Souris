@@ -1115,8 +1115,8 @@ mod tests {
         fn test_ch (c in any::<char>()) {
             let v = Value::Character(c);
 
-            let bytes = v.ser().unwrap();
-            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let bytes = v.ser(None).unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.to_char().unwrap();
 
             prop_assert_eq!(c, out);
@@ -1126,8 +1126,8 @@ mod tests {
         fn test_str (s in any::<String>()) {
             let v = Value::String(s.clone());
 
-            let bytes = v.ser().unwrap();
-            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let bytes = v.ser(None).unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.as_str().unwrap().to_string();
 
             prop_assert_eq!(s, out);
@@ -1137,8 +1137,8 @@ mod tests {
         fn test_bin (s in any::<Vec<u8>>()) {
             let v = Value::Binary(s.clone());
 
-            let bytes = v.ser().unwrap();
-            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let bytes = v.ser(None).unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.as_binary().unwrap().to_vec();
 
             prop_assert_eq!(s, out);
@@ -1148,8 +1148,8 @@ mod tests {
         fn test_bool (s in any::<bool>()) {
             let v = Value::Boolean(s.clone());
 
-            let bytes = v.ser().unwrap();
-            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let bytes = v.ser(None).unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.to_bool().unwrap();
 
             prop_assert_eq!(s, out);
@@ -1163,8 +1163,8 @@ mod tests {
 
             let val = Value::Imaginary(Imaginary::PolarForm { modulus, argument });
 
-            let bytes = val.ser().unwrap();
-            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let bytes = val.ser(None).unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let Some(Imaginary::PolarForm { modulus: nm, argument: na }) = out_value.to_imaginary() else {
                 panic!("unable to get out in correct form")
             };
@@ -1177,8 +1177,8 @@ mod tests {
         fn test_int (i in any::<BiggestIntButSigned>()) {
             let v = Value::Integer(i.into());
 
-            let bytes = v.ser().unwrap();
-            let out_value = Value::deser(&mut Cursor::new(&bytes)).unwrap();
+            let bytes = v.ser(None).unwrap();
+            let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             prop_assert_eq!(v, out_value.clone());
 
             let out = BiggestIntButSigned::try_from(out_value.to_int().unwrap()).unwrap();

@@ -14,7 +14,7 @@ use dialoguer::{
 };
 
 use sourisdb::{
-    client::{ClientError, SourisClient},
+    client::{Client, ClientError},
     store::{Store, StoreSerError},
     utilities::value_utils::get_value_from_stdin,
     values::ValueSerError,
@@ -128,7 +128,7 @@ impl std::error::Error for Error {
 #[allow(clippy::collapsible_if, clippy::too_many_lines)]
 fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
-    let client = SourisClient::new(path.clone(), 2256)?;
+    let client = Client::new(path.clone(), 2256)?;
 
     match command {
         Commands::CreateNew { db_name } => {
@@ -144,7 +144,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 }
             }
 
-            if client.create_new_db(true, db_name)? {
+            if client.create_new_db(true, &db_name)? {
                 println!("Database successfully created");
             } else {
                 println!("Successfully cleared database");
@@ -175,7 +175,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             let store = Store::from_json_bytes(&bytes)?;
             let db_name = pick_db_name(true, &client, &theme)?;
 
-            if client.add_db_with_contents(true, db_name, store)? {
+            if client.add_db_with_contents(true, &db_name, &store)? {
                 println!("Created new database with JSON.");
             } else {
                 println!("Overwrote existing database with JSON.");
@@ -184,7 +184,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
         Commands::AddEntry => {
             let db_name = pick_db_name(true, &client, &theme)?;
 
-            let key = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
+            let key: String = Input::with_theme(&theme).with_prompt("Key: ").interact()?;
             let value = get_value_from_stdin("Value: ", &theme)?;
 
             println!();
@@ -198,7 +198,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 .with_prompt("Confirm Addition?")
                 .interact()?
             {
-                if client.add_entry_to_db(db_name, key, value)? {
+                if client.add_entry_to_db(&db_name, &key, &value)? {
                     println!("Successfully created new key-value pair.");
                 } else {
                     println!("Successfully overwrote existing key-value pair.");
@@ -226,7 +226,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 .with_prompt("Confirm Removal?")
                 .interact()?
             {
-                client.remove_entry_from_db(db_name, key)?;
+                client.remove_entry_from_db(&db_name, &key)?;
                 println!("Successfully removed database");
             } else {
                 println!("Cancelled removing database.");
@@ -253,7 +253,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 .with_prompt("Confirm Update?")
                 .interact()?
             {
-                if !client.add_entry_to_db(db_name, key, new_val)? {
+                if !client.add_entry_to_db(&db_name, &key, &new_val)? {
                     println!("Successfully overwrote existing key-value pair.");
                 }
             } else {
@@ -280,7 +280,7 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
         }
         Commands::RemoveDatabase => {
             let db_name = pick_db_name(false, &client, &theme)?;
-            client.remove_db(db_name)?;
+            client.remove_db(&db_name)?;
             println!("Successfully removed database");
         }
     }
@@ -288,18 +288,14 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     Ok(())
 }
 
-fn pick_db(client: &SourisClient, theme: &dyn Theme) -> Result<(String, Store), Error> {
+fn pick_db(client: &Client, theme: &dyn Theme) -> Result<(String, Store), Error> {
     let chosen_db_name = pick_db_name(false, client, theme)?;
-    let chosen_store = client.get_store(chosen_db_name.clone())?;
+    let chosen_store = client.get_store(&chosen_db_name)?;
     Ok((chosen_db_name, chosen_store))
 }
 
 #[allow(clippy::collapsible_if)]
-fn pick_db_name(
-    can_pick_new: bool,
-    client: &SourisClient,
-    theme: &dyn Theme,
-) -> Result<String, Error> {
+fn pick_db_name(can_pick_new: bool, client: &Client, theme: &dyn Theme) -> Result<String, Error> {
     let mut names = client.get_all_dbs()?;
 
     if can_pick_new {

@@ -196,7 +196,11 @@ impl<'a, T> core::iter::Iterator for Cursor<'a, T> {
 
 #[cfg(feature = "std")]
 impl<'a, T> std::io::Seek for Cursor<'a, T> {
-    #[allow(clippy::collapsible_if)]
+    #[allow(
+        clippy::collapsible_if,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match pos {
             std::io::SeekFrom::Current(offset) => {

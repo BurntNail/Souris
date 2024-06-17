@@ -7,8 +7,11 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use lz4_flex::{block::DecompressError as Lz4DecompressError, decompress};
-use miniz_oxide::inflate::{decompress_to_vec, DecompressError as MinizDecompressError};
+use lz4_flex::{block::DecompressError as Lz4DecompressError, compress, decompress};
+use miniz_oxide::{
+    deflate::compress_to_vec,
+    inflate::{decompress_to_vec, DecompressError as MinizDecompressError},
+};
 use serde_json::{Error as SJError, Value as SJValue};
 
 use crate::{
@@ -59,20 +62,20 @@ impl TryFrom<u8> for CompressionType {
 
 impl Store {
     fn compress(bytes: &[u8]) -> (Option<Vec<u8>>, CompressionType) {
-        // let raw = bytes;
+        let raw = bytes;
 
-        // let mut lz4 = Integer::from(raw.len()).ser().1;
-        // lz4.extend(compress(bytes));
-        //
-        // let miniz = compress_to_vec(bytes, 10);
-        //
-        // if [miniz.len(), lz4.len()].iter().all(|x| *x >= raw.len()) {
-        (None, CompressionType::None)
-        // } else if miniz.len() < lz4.len() {
-        //     (Some(miniz), CompressionType::Miniz)
-        // } else {
-        //     (Some(lz4), CompressionType::Lz4)
-        // }
+        let mut lz4 = Integer::from(raw.len()).ser().1;
+        lz4.extend(compress(bytes));
+
+        let miniz = compress_to_vec(bytes, 10);
+
+        if [miniz.len(), lz4.len()].iter().all(|x| *x >= raw.len()) {
+            (None, CompressionType::None)
+        } else if miniz.len() < lz4.len() {
+            (Some(miniz), CompressionType::Miniz)
+        } else {
+            (Some(lz4), CompressionType::Lz4)
+        }
     }
     fn decompress(
         bytes: &[u8],
@@ -165,7 +168,6 @@ impl Store {
 
         let compression_ty = CompressionType::try_from(compression_ty & 0b1111)?;
         let uncompressed_bytes = Self::decompress(bytes.as_ref(), compression_ty)?;
-        drop(bytes);
 
         let val = Value::deser(&mut Cursor::new(&uncompressed_bytes), huffman.as_ref())?;
         let ty = val.as_ty();

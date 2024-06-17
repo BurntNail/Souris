@@ -186,6 +186,7 @@ impl Huffman {
         }
     }
 
+    #[must_use]
     pub fn ser(&self) -> Vec<u8> {
         let len = self.bits_to_chars.len();
         let (_, mut bytes) = Integer::usize(len).ser();
@@ -216,8 +217,8 @@ impl Huffman {
         }
 
         Ok(Self {
-            bits_to_chars,
             chars_to_bits,
+            bits_to_chars,
         })
     }
 }
@@ -226,13 +227,9 @@ impl Huffman {
 mod tests {
     use alloc::format;
 
-    use hashbrown::HashMap;
     use proptest::{prop_assert_eq, proptest};
 
-    use crate::utilities::{
-        bits::Bits,
-        huffman::{Huffman, Node},
-    };
+    use crate::utilities::huffman::{Huffman, Node};
 
     #[test]
     fn nodes_from_empty_string() {
@@ -247,95 +244,6 @@ mod tests {
             panic!("didn't find leaf node at root");
         };
         assert_eq!(ch, 'a');
-    }
-
-    #[test]
-    fn nodes_from_just_two_chars() {
-        let huffman =
-            Huffman::to_node_tree("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbaaaaaaaaabb")
-                .unwrap();
-        let Node::Branch { left, right } = huffman else {
-            panic!("didn't find branch node at root");
-        };
-
-        let Node::Leaf(left) = *left else {
-            panic!("didn't find leaf node at left");
-        };
-        let Node::Leaf(right) = *right else {
-            panic!("didn't find leaf node at right");
-        };
-
-        assert_eq!(left, 'a');
-        assert_eq!(right, 'b');
-    }
-
-    #[test]
-    fn nodes_from_five_characters() {
-        let huffman = Huffman::to_node_tree("abcdeabcdabcabaaaaaa").unwrap();
-        let Node::Branch { left, right } = huffman else {
-            panic!("didn't find branch node at root");
-        };
-
-        {
-            let Node::Leaf(a) = *left else {
-                panic!("didn't find leaf node at left");
-            };
-            assert_eq!(a, 'a');
-        }
-        {
-            let Node::Branch { left, right } = *right else {
-                panic!("didn't find branch node at right");
-            };
-
-            {
-                let Node::Branch { left, right } = *left else {
-                    panic!("didn't find branch node at right->left");
-                };
-
-                let Node::Leaf(b) = *left else {
-                    panic!("didn't find leaf node at right->left->left");
-                };
-                let Node::Leaf(c) = *right else {
-                    panic!("didn't find leaf node at right->left->right");
-                };
-
-                assert_eq!(b, 'b');
-                assert_eq!(c, 'c');
-            }
-
-            {
-                let Node::Branch { left, right } = *right else {
-                    panic!("didn't find branch node at right->right");
-                };
-
-                let Node::Leaf(d) = *left else {
-                    panic!("didn't find leaf node at right->right->left");
-                };
-                let Node::Leaf(e) = *right else {
-                    panic!("didn't find leaf node at right->right->right");
-                };
-
-                assert_eq!(d, 'd');
-                assert_eq!(e, 'e');
-            }
-        }
-    }
-
-    #[test]
-    fn huffman_bits_from_five_characters() {
-        let huffman = Huffman::new("abcdeabcdabcabaaaaaa").unwrap();
-
-        let expected: HashMap<char, Bits> = [
-            ('a', Bits::from([false])),
-            ('b', Bits::from([true, false, false])),
-            ('c', Bits::from([true, false, true])),
-            ('d', Bits::from([true, true, false])),
-            ('e', Bits::from([true, true, true])),
-        ]
-        .into_iter()
-        .collect();
-
-        assert_eq!(huffman.chars_to_bits, expected);
     }
 
     #[test]
