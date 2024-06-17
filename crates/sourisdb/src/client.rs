@@ -167,7 +167,7 @@ impl SourisClient {
         let store = store.ser()?;
         let rsp = self
             .agent
-            .get(&format!(
+            .put(&format!(
                 "http://{}:{}/v1/add_db_with_content",
                 self.path, self.port
             ))
