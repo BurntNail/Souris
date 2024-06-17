@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 use hashbrown::HashMap;
 
@@ -6,7 +6,8 @@ use crate::utilities::bits::Bits;
 
 #[derive(Debug, Clone)]
 pub struct Huffman {
-    conversion_table: HashMap<char, Bits>,
+    chars_to_bits: HashMap<char, Bits>,
+    bits_to_chars: HashMap<Bits, char>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,10 +84,16 @@ impl Huffman {
 
     #[must_use]
     pub fn new(data: impl AsRef<str>) -> Option<Self> {
-        fn add_node_to_table(node: Node, table: &mut HashMap<char, Bits>, bits_so_far: Bits) {
+        fn add_node_to_table(
+            node: Node,
+            chars_to_bits: &mut HashMap<char, Bits>,
+            bits_to_chars: &mut HashMap<Bits, char>,
+            bits_so_far: Bits,
+        ) {
             match node {
                 Node::Leaf(ch) => {
-                    table.insert(ch, bits_so_far);
+                    chars_to_bits.insert(ch, bits_so_far.clone());
+                    bits_to_chars.insert(bits_so_far, ch);
                 }
                 Node::Branch { left, right } => {
                     let mut left_bits = bits_so_far.clone();
@@ -94,26 +101,66 @@ impl Huffman {
                     left_bits.push(false);
                     right_bits.push(true);
 
-                    add_node_to_table(*left, table, left_bits);
-                    add_node_to_table(*right, table, right_bits);
+                    add_node_to_table(*left, chars_to_bits, bits_to_chars, left_bits);
+                    add_node_to_table(*right, chars_to_bits, bits_to_chars, right_bits);
                 }
             }
         }
 
-        let mut conversion_table = HashMap::new();
+        let mut chars_to_bits = HashMap::new();
+        let mut bits_to_chars = HashMap::new();
         add_node_to_table(
             Self::to_node_tree(data.as_ref())?,
-            &mut conversion_table,
+            &mut chars_to_bits,
+            &mut bits_to_chars,
             Bits::default(),
         );
 
-        Some(Self { conversion_table })
+        Some(Self {
+            chars_to_bits,
+            bits_to_chars,
+        })
+    }
+
+    pub fn encode_string(&self, str: impl AsRef<str>) -> Option<Bits> {
+        let mut bits = Bits::default();
+
+        for ch in str.as_ref().chars() {
+            let bits_to_add = self.chars_to_bits.get(&ch).cloned()?;
+            bits.push_many(bits_to_add);
+        }
+
+        Some(bits)
+    }
+
+    #[must_use]
+    pub fn decode_string(&self, bits: &Bits) -> Option<String> {
+        let mut string = String::new();
+
+        let mut accumulator = Bits::default();
+        for i in 0..bits.len() {
+            accumulator.push(bits[i]);
+
+            if let Some(ch) = self.bits_to_chars.get(&accumulator).copied() {
+                accumulator.clear();
+                string.push(ch);
+            }
+        }
+
+        if accumulator.is_empty() {
+            Some(string)
+        } else {
+            None
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloc::format;
+
     use hashbrown::HashMap;
+    use proptest::{prop_assert_eq, proptest};
 
     use crate::utilities::{
         bits::Bits,
@@ -221,6 +268,34 @@ mod tests {
         .into_iter()
         .collect();
 
-        assert_eq!(huffman.conversion_table, expected);
+        assert_eq!(huffman.chars_to_bits, expected);
+    }
+
+    #[test]
+    fn test_encode_decode_five_characters() {
+        let data = "abcdeabcdabcabaaaaaa";
+        let huffman = Huffman::new(data).unwrap();
+
+        let encoded = huffman.encode_string(data).unwrap();
+        let decoded = huffman.decode_string(&encoded).unwrap();
+
+        assert_eq!(data, decoded);
+    }
+
+    proptest! {
+        #[test]
+        fn doesnt_crash (s in "\\PC*") {
+            let _ = Huffman::new(s);
+        }
+
+        #[test]
+        fn works_on_arbritrary_ascii_strings (s in " [a-zA-Z0-9]+") { //chuck a space in front to make sure there's two different characters
+            let huffman = Huffman::new(&s).expect("unable to get huffman");
+
+            let encoded = huffman.encode_string(&s).expect("unable to encode");
+            let decoded = huffman.decode_string(&encoded).expect("unable to decode");
+
+            prop_assert_eq!(s, decoded);
+        }
     }
 }
