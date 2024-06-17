@@ -1,6 +1,10 @@
 //! Provides the main key-value store designed to be used for communications.
 
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::{
     fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
