@@ -1,4 +1,3 @@
-use crate::{error::SourisError, v1_routes::state::SourisState};
 use axum::{
     body::Bytes,
     extract::{Query, State},
@@ -6,23 +5,26 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+
 use sourisdb::store::Store;
+
+use crate::{error::SourisError, v1_routes::state::SourisState};
 
 #[derive(Deserialize)]
 pub struct NewDB {
-    pub name: String,
+    pub db_name: String,
     pub overwrite_existing: bool,
 }
 
 #[derive(Deserialize)]
 pub struct DbByName {
-    pub name: String,
+    pub db_name: String,
 }
 
 pub async fn add_db(
     State(state): State<SourisState>,
     Query(NewDB {
-        name,
+        db_name: name,
         overwrite_existing,
     }): Query<NewDB>,
 ) -> Result<StatusCode, SourisError> {
@@ -32,7 +34,7 @@ pub async fn add_db(
 pub async fn add_db_with_content(
     State(state): State<SourisState>,
     Query(NewDB {
-        name,
+        db_name: name,
         overwrite_existing,
     }): Query<NewDB>,
     body: Bytes,
@@ -45,7 +47,7 @@ pub async fn add_db_with_content(
 
 pub async fn clear_db(
     State(state): State<SourisState>,
-    Query(DbByName { name }): Query<DbByName>,
+    Query(DbByName { db_name: name }): Query<DbByName>,
 ) -> Result<StatusCode, SourisError> {
     state.clear_db(name).await?;
     Ok(StatusCode::OK)
@@ -53,7 +55,7 @@ pub async fn clear_db(
 
 pub async fn remove_db(
     State(state): State<SourisState>,
-    Query(DbByName { name }): Query<DbByName>,
+    Query(DbByName { db_name: name }): Query<DbByName>,
 ) -> Result<StatusCode, SourisError> {
     state.remove_db(name).await?;
     Ok(StatusCode::OK)
@@ -62,7 +64,7 @@ pub async fn remove_db(
 #[axum::debug_handler]
 pub async fn get_db(
     State(state): State<SourisState>,
-    Query(DbByName { name }): Query<DbByName>,
+    Query(DbByName { db_name: name }): Query<DbByName>,
 ) -> Result<Store, SourisError> {
     state.get_db(name).await
 }

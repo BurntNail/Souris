@@ -10,7 +10,7 @@
 //! let data: Vec<u8> = b"Hello, World!".to_vec();
 //! let mut cursor = Cursor::new(&data); // cursor takes a reference to a vec here, but anything that implements `AsRef<[T]>` could be used.
 //!
-//! assert!(cursor.seek(7)); //move forward 7 items
+//! assert!(cursor.move_forwards(7)); //move forward 7 items
 //!
 //! let remaining = cursor.as_ref(); //as_ref doesn't move the pointer
 //! assert_eq!(remaining, b"World!");
@@ -38,7 +38,7 @@ impl<'a, T> Cursor<'a, T> {
     /// Returns:
     /// - `true` if the move was successful
     /// - `false` if the move was out-of-bounds
-    pub fn seek(&mut self, offset: usize) -> bool {
+    pub fn move_forwards(&mut self, offset: usize) -> bool {
         let Some(new_pos) = self.pos.checked_add(offset) else {
             return false;
         };
@@ -55,7 +55,7 @@ impl<'a, T> Cursor<'a, T> {
     /// Returns:
     /// - `true` if the move was successful
     /// - `false` if the move was out-of-bounds
-    pub fn seek_backwards(&mut self, offset: usize) -> bool {
+    pub fn move_backwards(&mut self, offset: usize) -> bool {
         let Some(new_pos) = self.pos.checked_sub(offset) else {
             return false;
         };
@@ -91,7 +91,7 @@ impl<'a, T> Cursor<'a, T> {
     /// bytes.push(34); //simulate extra bytes around the `f64`.
     ///
     /// let mut cursor = Cursor::new(&bytes);
-    /// cursor.seek(1);
+    /// cursor.move_forwards(1);
     /// let found_f64 = f64::from_le_bytes(*cursor.read_specific().unwrap());
     /// assert_eq!(expected_f64, found_f64);
     /// ```
@@ -205,7 +205,7 @@ impl<'a, T> std::io::Seek for Cursor<'a, T> {
         match pos {
             std::io::SeekFrom::Current(offset) => {
                 if offset > 0 {
-                    if !self.seek(offset as usize) {
+                    if !self.move_forwards(offset as usize) {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::NotFound,
                             "Goes out of bounds".to_string(),
@@ -214,7 +214,7 @@ impl<'a, T> std::io::Seek for Cursor<'a, T> {
                 }
             }
             std::io::SeekFrom::End(offset) => {
-                if offset > 0 || !self.seek_backwards((-offset) as usize) {
+                if offset > 0 || !self.move_backwards((-offset) as usize) {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         "Goes out of bounds".to_string(),
@@ -222,7 +222,7 @@ impl<'a, T> std::io::Seek for Cursor<'a, T> {
                 }
             }
             std::io::SeekFrom::Start(offset) => {
-                if !self.seek_backwards(offset as usize) {
+                if !self.move_backwards(offset as usize) {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         "Goes out of bounds".to_string(),
@@ -255,13 +255,13 @@ mod tests {
         let empty: &[i32] = &[];
         assert_eq!(cursor.peek_remaining(), empty);
 
-        cursor.seek_backwards(4);
+        cursor.move_backwards(4);
         assert_eq!(cursor.pos(), 6);
         assert_eq!(cursor.peek_remaining(), &[6, 7, 8, 9]);
 
         assert_eq!(cursor.read(2), Some([6, 7].as_slice()));
 
-        cursor.seek(1);
+        cursor.move_forwards(1);
         assert_eq!(cursor.pos(), 9);
         assert_eq!(cursor.read(1), Some([9].as_slice()));
         assert_eq!(cursor.pos(), 10);

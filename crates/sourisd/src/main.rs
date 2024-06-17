@@ -9,8 +9,8 @@ use std::time::Duration;
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
-    routing::{get, post, put},
     Router,
+    routing::{get, post, put},
 };
 use tokio::{
     net::TcpListener,
@@ -19,7 +19,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, prelude::*};
 
 use crate::v1_routes::{
     db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},
@@ -124,13 +124,13 @@ async fn main() {
 
     let v1_router = Router::new()
         .route("/get_db", get(get_db))
-        .route("/get_all_dbs", get(get_all_dbs))
+        .route("/get_all_db_names", get(get_all_dbs))
         .route("/add_db", post(add_db))
         .route("/add_db_with_content", put(add_db_with_content))
         .route("/rm_db", post(remove_db))
         .route("/clear_db", post(clear_db))
         .route("/add_kv", put(add_kv))
-        .route("/rm_key", post(rm_key))
+        .route("/rm_kv", post(rm_key))
         .route("/get_value", get(get_value));
 
     let router = Router::new()

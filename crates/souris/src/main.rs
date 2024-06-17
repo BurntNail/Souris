@@ -9,12 +9,12 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use dialoguer::{
-    theme::{ColorfulTheme, Theme},
-    Confirm, Error as DError, FuzzySelect, Input,
+    Confirm,
+    Error as DError, FuzzySelect, Input, theme::{ColorfulTheme, Theme},
 };
 
 use sourisdb::{
-    client::{Client, ClientError},
+    client::{ClientError, SyncClient},
     store::{Store, StoreSerError},
     utilities::value_utils::get_value_from_stdin,
     values::ValueSerError,
@@ -128,7 +128,7 @@ impl std::error::Error for Error {
 #[allow(clippy::collapsible_if, clippy::too_many_lines)]
 fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
-    let client = Client::new(path.clone(), 2256)?;
+    let client = SyncClient::new(path.clone(), 2256)?;
 
     match command {
         Commands::CreateNew { db_name } => {
@@ -288,14 +288,18 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     Ok(())
 }
 
-fn pick_db(client: &Client, theme: &dyn Theme) -> Result<(String, Store), Error> {
+fn pick_db(client: &SyncClient, theme: &dyn Theme) -> Result<(String, Store), Error> {
     let chosen_db_name = pick_db_name(false, client, theme)?;
     let chosen_store = client.get_store(&chosen_db_name)?;
     Ok((chosen_db_name, chosen_store))
 }
 
 #[allow(clippy::collapsible_if)]
-fn pick_db_name(can_pick_new: bool, client: &Client, theme: &dyn Theme) -> Result<String, Error> {
+fn pick_db_name(
+    can_pick_new: bool,
+    client: &SyncClient,
+    theme: &dyn Theme,
+) -> Result<String, Error> {
     let mut names = client.get_all_dbs()?;
 
     if can_pick_new {
