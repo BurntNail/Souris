@@ -1,8 +1,13 @@
 use alloc::{boxed::Box, string::String, vec::Vec};
+use core::fmt::{Display, Formatter};
 
 use hashbrown::HashMap;
 
-use crate::utilities::bits::Bits;
+use crate::{
+    display_bytes_as_hex_array,
+    types::integer::{Integer, IntegerSerError, SignedState},
+    utilities::{bits::Bits, cursor::Cursor},
+};
 
 #[derive(Debug, Clone)]
 pub struct Huffman {
@@ -10,10 +15,73 @@ pub struct Huffman {
     bits_to_chars: HashMap<Bits, char>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum Node {
     Leaf(char),
     Branch { left: Box<Node>, right: Box<Node> },
+}
+
+#[derive(Debug)]
+pub enum HuffmanSerError {
+    InvalidCharacter(u32),
+    Integer(IntegerSerError),
+}
+
+impl From<IntegerSerError> for HuffmanSerError {
+    fn from(value: IntegerSerError) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl Display for HuffmanSerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            HuffmanSerError::InvalidCharacter(bytes) => write!(
+                f,
+                "Found invalid character: {}",
+                display_bytes_as_hex_array(&bytes.to_le_bytes())
+            ),
+            HuffmanSerError::Integer(i) => write!(f, "Error with integer: {i}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for HuffmanSerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Integer(i) => Some(i),
+            Self::InvalidCharacter(_) => None,
+        }
+    }
+}
+
+struct MinHeap<T> {
+    list: Vec<(T, usize)>,
+}
+
+impl<T> MinHeap<T> {
+    pub fn new(list: Vec<(T, usize)>) -> Self {
+        Self { list }
+    }
+
+    pub fn push(&mut self, item: T, weight: usize) {
+        self.list.push((item, weight));
+    }
+}
+
+impl<T> Iterator for MinHeap<T> {
+    type Item = (T, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let index = self
+            .list
+            .iter()
+            .enumerate()
+            .min_by_key(|(_i, (_t, weight))| *weight)?
+            .0;
+        Some(self.list.swap_remove(index))
+    }
 }
 
 impl Huffman {
@@ -22,64 +90,25 @@ impl Huffman {
             return None;
         }
 
-        let mut frequency_table: HashMap<char, usize> = HashMap::new();
+        let mut frequency_table: HashMap<Node, usize> = HashMap::new();
         for ch in data.chars() {
-            *frequency_table.entry(ch).or_default() += 1_usize;
+            *frequency_table.entry(Node::Leaf(ch)).or_default() += 1_usize;
         }
-        let mut frequency_vec: Vec<(char, usize)> = frequency_table.into_iter().collect();
-        frequency_vec.sort_by_key(|(_, freq)| (usize::MAX - *freq)); //smallest items at the end
+        let mut min_heap: MinHeap<Node> = MinHeap::new(frequency_table.into_iter().collect());
 
-        let (least_frequent_ch, least_frequent_weight) = frequency_vec.pop().unwrap(); //checked for len earlier
-        let Some((next_least_frequent_ch, next_least_frequent_weight)) = frequency_vec.pop() else {
-            return Some(Node::Leaf(least_frequent_ch));
-        };
+        loop {
+            let (least_frequent_ch, least_frequent_weight) = min_heap.next().unwrap(); //checked for len earlier
+            let Some((next_least_frequent_ch, next_least_frequent_weight)) = min_heap.next() else {
+                return Some(least_frequent_ch);
+            };
 
-        let mut node = Node::Branch {
-            left: Box::new(Node::Leaf(next_least_frequent_ch)),
-            right: Box::new(Node::Leaf(least_frequent_ch)),
-        };
-        let mut weight = least_frequent_weight + next_least_frequent_weight;
-
-        while let Some((next_ch, next_weight)) = frequency_vec.pop() {
-            if next_weight > weight || frequency_vec.is_empty() {
-                let new_node = Node::Branch {
-                    left: Box::new(Node::Leaf(next_ch)),
-                    right: Box::new(node.clone()), //TODO: work out way to avoid this weird clone situation where it immediately gets replaced
-                };
-
-                weight += next_weight;
-                node = new_node;
-            } else {
-                let (next_next_ch, next_next_weight) = frequency_vec.pop().unwrap(); //just checked for empty
-                let new_node = if next_next_weight > next_weight {
-                    Node::Branch {
-                        left: Box::new(Node::Leaf(next_next_ch)),
-                        right: Box::new(Node::Leaf(next_ch)),
-                    }
-                } else {
-                    Node::Branch {
-                        left: Box::new(Node::Leaf(next_ch)),
-                        right: Box::new(Node::Leaf(next_next_ch)),
-                    }
-                };
-                let next_sum_weight = next_weight + next_next_weight;
-                let new_node = if next_sum_weight > weight {
-                    Node::Branch {
-                        left: Box::new(new_node),
-                        right: Box::new(node.clone()),
-                    }
-                } else {
-                    Node::Branch {
-                        left: Box::new(node.clone()),
-                        right: Box::new(new_node),
-                    }
-                };
-
-                weight += next_sum_weight;
-                node = new_node;
-            }
+            let new_node = Node::Branch {
+                left: Box::new(least_frequent_ch),
+                right: Box::new(next_least_frequent_ch),
+            };
+            let weight = least_frequent_weight + next_least_frequent_weight;
+            min_heap.push(new_node, weight);
         }
-        Some(node)
     }
 
     #[must_use]
@@ -109,8 +138,11 @@ impl Huffman {
 
         let mut chars_to_bits = HashMap::new();
         let mut bits_to_chars = HashMap::new();
+
+        let nodes = Self::to_node_tree(data.as_ref())?;
+
         add_node_to_table(
-            Self::to_node_tree(data.as_ref())?,
+            nodes,
             &mut chars_to_bits,
             &mut bits_to_chars,
             Bits::default(),
@@ -152,6 +184,41 @@ impl Huffman {
         } else {
             None
         }
+    }
+
+    pub fn ser(&self) -> Vec<u8> {
+        let len = self.bits_to_chars.len();
+        let (_, mut bytes) = Integer::usize(len).ser();
+
+        for (bits, ch) in self.bits_to_chars.clone() {
+            let (_, ch) = Integer::u32(ch as u32).ser();
+            bytes.extend(ch);
+            bytes.extend(bits.ser());
+        }
+
+        bytes
+    }
+
+    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
+        let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+        let mut bits_to_chars = HashMap::new();
+        let mut chars_to_bits = HashMap::new();
+
+        for _ in 0..len {
+            let ch_bits = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+            let Some(ch) = char::from_u32(ch_bits) else {
+                return Err(HuffmanSerError::InvalidCharacter(ch_bits));
+            };
+            let bits = Bits::deser(bytes)?;
+
+            bits_to_chars.insert(bits.clone(), ch);
+            chars_to_bits.insert(ch, bits);
+        }
+
+        Ok(Self {
+            bits_to_chars,
+            chars_to_bits,
+        })
     }
 }
 

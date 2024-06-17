@@ -116,7 +116,7 @@ impl Bits {
         size
     }
 
-    pub fn deser(&self, bytes: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
+    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, IntegerSerError> {
         let valid_bits: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
         let to_be_read = (valid_bits as f32 / 8.0).ceil() as usize;
         let Some(backing) = bytes.read(to_be_read).map(|x| x.to_vec()) else {

@@ -25,6 +25,8 @@ pub mod types;
 pub mod utilities;
 pub mod values;
 
+//TODO: CommonSerError for common serialisation failures
+
 #[cfg(feature = "axum")]
 pub mod axum;
 

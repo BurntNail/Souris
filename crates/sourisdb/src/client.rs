@@ -1,11 +1,13 @@
+use core::fmt::{Display, Formatter};
+use std::{io::Read, sync::Arc};
+
+use http::{status::InvalidStatusCode, StatusCode};
+use ureq::{Agent, Response};
+
 use crate::{
     store::{Store, StoreSerError},
     values::{Value, ValueSerError, ValueTy},
 };
-use core::fmt::{Display, Formatter};
-use http::{status::InvalidStatusCode, StatusCode};
-use std::{io::Read, sync::Arc};
-use ureq::{Agent, Response};
 
 #[derive(Debug, Clone)]
 pub struct SourisClient {
@@ -155,6 +157,7 @@ impl SourisClient {
             .call()?;
         rsp.error_for_status()?;
         let body = rsp.body()?;
+        println!("Received body from client");
         Ok(Store::deser(&body)?)
     }
 
@@ -165,6 +168,8 @@ impl SourisClient {
         store: Store,
     ) -> Result<bool, ClientError> {
         let store = store.ser()?;
+        println!("Serialised store to {}", store.len());
+
         let rsp = self
             .agent
             .put(&format!(
@@ -190,7 +195,7 @@ impl SourisClient {
         key: String,
         value: Value,
     ) -> Result<bool, ClientError> {
-        let value = value.ser()?;
+        let value = value.ser(None)?; //TODO: huffman-ser this
         let rsp = self
             .agent
             .put(&format!("http://{}:{}/v1/add_kv", self.path, self.port))

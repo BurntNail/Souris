@@ -7,16 +7,16 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use lz4_flex::{block::DecompressError as Lz4DecompressError, compress, decompress};
-use miniz_oxide::{
-    deflate::compress_to_vec,
-    inflate::{decompress_to_vec, DecompressError as MinizDecompressError},
-};
+use lz4_flex::{block::DecompressError as Lz4DecompressError, decompress};
+use miniz_oxide::inflate::{decompress_to_vec, DecompressError as MinizDecompressError};
 use serde_json::{Error as SJError, Value as SJValue};
 
 use crate::{
     types::integer::{Integer, IntegerSerError, SignedState},
-    utilities::cursor::Cursor,
+    utilities::{
+        cursor::Cursor,
+        huffman::{Huffman, HuffmanSerError},
+    },
     values::{Value, ValueSerError, ValueTy},
 };
 
@@ -59,20 +59,20 @@ impl TryFrom<u8> for CompressionType {
 
 impl Store {
     fn compress(bytes: &[u8]) -> (Option<Vec<u8>>, CompressionType) {
-        let raw = bytes;
+        // let raw = bytes;
 
-        let mut lz4 = Integer::from(raw.len()).ser().1;
-        lz4.extend(compress(bytes));
-
-        let miniz = compress_to_vec(bytes, 10);
-
-        if [miniz.len(), lz4.len()].iter().all(|x| *x >= raw.len()) {
-            (None, CompressionType::None)
-        } else if miniz.len() < lz4.len() {
-            (Some(miniz), CompressionType::Miniz)
-        } else {
-            (Some(lz4), CompressionType::Lz4)
-        }
+        // let mut lz4 = Integer::from(raw.len()).ser().1;
+        // lz4.extend(compress(bytes));
+        //
+        // let miniz = compress_to_vec(bytes, 10);
+        //
+        // if [miniz.len(), lz4.len()].iter().all(|x| *x >= raw.len()) {
+        (None, CompressionType::None)
+        // } else if miniz.len() < lz4.len() {
+        //     (Some(miniz), CompressionType::Miniz)
+        // } else {
+        //     (Some(lz4), CompressionType::Lz4)
+        // }
     }
     fn decompress(
         bytes: &[u8],
@@ -93,13 +93,47 @@ impl Store {
 
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
     pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
-        let raw_map = Value::Map(self.0.clone()).ser()?;
+        fn add_value_text_to_string(value: &Value, string: &mut String) {
+            match value {
+                Value::Map(map) => {
+                    for (k, v) in map {
+                        string.push_str(k);
+                        add_value_text_to_string(v, string);
+                    }
+                }
+                Value::Array(a) => {
+                    for v in a {
+                        add_value_text_to_string(v, string);
+                    }
+                }
+                Value::JSON(sjv) => {
+                    string.push_str(&sjv.to_string());
+                }
+                Value::Timezone(tz) => {
+                    string.push_str(tz.name());
+                }
+                Value::String(s) => string.push_str(s),
+                _ => {}
+            }
+        }
+
+        let raw_map = Value::Map(self.0.clone());
+        let mut all_text = String::new();
+        add_value_text_to_string(&raw_map, &mut all_text);
+
+        let huffman = Huffman::new(&all_text);
+        let raw_map = raw_map.ser(huffman.as_ref())?;
+
         let (map, compression_ty) = Self::compress(&raw_map);
 
         let mut res = vec![];
 
         res.extend(b"SOURISDB");
-        res.push(u8::from(compression_ty));
+        res.push(u8::from(compression_ty) | (u8::from(huffman.is_some()) << 7));
+        if let Some(huffman) = huffman {
+            res.extend(huffman.ser());
+        }
+
         if let Some(map) = map {
             res.extend(map);
         } else {
@@ -122,12 +156,18 @@ impl Store {
         let Some(compression_ty) = bytes.next().copied() else {
             return Err(StoreSerError::NotEnoughBytes);
         };
-        let compression_ty = CompressionType::try_from(compression_ty)?;
+        let is_huffman_encoded = (compression_ty & 0b1000_0000) > 0;
+        let huffman = if is_huffman_encoded {
+            Some(Huffman::deser(&mut bytes)?)
+        } else {
+            None
+        };
 
+        let compression_ty = CompressionType::try_from(compression_ty & 0b1111)?;
         let uncompressed_bytes = Self::decompress(bytes.as_ref(), compression_ty)?;
         drop(bytes);
 
-        let val = Value::deser(&mut Cursor::new(&uncompressed_bytes))?;
+        let val = Value::deser(&mut Cursor::new(&uncompressed_bytes), huffman.as_ref())?;
         let ty = val.as_ty();
         let Some(map) = val.to_map() else {
             return Err(StoreSerError::ExpectedMap(ty));
@@ -228,6 +268,7 @@ pub enum StoreSerError {
     UnsupportedCompression(u8),
     Lz4Decompress(Lz4DecompressError),
     MinizDecompresss(MinizDecompressError),
+    Huffman(HuffmanSerError),
 }
 
 impl Display for StoreSerError {
@@ -248,6 +289,7 @@ impl Display for StoreSerError {
             }
             StoreSerError::Lz4Decompress(d) => write!(f, "Error with Lz4 decompression: {d}"),
             StoreSerError::MinizDecompresss(d) => write!(f, "Error with miniz decompression: {d}"),
+            StoreSerError::Huffman(h) => write!(f, "Error with huffman: {h}"),
         }
     }
 }
@@ -277,6 +319,11 @@ impl From<MinizDecompressError> for StoreSerError {
         Self::MinizDecompresss(value)
     }
 }
+impl From<HuffmanSerError> for StoreSerError {
+    fn from(value: HuffmanSerError) -> Self {
+        Self::Huffman(value)
+    }
+}
 
 #[cfg(feature = "std")]
 impl std::error::Error for StoreSerError {
@@ -287,6 +334,7 @@ impl std::error::Error for StoreSerError {
             Self::SerdeJson(e) => Some(e),
             Self::Lz4Decompress(d) => Some(d),
             Self::MinizDecompresss(d) => Some(d),
+            Self::Huffman(h) => Some(h),
             _ => None,
         }
     }

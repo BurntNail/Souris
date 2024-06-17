@@ -8,7 +8,7 @@
 //!
 //! NB: to get access to `value_utils`, the `std` feature must be enabled.
 
-mod bits;
+pub mod bits;
 pub mod cursor;
 pub mod huffman;
 #[cfg(feature = "std")]

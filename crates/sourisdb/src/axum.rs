@@ -32,24 +32,29 @@
 //! }
 //! ```
 
+use alloc::{format, string::String};
+use core::fmt::{Display, Formatter};
+
+use axum::{
+    async_trait,
+    body::Bytes,
+    extract::{FromRequest, rejection::BytesRejection, Request},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+
 use crate::{
     store::{Store, StoreSerError},
     utilities::cursor::Cursor,
     values::{Value, ValueSerError},
 };
-use alloc::{boxed::Box, format, string::String};
-use axum::{
-    async_trait,
-    body::Bytes,
-    extract::{rejection::BytesRejection, FromRequest, Request},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
-use core::fmt::{Display, Formatter}; //boxed::Box is used for async_trait
+
+//boxed::Box is used for async_trait
 
 impl IntoResponse for Value {
     fn into_response(self) -> Response {
-        match self.ser() {
+        match self.ser(None) {
+            //TODO: huffman-ser this
             Ok(b) => Bytes::from(b).into_response(),
             Err(e) => SourisRejection::Value(e, false).into_response(),
         }
@@ -62,7 +67,7 @@ impl<S: Send + Sync> FromRequest<S> for Value {
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
         let bytes = Bytes::from_request(req, state).await?;
-        let val = match Value::deser(&mut Cursor::new(&bytes)) {
+        let val = match Value::deser(&mut Cursor::new(&bytes), None) {
             Ok(v) => v,
             Err(e) => return Err(SourisRejection::Value(e, true)),
         };

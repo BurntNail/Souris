@@ -23,7 +23,7 @@ use crate::{
         imaginary::Imaginary,
         integer::{Integer, IntegerSerError, SignedState},
     },
-    utilities::cursor::Cursor,
+    utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
 };
 
 #[derive(Clone)]
@@ -413,6 +413,8 @@ pub enum ValueSerError {
     InvalidDateOrTime,
     #[cfg(feature = "serde")]
     SerdeCustom(String),
+    NoHuffman,
+    UnableToDecodeHuffman,
 }
 
 impl Display for ValueSerError {
@@ -436,6 +438,16 @@ impl Display for ValueSerError {
             }
             ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e}"),
             ValueSerError::InvalidDateOrTime => write!(f, "Error with invalid time given"),
+            ValueSerError::NoHuffman => write!(
+                f,
+                "Encountered huffman-encoded string with no huffman tree provided"
+            ),
+            ValueSerError::UnableToDecodeHuffman => {
+                write!(
+                    f,
+                    "Encountered huffman-encoded string but was unable to decode it"
+                )
+            }
         }
     }
 }
@@ -772,7 +784,7 @@ impl Value {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn ser(&self) -> Result<Vec<u8>, ValueSerError> {
+    pub fn ser(&self, huffman: Option<&Huffman>) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
         let mut ty = u8::from(self.as_ty()) << 4;
@@ -785,12 +797,22 @@ impl Value {
                 res.extend(bytes.iter());
             }
             Self::String(s) => {
-                let str_bytes = s.as_bytes();
-                let (_, len_bytes) = Integer::from(str_bytes.len()).ser();
+                let huffman_encoded = huffman.and_then(|x| x.encode_string(s)); //unlikely to not be able to encode, but just in case ;)
 
-                res.push(ty);
-                res.extend(len_bytes.iter());
-                res.extend(str_bytes.iter());
+                if let Some(huffman_encoded) = huffman_encoded {
+                    let sered = huffman_encoded.ser();
+
+                    ty |= 1;
+                    res.push(ty);
+                    res.extend(sered);
+                } else {
+                    let str_bytes = s.as_bytes();
+                    let (_, len_bytes) = Integer::from(str_bytes.len()).ser();
+
+                    res.push(ty);
+                    res.extend(len_bytes.iter());
+                    res.extend(str_bytes.iter());
+                }
             }
             Self::Binary(b) => {
                 let (_, len_bytes) = Integer::from(b.len()).ser();
@@ -845,7 +867,7 @@ impl Value {
             }
             Self::JSON(v) => {
                 res.push(ty);
-                res.extend(Value::String(v.to_string()).ser()?);
+                res.extend(Value::String(v.to_string()).ser(huffman)?);
             }
             Self::Null(()) => {
                 res.push(ty);
@@ -871,8 +893,8 @@ impl Value {
                 }
 
                 for (k, v) in m.clone() {
-                    res.extend(Value::String(k).ser()?);
-                    res.extend(v.ser()?);
+                    res.extend(Value::String(k).ser(huffman)?);
+                    res.extend(v.ser(huffman)?);
                 }
             }
             Self::Array(a) => {
@@ -889,13 +911,13 @@ impl Value {
                 }
 
                 for v in a.clone() {
-                    res.extend(v.ser()?);
+                    res.extend(v.ser(huffman)?);
                 }
             }
             Self::Timezone(tz) => {
                 let name = tz.name();
                 res.push(ty);
-                res.extend(Value::String(name.into()).ser()?);
+                res.extend(Value::String(name.into()).ser(huffman)?);
             }
             Self::Ipv4Addr(a) => {
                 res.push(ty);
@@ -911,7 +933,7 @@ impl Value {
     }
 
     #[allow(clippy::many_single_char_names, clippy::too_many_lines)]
-    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, ValueSerError> {
+    pub fn deser(bytes: &mut Cursor<u8>, huffman: Option<&Huffman>) -> Result<Self, ValueSerError> {
         let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 
         let ty = (byte & 0b1111_0000) >> 4;
@@ -956,15 +978,28 @@ impl Value {
                 Self::Timestamp(NaiveDateTime::new(date, time))
             }
             ValueTy::String => {
-                let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-                let str_bytes = bytes
-                    .read(len)
-                    .ok_or(ValueSerError::NotEnoughBytes)?
-                    .to_vec();
-                Self::String(String::from_utf8(str_bytes)?)
+                if (byte & 0b1) > 0 {
+                    //huffman-encoded
+                    let Some(huffman) = huffman else {
+                        return Err(ValueSerError::NoHuffman);
+                    };
+                    let bits = Bits::deser(bytes)?;
+                    let Some(decoded) = huffman.decode_string(&bits) else {
+                        return Err(ValueSerError::UnableToDecodeHuffman);
+                    };
+
+                    Self::String(decoded)
+                } else {
+                    let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                    let str_bytes = bytes
+                        .read(len)
+                        .ok_or(ValueSerError::NotEnoughBytes)?
+                        .to_vec();
+                    Self::String(String::from_utf8(str_bytes)?)
+                }
             }
             ValueTy::JSON => {
-                let val = Value::deser(bytes)?;
+                let val = Value::deser(bytes, huffman)?;
                 let Value::String(s) = val else {
                     return Err(ValueSerError::UnexpectedValueType(
                         val.as_ty(),
@@ -1002,14 +1037,14 @@ impl Value {
                 let mut map = HashMap::with_capacity(len);
 
                 for _ in 0..len {
-                    let key = Value::deser(bytes)?;
+                    let key = Value::deser(bytes, huffman)?;
                     let Value::String(key) = key else {
                         return Err(ValueSerError::UnexpectedValueType(
                             key.as_ty(),
                             ValueTy::String,
                         ));
                     };
-                    let value = Value::deser(bytes)?;
+                    let value = Value::deser(bytes, huffman)?;
                     map.insert(key, value);
                 }
 
@@ -1020,12 +1055,12 @@ impl Value {
 
                 Value::Array(
                     (0..len)
-                        .map(|_| Value::deser(bytes))
+                        .map(|_| Value::deser(bytes, huffman))
                         .collect::<Result<_, _>>()?,
                 )
             }
             ValueTy::Timezone => {
-                let val = Value::deser(bytes)?;
+                let val = Value::deser(bytes, huffman)?;
                 let Value::String(val) = val else {
                     return Err(ValueSerError::UnexpectedValueType(
                         val.as_ty(),
