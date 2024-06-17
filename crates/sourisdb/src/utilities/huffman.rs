@@ -2,9 +2,11 @@ use alloc::{boxed::Box, vec::Vec};
 
 use hashbrown::HashMap;
 
+use crate::utilities::bits::Bits;
+
 #[derive(Debug, Clone)]
 pub struct Huffman {
-    root: Node,
+    conversion_table: HashMap<char, Bits>,
 }
 
 #[derive(Debug, Clone)]
@@ -14,9 +16,7 @@ enum Node {
 }
 
 impl Huffman {
-    #[must_use]
-    pub fn new(data: impl AsRef<str>) -> Option<Self> {
-        let data = data.as_ref();
+    fn to_node_tree(data: &str) -> Option<Node> {
         if data.len() < 2 {
             return None;
         }
@@ -30,9 +30,7 @@ impl Huffman {
 
         let (least_frequent_ch, least_frequent_weight) = frequency_vec.pop().unwrap(); //checked for len earlier
         let Some((next_least_frequent_ch, next_least_frequent_weight)) = frequency_vec.pop() else {
-            return Some(Self {
-                root: Node::Leaf(least_frequent_ch),
-            });
+            return Some(Node::Leaf(least_frequent_ch));
         };
 
         let mut node = Node::Branch {
@@ -80,35 +78,69 @@ impl Huffman {
                 node = new_node;
             }
         }
+        Some(node)
+    }
 
-        Some(Self { root: node })
+    #[must_use]
+    pub fn new(data: impl AsRef<str>) -> Option<Self> {
+        fn add_node_to_table(node: Node, table: &mut HashMap<char, Bits>, bits_so_far: Bits) {
+            match node {
+                Node::Leaf(ch) => {
+                    table.insert(ch, bits_so_far);
+                }
+                Node::Branch { left, right } => {
+                    let mut left_bits = bits_so_far.clone();
+                    let mut right_bits = bits_so_far.clone();
+                    left_bits.push(false);
+                    right_bits.push(true);
+
+                    add_node_to_table(*left, table, left_bits);
+                    add_node_to_table(*right, table, right_bits);
+                }
+            }
+        }
+
+        let mut conversion_table = HashMap::new();
+        add_node_to_table(
+            Self::to_node_tree(data.as_ref())?,
+            &mut conversion_table,
+            Bits::default(),
+        );
+
+        Some(Self { conversion_table })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utilities::huffman::{Huffman, Node};
+    use hashbrown::HashMap;
+
+    use crate::utilities::{
+        bits::Bits,
+        huffman::{Huffman, Node},
+    };
 
     #[test]
-    fn test_empty_string() {
-        let huffman = Huffman::new("");
+    fn nodes_from_empty_string() {
+        let huffman = Huffman::to_node_tree("");
         assert!(huffman.is_none());
     }
 
     #[test]
-    fn test_one_char_repeated() {
-        let huffman = Huffman::new("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").unwrap();
-        let Node::Leaf(ch) = huffman.root else {
+    fn nodes_from_one_char_repeated() {
+        let huffman = Huffman::to_node_tree("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").unwrap();
+        let Node::Leaf(ch) = huffman else {
             panic!("didn't find leaf node at root");
         };
         assert_eq!(ch, 'a');
     }
 
     #[test]
-    fn just_two_chars() {
+    fn nodes_from_just_two_chars() {
         let huffman =
-            Huffman::new("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbaaaaaaaaabb").unwrap();
-        let Node::Branch { left, right } = huffman.root else {
+            Huffman::to_node_tree("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbaaaaaaaaabb")
+                .unwrap();
+        let Node::Branch { left, right } = huffman else {
             panic!("didn't find branch node at root");
         };
 
@@ -124,9 +156,9 @@ mod tests {
     }
 
     #[test]
-    fn five_characters() {
-        let huffman = Huffman::new("abcdeabcdabcabaaaaaa").unwrap();
-        let Node::Branch { left, right } = huffman.root else {
+    fn nodes_from_five_characters() {
+        let huffman = Huffman::to_node_tree("abcdeabcdabcabaaaaaa").unwrap();
+        let Node::Branch { left, right } = huffman else {
             panic!("didn't find branch node at root");
         };
 
@@ -173,5 +205,22 @@ mod tests {
                 assert_eq!(e, 'e');
             }
         }
+    }
+
+    #[test]
+    fn huffman_bits_from_five_characters() {
+        let huffman = Huffman::new("abcdeabcdabcabaaaaaa").unwrap();
+
+        let expected: HashMap<char, Bits> = [
+            ('a', Bits::from([false])),
+            ('b', Bits::from([true, false, false])),
+            ('c', Bits::from([true, false, true])),
+            ('d', Bits::from([true, true, false])),
+            ('e', Bits::from([true, true, true])),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(huffman.conversion_table, expected);
     }
 }

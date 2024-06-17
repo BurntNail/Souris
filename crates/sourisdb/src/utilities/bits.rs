@@ -1,5 +1,8 @@
-use alloc::vec::Vec;
-use core::fmt::{Display, Formatter};
+use alloc::{vec, vec::Vec};
+use core::{
+    fmt::{Display, Formatter},
+    hash::{Hash, Hasher},
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct Bits {
@@ -8,8 +11,31 @@ pub struct Bits {
 }
 
 impl PartialEq for Bits {
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss
+    )]
     fn eq(&self, other: &Self) -> bool {
-        self.backing[0..self.valid_bits] == other.backing[0..other.valid_bits]
+        let self_end = (self.valid_bits as f32 / 8.0).ceil() as usize;
+        let other_end = (other.valid_bits as f32 / 8.0).ceil() as usize;
+
+        self.backing[0..self_end] == other.backing[0..other_end]
+    }
+}
+
+impl Eq for Bits {}
+
+impl Hash for Bits {
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss
+    )]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let end = (self.valid_bits as f32 / 8.0).ceil() as usize;
+
+        self.backing[0..end].hash(state);
     }
 }
 
@@ -69,12 +95,13 @@ impl From<Bits> for Vec<bool> {
         v
     }
 }
-impl From<Vec<bool>> for Bits {
-    fn from(value: Vec<bool>) -> Self {
+
+impl<T: AsRef<[bool]>> From<T> for Bits {
+    fn from(value: T) -> Self {
         let mut bits = Bits::default();
 
-        for bool in value {
-            bits.push(bool);
+        for bool in value.as_ref() {
+            bits.push(*bool);
         }
 
         bits
