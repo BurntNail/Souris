@@ -306,12 +306,13 @@ impl Huffman<char> {
     }
 
     ///Create a new huffman code based off the reuters corpus of english letter frequencies.
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::unreadable_literal)]
+    #[must_use]
     pub fn new_with_english_frequencies() -> Self {
         //sourced from here: https://github.com/piersy/ascii-char-frequency-english
         //source code modified to not normalise the values tho
         let freqs_map = [
-            (32_u8, 2643715_usize),
+            (32_u8, 2643715),
             (101, 1358462),
             (116, 998648),
             (97, 966445),

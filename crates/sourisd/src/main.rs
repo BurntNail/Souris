@@ -9,8 +9,8 @@ use std::time::Duration;
 use axum::{
     extract::DefaultBodyLimit,
     http::StatusCode,
-    Router,
     routing::{get, post, put},
+    Router,
 };
 use tokio::{
     net::TcpListener,
@@ -19,7 +19,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 use crate::v1_routes::{
     db::{add_db, add_db_with_content, clear_db, get_all_dbs, get_db, remove_db},

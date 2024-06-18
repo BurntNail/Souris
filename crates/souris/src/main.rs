@@ -9,8 +9,8 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use dialoguer::{
-    Confirm,
-    Error as DError, FuzzySelect, Input, theme::{ColorfulTheme, Theme},
+    theme::{ColorfulTheme, Theme},
+    Confirm, Error as DError, FuzzySelect, Input,
 };
 
 use sourisdb::{
