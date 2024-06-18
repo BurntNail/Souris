@@ -1,26 +1,26 @@
 use core::fmt::Display;
-use std::sync::Arc;
 
 use http::StatusCode;
-use ureq::{Agent, Response};
+use ureq::{Agent, OrAnyStatus, Response};
 
 use crate::{client::ClientError, store::Store, values::Value};
 
 #[derive(Debug, Clone)]
 pub struct SyncClient {
-    path: Arc<str>, //path is never changed, so just use arc<str> for cloning benefits
+    path: String, //path is never changed, so just use arc<str> for cloning benefits
     port: u32,
     agent: Agent, //also internally arc-ed, so easy to clone
 }
 
 impl SyncClient {
     pub fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
-        let path = path.to_string().into();
+        let path = path.to_string();
         let agent = Agent::new();
 
         let rsp = agent
             .get(&format!("http://{path}:{port}/healthcheck"))
-            .call()?;
+            .call()
+            .or_any_status()?;
         if rsp.status() != StatusCode::OK {
             return Err(ClientError::ServerNotHealthy(StatusCode::try_from(
                 rsp.status(),
@@ -37,7 +37,8 @@ impl SyncClient {
                 "http://{}:{}/v1/get_all_db_names",
                 self.path, self.port
             ))
-            .call()?;
+            .call()
+            .or_any_status()?;
         rsp.error_for_status()?;
 
         let body = rsp.body()?;
@@ -53,7 +54,8 @@ impl SyncClient {
                 if overwrite_existing { "true" } else { "false" },
             )
             .query("db_name", name)
-            .call()?;
+            .call()
+            .or_any_status()?;
         Ok(match rsp.error_for_status()? {
             StatusCode::OK => false,
             StatusCode::CREATED => true,
@@ -66,7 +68,8 @@ impl SyncClient {
             .agent
             .get(&format!("http://{}:{}/v1/get_db", self.path, self.port))
             .query("db_name", db_name)
-            .call()?;
+            .call()
+            .or_any_status()?;
         rsp.error_for_status()?;
         let body = rsp.body()?;
         println!("Received body from client");
@@ -126,7 +129,8 @@ impl SyncClient {
             .post(&format!("http://{}:{}/v1/rm_kv", self.path, self.port))
             .query("db_name", database_name)
             .query("key", key)
-            .call()?;
+            .call()
+            .or_any_status()?;
         rsp.error_for_status()?;
         Ok(())
     }
@@ -136,7 +140,8 @@ impl SyncClient {
             .agent
             .post(&format!("http://{}:{}/v1/rm_db", self.path, self.port))
             .query("db_name", database_name)
-            .call()?;
+            .call()
+            .or_any_status()?;
         rsp.error_for_status()?;
         Ok(())
     }

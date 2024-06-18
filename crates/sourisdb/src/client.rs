@@ -1,3 +1,11 @@
+//! A module that provides one sync and one async client for use with the `sourisd` API.
+//!
+//! To enable the sync client, use the `sync_client` feature, and for the async client add `async_client`. Both can be enabled without any issues.
+//!
+//! The methods available on both clients are identical, save the async ones being async. The [`ClientError`] type changes based off which features are enabled to hold the error types for the HTTP library.
+//!
+//! The sync client is backed by [`ureq`] and the async client by [`reqwest`].
+
 use core::fmt::{Display, Formatter};
 
 use http::{status::InvalidStatusCode, StatusCode};
@@ -9,7 +17,7 @@ pub use sync_client::SyncClient;
 
 use crate::{
     store::StoreSerError,
-    values::{ValueSerError, ValueTy},
+    values::ValueSerError,
 };
 
 #[cfg(feature = "async_client")]
@@ -17,23 +25,30 @@ mod async_client;
 #[cfg(feature = "sync_client")]
 mod sync_client;
 
+///An error which could occur using one of the [`sourisd`] clients.
 #[derive(Debug)]
 pub enum ClientError {
+    ///An error from `ureq` - this can only be a transport issue as HTTP error codes are handled in a separate variant - [`ClientError::HttpErrorCode`].
     #[cfg(feature = "sync_client")]
-    Ureq(Box<ureq::Error>), //boxed because the error is *bigggg*
+    Ureq(Box<ureq::Transport>), //boxed because the error is *bigggg*
+    ///An error from `reqwest` - this could be from a variety of sources, but not HTTP error codes - thy are handled in [`ClientError::HttpErrorCode`].
     #[cfg(feature = "async_client")]
     Reqwest(reqwest::Error),
+    ///An error de/ser-ialising a [`crate::store::Store`].
     Store(StoreSerError),
+    ///An error de/ser-ialising a [`crate::values::Value`].
     Value(ValueSerError),
+    ///A request was sent and a non 2xx code was returned.
     HttpErrorCode(StatusCode),
+    ///An IO Error occured - this error variant occurs when reading in the body of the sync client.
+    #[cfg(feature = "sync_client")]
     IO(std::io::Error),
+    ///An invalid status code was found - this error occurs when turning a `u32` into a `StatusCode` in the sync client.
+    #[cfg(feature = "sync_client")]
     InvalidStatusCode(InvalidStatusCode),
-    ExpectedKey(&'static str),
-    IncorrectType {
-        ex: ValueTy,
-        found: ValueTy,
-    },
+    ///In the clients' constructors, a request is made to the healthcheck endpoint of the server. This error occurs if that does not return `200 OK`.
     ServerNotHealthy(StatusCode),
+    ///An error occurred with `serde_json`.
     SerdeJson(serde_json::Error),
 }
 
@@ -48,10 +63,6 @@ impl Display for ClientError {
             Self::HttpErrorCode(sc) => write!(f, "Error with response: {sc:?}"),
             Self::IO(e) => write!(f, "IO Error: {e}"),
             Self::InvalidStatusCode(e) => write!(f, "Invalid status code provided: {e}"),
-            Self::ExpectedKey(k) => write!(f, "Expected to find key: {k:?} in `Store` of body"),
-            Self::IncorrectType { ex, found } => {
-                write!(f, "Expected to find value of type {ex:?}, found {found:?}")
-            }
             Self::ServerNotHealthy(sc) => write!(
                 f,
                 "Tried to get server health check, got status code: {sc:?}"
@@ -63,8 +74,8 @@ impl Display for ClientError {
 }
 
 #[cfg(feature = "sync_client")]
-impl From<ureq::Error> for ClientError {
-    fn from(value: ureq::Error) -> Self {
+impl From<ureq::Transport> for ClientError {
+    fn from(value: ureq::Transport) -> Self {
         Self::Ureq(Box::new(value))
     }
 }
@@ -79,11 +90,13 @@ impl From<StoreSerError> for ClientError {
         Self::Store(value)
     }
 }
+#[cfg(feature = "sync_client")]
 impl From<std::io::Error> for ClientError {
     fn from(value: std::io::Error) -> Self {
         Self::IO(value)
     }
 }
+#[cfg(feature = "sync_client")]
 impl From<InvalidStatusCode> for ClientError {
     fn from(value: InvalidStatusCode) -> Self {
         Self::InvalidStatusCode(value)
@@ -106,7 +119,9 @@ impl std::error::Error for ClientError {
             #[cfg(feature = "sync_client")]
             Self::Ureq(u) => Some(u),
             Self::Store(s) => Some(s),
+            #[cfg(feature = "sync_client")]
             Self::IO(e) => Some(e),
+            #[cfg(feature = "sync_client")]
             Self::InvalidStatusCode(e) => Some(e),
             Self::SerdeJson(e) => Some(e),
             Self::Value(e) => Some(e),

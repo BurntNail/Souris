@@ -1,21 +1,20 @@
 use core::fmt::Display;
-use std::sync::Arc;
 
 use http::StatusCode;
-use reqwest::Client;
+use reqwest::{Client, Response};
 
 use crate::{client::ClientError, store::Store, values::Value};
 
 #[derive(Debug, Clone)]
 pub struct AsyncClient {
-    path: Arc<str>,
+    path: String,
     port: u32,
     client: Client,
 }
 
 impl AsyncClient {
     pub async fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
-        let path = path.to_string().into();
+        let path = path.to_string();
         let client = Client::new();
 
         let rsp = client
@@ -37,8 +36,8 @@ impl AsyncClient {
                 self.path, self.port
             ))
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+        rsp.error_for_status_to_client_error()?;
         let body = rsp.bytes().await?;
         Ok(serde_json::from_slice(body.as_ref())?)
     }
@@ -59,9 +58,8 @@ impl AsyncClient {
                 ("db_name", name),
             ])
             .send()
-            .await?
-            .error_for_status()?;
-        Ok(match rsp.status() {
+            .await?;
+        Ok(match rsp.error_for_status_to_client_error()? {
             StatusCode::OK => false,
             StatusCode::CREATED => true,
             _ => unreachable!("API cannot return anything but ok or created"),
@@ -74,8 +72,8 @@ impl AsyncClient {
             .get(&format!("http://{}:{}/v1/get_db", self.path, self.port))
             .query(&["db_name", db_name])
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+        rsp.error_for_status_to_client_error()?;
         let bytes = rsp.bytes().await?;
         Ok(Store::deser(bytes.as_ref())?)
     }
@@ -103,10 +101,9 @@ impl AsyncClient {
             ])
             .body(store)
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
 
-        Ok(match rsp.status() {
+        Ok(match rsp.error_for_status_to_client_error()? {
             StatusCode::OK => false,
             StatusCode::CREATED => true,
             _ => unreachable!("API cannot return anything but ok or created"),
@@ -126,10 +123,9 @@ impl AsyncClient {
             .query(&[("db_name", database_name), ("key", key)])
             .body(value)
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
 
-        Ok(match rsp.status() {
+        Ok(match rsp.error_for_status_to_client_error()? {
             StatusCode::OK => false,
             StatusCode::CREATED => true,
             _ => unreachable!("API cannot return anything but ok or created"),
@@ -146,7 +142,7 @@ impl AsyncClient {
             .query(&[("db_name", database_name), ("key", key)])
             .send()
             .await?
-            .error_for_status()?;
+            .error_for_status_to_client_error()?;
         Ok(())
     }
 
@@ -156,7 +152,22 @@ impl AsyncClient {
             .query(&[("db_name", database_name)])
             .send()
             .await?
-            .error_for_status()?;
+            .error_for_status_to_client_error()?;
         Ok(())
+    }
+}
+
+trait ResponseExt {
+    fn error_for_status_to_client_error(&self) -> Result<StatusCode, ClientError>;
+}
+
+impl ResponseExt for Response {
+    fn error_for_status_to_client_error(&self) -> Result<StatusCode, ClientError> {
+        let status = self.status();
+        if status.is_success() {
+            Ok(status)
+        } else {
+            Err(ClientError::HttpErrorCode(status))
+        }
     }
 }
