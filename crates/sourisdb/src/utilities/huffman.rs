@@ -15,7 +15,7 @@
 //! let marmite_scores = [1_u8, 10, 2, 8, 9];
 //!
 //! let combined_scores = deadpool_scores.into_iter().chain(marvels_scores.into_iter()).chain(marmite_scores.into_iter());
-//! let scores_huffman: Huffman<u8> = Huffman::new(combined_scores).unwrap(); //scores for a variety
+//! let scores_huffman: Huffman<u8> = Huffman::new(combined_scores).unwrap(); //scores for a variety of films
 //!
 //! let deadpool_bits = scores_huffman.encode(deadpool_scores.into_iter()).unwrap();
 //! let encoded = deadpool_bits.ser();
