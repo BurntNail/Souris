@@ -128,7 +128,7 @@ impl Store {
         let mut all_text = String::new();
         add_value_text_to_string(&raw_map, &mut all_text);
 
-        let huffman = Huffman::new(&all_text);
+        let huffman = Huffman::new_str(&all_text);
         let raw_map = raw_map.ser(huffman.as_ref())?;
 
         let (map, compression_ty) = Self::compress(&raw_map);

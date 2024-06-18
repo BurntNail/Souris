@@ -7,6 +7,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // #![warn(missing_docs)]
 #![warn(clippy::all, clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
 
 extern crate alloc;
 extern crate core;

@@ -784,7 +784,7 @@ impl Value {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn ser(&self, huffman: Option<&Huffman>) -> Result<Vec<u8>, ValueSerError> {
+    pub fn ser(&self, huffman: Option<&Huffman<char>>) -> Result<Vec<u8>, ValueSerError> {
         let mut res = vec![];
 
         let mut ty = u8::from(self.as_ty()) << 4;
@@ -933,7 +933,10 @@ impl Value {
     }
 
     #[allow(clippy::many_single_char_names, clippy::too_many_lines)]
-    pub fn deser(bytes: &mut Cursor<u8>, huffman: Option<&Huffman>) -> Result<Self, ValueSerError> {
+    pub fn deser(
+        bytes: &mut Cursor<u8>,
+        huffman: Option<&Huffman<char>>,
+    ) -> Result<Self, ValueSerError> {
         let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 
         let ty = (byte & 0b1111_0000) >> 4;
