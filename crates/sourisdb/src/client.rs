@@ -30,7 +30,7 @@ mod sync_client;
 pub enum ClientError {
     ///An error from `ureq` - this can only be a transport issue as HTTP error codes are handled in a separate variant - [`ClientError::HttpErrorCode`].
     #[cfg(feature = "sync_client")]
-    Ureq(Box<ureq::Transport>), //boxed because the error is *bigggg*
+    Ureq(ureq::Transport), 
     ///An error from `reqwest` - this could be from a variety of sources, but not HTTP error codes - thy are handled in [`ClientError::HttpErrorCode`].
     #[cfg(feature = "async_client")]
     Reqwest(reqwest::Error),
@@ -76,7 +76,21 @@ impl Display for ClientError {
 #[cfg(feature = "sync_client")]
 impl From<ureq::Transport> for ClientError {
     fn from(value: ureq::Transport) -> Self {
-        Self::Ureq(Box::new(value))
+        Self::Ureq(value)
+    }
+}
+#[cfg(feature = "sync_client")]
+impl From<ureq::Error> for ClientError {
+    fn from(value: ureq::Error) -> Self {
+        match value {
+            ureq::Error::Status(status, _response) => {
+                match StatusCode::try_from(status) {
+                    Ok(sc) => ClientError::HttpErrorCode(sc),
+                    Err(e) => ClientError::InvalidStatusCode(e)
+                }                
+            },
+            ureq::Error::Transport(transport_error) => ClientError::Ureq(transport_error),
+        }
     }
 }
 #[cfg(feature = "async_client")]
