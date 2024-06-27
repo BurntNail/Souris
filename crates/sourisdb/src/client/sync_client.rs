@@ -118,8 +118,7 @@ impl SyncClient {
     }
 
     pub fn remove_entry_from_db(&self, database_name: &str, key: &str) -> Result<(), ClientError> {
-        self
-            .agent
+        self.agent
             .post(&format!("http://{}:{}/v1/rm_kv", self.path, self.port))
             .query("db_name", database_name)
             .query("key", key)
@@ -128,8 +127,7 @@ impl SyncClient {
     }
 
     pub fn remove_db(&self, database_name: &str) -> Result<(), ClientError> {
-        self
-            .agent
+        self.agent
             .post(&format!("http://{}:{}/v1/rm_db", self.path, self.port))
             .query("db_name", database_name)
             .call()?;

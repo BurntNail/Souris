@@ -1,7 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
 use sourisdb::utilities::{bits::Bits, huffman::Huffman};
 
-const BEE_MOVIE: &'static str = include_str!("./beemoviescript.txt");
+const BEE_MOVIE: &str = include_str!("./beemoviescript.txt");
 
 fn bee_movie(c: &mut Criterion) {
     c.bench_function("create beemovie", |b| {
@@ -23,12 +24,16 @@ fn bee_movie(c: &mut Criterion) {
 
     c.bench_function("decode first 500 beemovie", |b| {
         let huff = unsafe { Huffman::new_str(BEE_MOVIE).unwrap_unchecked() };
-        let data: Vec<Bits> = BEE_MOVIE.lines().take(500).flat_map(|l| huff.encode_string(l)).collect();
+        let data: Vec<Bits> = BEE_MOVIE
+            .lines()
+            .take(500)
+            .flat_map(|l| huff.encode_string(l))
+            .collect();
 
         b.iter(|| {
             for line in &data {
                 let decoded = huff.decode_string(line);
-                black_box(line);
+                black_box(decoded);
             }
         })
     });

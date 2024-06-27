@@ -15,10 +15,7 @@ pub use async_client::AsyncClient;
 #[cfg(feature = "sync_client")]
 pub use sync_client::SyncClient;
 
-use crate::{
-    store::StoreSerError,
-    values::ValueSerError,
-};
+use crate::{store::StoreSerError, values::ValueSerError};
 
 #[cfg(feature = "async_client")]
 mod async_client;
@@ -30,7 +27,7 @@ mod sync_client;
 pub enum ClientError {
     ///An error from `ureq` - this can only be a transport issue as HTTP error codes are handled in a separate variant - [`ClientError::HttpErrorCode`].
     #[cfg(feature = "sync_client")]
-    Ureq(ureq::Transport), 
+    Ureq(ureq::Transport),
     ///An error from `reqwest` - this could be from a variety of sources, but not HTTP error codes - thy are handled in [`ClientError::HttpErrorCode`].
     #[cfg(feature = "async_client")]
     Reqwest(reqwest::Error),
@@ -83,11 +80,9 @@ impl From<ureq::Transport> for ClientError {
 impl From<ureq::Error> for ClientError {
     fn from(value: ureq::Error) -> Self {
         match value {
-            ureq::Error::Status(status, _response) => {
-                match StatusCode::try_from(status) {
-                    Ok(sc) => ClientError::HttpErrorCode(sc),
-                    Err(e) => ClientError::InvalidStatusCode(e)
-                }                
+            ureq::Error::Status(status, _response) => match StatusCode::try_from(status) {
+                Ok(sc) => ClientError::HttpErrorCode(sc),
+                Err(e) => ClientError::InvalidStatusCode(e),
             },
             ureq::Error::Transport(transport_error) => ClientError::Ureq(transport_error),
         }
