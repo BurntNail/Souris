@@ -188,13 +188,14 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     ///
     /// Can return `None` if no elements are provided.
     fn data_with_frequencies_to_node_tree(data: HashMap<T, usize>) -> Option<Node<T>> {
+        if data.is_empty() {
+            return None;
+        }
         let mut frequency_table: HashMap<Node<T>, usize> = HashMap::new();
         for (ch, freq) in data {
             *frequency_table.entry(Node::Leaf(ch)).or_default() += freq;
         }
-        if frequency_table.is_empty() {
-            return None;
-        }
+        //redo HM to ensure that uniqueness is preserved etc
 
         let mut min_heap: MinHeap<Node<T>> = MinHeap::new(frequency_table.into_iter().collect());
 
@@ -530,7 +531,7 @@ mod tests {
         }
 
         #[test]
-        fn works_on_arbritrary_ascii_strings (s in " [a-zA-Z0-9]+") { //chuck a space in front to make sure there's two different characters
+        fn works_on_arbritrary_ascii_strings (s in "[a-z]+[A-Z0-9]+") {
             let huffman = Huffman::new_str(&s).expect("unable to get huffman");
 
             let encoded = huffman.encode_string(&s).expect("unable to encode");

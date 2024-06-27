@@ -33,11 +33,7 @@ impl PartialEq for Bits {
         clippy::cast_precision_loss
     )]
     fn eq(&self, other: &Self) -> bool {
-        // let self_end = (self.valid_bits as f32 / 8.0).ceil() as usize;
-        // let other_end = (other.valid_bits as f32 / 8.0).ceil() as usize;
-        //
-        // self.backing[0..self_end] == other.backing[0..other_end]
-        self.to_string().eq(&other.to_string()) //TODO: make this more efficient
+        self.valid_bits == other.valid_bits && self.get_proper_bytes().eq(&other.get_proper_bytes())
     }
 }
 
@@ -50,10 +46,7 @@ impl Hash for Bits {
         clippy::cast_precision_loss
     )]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // let end = (self.valid_bits as f32 / 8.0).ceil() as usize;
-        //
-        // self.backing[0..end].hash(state);
-        self.to_string().hash(state); //TODO: make more efficient
+        self.get_proper_bytes().hash(state);
     }
 }
 
@@ -65,13 +58,14 @@ impl Bits {
         } else {
             let interior_index = self.valid_bits % 8;
             let backing_index = self.valid_bits / 8;
-            self.valid_bits += 1;
             self.backing[backing_index] |= (u8::from(bit)) << interior_index;
+            self.valid_bits += 1;
         }
     }
 
     pub fn push_many(&mut self, bits: Self) {
         let bools: Vec<bool> = bits.into();
+        self.backing.reserve(bools.len() / 8);
         for bool in bools {
             self.push(bool);
         }
@@ -82,18 +76,31 @@ impl Bits {
             return None;
         }
 
-        let interior_index = (self.valid_bits - 1) % 8;
+        self.valid_bits -= 1;
+        let interior_index = self.valid_bits % 8;
 
         if interior_index == 0 {
-            self.valid_bits -= 1;
             Some(self.backing.pop().unwrap() > 0)
         } else {
-            let backing_index = (self.valid_bits - 1) / 8;
+            let backing_index = self.valid_bits / 8;
             let extracted = self.backing[backing_index] & (1 << interior_index);
             self.backing[backing_index] &= u8::MAX - (1 << interior_index);
-            self.valid_bits -= 1;
             Some(extracted > 0)
         }
+    }
+
+    fn get_proper_bytes (&self) -> Vec<u8> {
+        let interior_index = self.valid_bits % 8;
+        if interior_index == 0 {
+            return self.backing.clone();
+        }
+
+        let to_be_anded = (0..=interior_index).fold(0, |acc, i| acc | (1 << i));
+
+        let mut bytes = self.backing.clone();
+        bytes[self.backing.len() - 1] &= to_be_anded;
+
+        bytes
     }
 
     #[must_use]
@@ -218,8 +225,8 @@ impl<T: Into<usize>> Index<T> for Bits {
 
 #[cfg(test)]
 mod tests {
-    use alloc::string::ToString;
-
+    use alloc::{string::ToString, format};
+    use proptest::{prop_assert, prop_assert_eq, prop_assert_ne};
     use crate::utilities::bits::Bits;
 
     #[test]
@@ -238,13 +245,31 @@ mod tests {
 
     #[test]
     fn test_pop() {
-        let mut bits = Bits::default();
+        let mut bits: Bits = Bits::default();
         bits.push(false);
         bits.push(true);
         bits.push(true);
         bits.push(false);
         bits.push(false);
         bits.push(true);
+        bits.push(true);
+        bits.push(false);
+        bits.push(true);
+
+        assert_eq!(bits.pop(), Some(true));
+        assert_eq!(bits.pop(), Some(false));
+        assert_eq!(bits.pop(), Some(true));
+
+        bits.push(false);
+        bits.push(false);
+        bits.push(false);
+        bits.push(true);
+        bits.push(false);
+        assert_eq!(bits.pop(), Some(false));
+        assert_eq!(bits.pop(), Some(true));
+        assert_eq!(bits.pop(), Some(false));
+        assert_eq!(bits.pop(), Some(false));
+        assert_eq!(bits.pop(), Some(false));
 
         assert_eq!(bits.pop(), Some(true));
         assert_eq!(bits.pop(), Some(false));
@@ -253,5 +278,60 @@ mod tests {
         assert_eq!(bits.pop(), Some(true));
         assert_eq!(bits.pop(), Some(false));
         assert_eq!(bits.pop(), None);
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn test_partialeq (a: u32, b: u32, a_bits in 0..=32_usize, b_bits in 0..=32_usize) {
+            let a_bytes = a.to_le_bytes().to_vec();
+            let a_bits = Bits {
+                backing: a_bytes,
+                valid_bits: a_bits
+            };
+
+            let b_bytes = b.to_le_bytes().to_vec();
+            let b_bits = Bits {
+                backing: b_bytes,
+                valid_bits: b_bits
+            };
+            
+            if a == b {
+                prop_assert!(a_bits.eq(&b_bits));
+            } else {
+                prop_assert!(a_bits.ne(&b_bits));
+            }
+        }
+
+        #[cfg(feature = "std")]
+        #[test]
+        fn test_hash (a: u32, b: u32, a_bits in 0..=32_usize, b_bits in 0..=32_usize) {
+            let a_bytes = a.to_le_bytes().to_vec();
+            let a_bits = Bits {
+                backing: a_bytes,
+                valid_bits: a_bits
+            };
+
+            let b_bytes = b.to_le_bytes().to_vec();
+            let b_bits = Bits {
+                backing: b_bytes,
+                valid_bits: b_bits
+            };
+
+
+            let mut a_hasher = std::hash::DefaultHasher::new(); //going with long names to make it easier with features etc
+            let mut b_hasher = std::hash::DefaultHasher::new();
+
+            std::hash::Hash::hash(&a_bits, &mut a_hasher);
+            std::hash::Hash::hash(&b_bits, &mut b_hasher);
+
+            let a_hash = std::hash::Hasher::finish(&a_hasher);
+            let b_hash = std::hash::Hasher::finish(&b_hasher); 
+
+            if a == b {
+                prop_assert_eq!(a_hash, b_hash);
+            } else {
+                prop_assert_ne!(a_hash, b_hash);
+            }
+        }
     }
 }
