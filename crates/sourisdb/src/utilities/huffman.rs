@@ -24,7 +24,7 @@
 //! /* save the encoded to a file, then read them back */
 //! let decoded = encoded;
 //! let deadpool_recovered_bits = Bits::deser(&mut Cursor::new(&decoded)).unwrap();
-//! let recovered_deadpool = scores_huffman.decode(&deadpool_recovered_bits).unwrap();
+//! let recovered_deadpool = scores_huffman.decode(deadpool_recovered_bits).unwrap();
 //! assert_eq!(deadpool_scores.to_vec(), recovered_deadpool);
 //! ```
 //!
@@ -52,7 +52,7 @@
 //!
 //! let input = "bees do be flying";
 //! let bits = huffman.encode_string(input).unwrap();
-//! let output = huffman.decode_string(&bits).unwrap();
+//! let output = huffman.decode_string(bits).unwrap();
 //! assert_eq!(input, &output);
 //! ```
 //!
@@ -63,7 +63,7 @@
 //!
 //! let input = "The quick brown fox jumps over the lazy dog.";
 //! let bits = huffman.encode_string(input).unwrap();
-//! let output = huffman.decode_string(&bits).unwrap();
+//! let output = huffman.decode_string(bits).unwrap();
 //! assert_eq!(input, &output);
 //! ```
 
@@ -279,12 +279,13 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
 
     ///Decode a series of `T`s from a [`Bits`]. Will return `None` if a sequence in the `bits` cannot be found in the conversion tables calculated during the original [`Huffman::new`] incantation.
     #[must_use]
-    pub fn decode(&self, bits: &Bits) -> Option<Vec<T>> {
+    pub fn decode(&self, bits: Bits) -> Option<Vec<T>> {
         let mut string = Vec::new();
+        let bits: Vec<bool> = bits.into();
 
         let mut accumulator = Bits::default();
-        for i in 0..bits.len() {
-            accumulator.push(bits[i]);
+        for bit in bits {
+            accumulator.push(bit);
 
             if let Some(ch) = self.from_bits.get(&accumulator).cloned() {
                 accumulator.clear();
@@ -307,7 +308,11 @@ impl Huffman<char> {
     }
 
     ///Create a new huffman code based off the reuters corpus of english letter frequencies.
-    #[allow(clippy::too_many_lines, clippy::unreadable_literal)]
+    #[allow(
+        clippy::too_many_lines,
+        clippy::unreadable_literal,
+        clippy::missing_panics_doc
+    )]
     #[must_use]
     pub fn new_with_english_frequencies() -> Self {
         //sourced from here: https://github.com/piersy/ascii-char-frequency-english
@@ -438,7 +443,7 @@ impl Huffman<char> {
 
     ///Decode a string from a [`Bits`]. Will return `None` if it cannot parse the [`Bits`].
     #[must_use]
-    pub fn decode_string(&self, bits: &Bits) -> Option<String> {
+    pub fn decode_string(&self, bits: Bits) -> Option<String> {
         Some(self.decode(bits)?.into_iter().collect())
     }
 
@@ -519,7 +524,7 @@ mod tests {
         let huffman = Huffman::new_str(data).unwrap();
 
         let encoded = huffman.encode_string(data).unwrap();
-        let decoded = huffman.decode_string(&encoded).unwrap();
+        let decoded = huffman.decode_string(encoded).unwrap();
 
         assert_eq!(data, decoded);
     }
@@ -535,7 +540,7 @@ mod tests {
             let huffman = Huffman::new_str(&s).expect("unable to get huffman");
 
             let encoded = huffman.encode_string(&s).expect("unable to encode");
-            let decoded = huffman.decode_string(&encoded).expect("unable to decode");
+            let decoded = huffman.decode_string(encoded).expect("unable to decode");
 
             prop_assert_eq!(s, decoded);
         }

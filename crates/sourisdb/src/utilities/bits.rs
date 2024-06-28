@@ -53,14 +53,14 @@ impl Hash for Bits {
 impl Bits {
     pub fn push(&mut self, bit: bool) {
         if self.valid_bits % 8 == 0 {
-            self.valid_bits += 1;
-            self.backing.push(u8::from(bit));
-        } else {
-            let interior_index = self.valid_bits % 8;
-            let backing_index = self.valid_bits / 8;
-            self.backing[backing_index] |= (u8::from(bit)) << interior_index;
-            self.valid_bits += 1;
+            self.backing.push(0);
         }
+
+        let interior_index = self.valid_bits % 8;
+        let backing_index = self.valid_bits / 8;
+        self.backing[backing_index] |= (u8::from(bit)) << interior_index;
+
+        self.valid_bits += 1;
     }
 
     pub fn push_many(&mut self, bits: Self) {
@@ -170,6 +170,29 @@ impl<T: AsRef<[bool]>> From<T> for Bits {
     }
 }
 
+impl FromIterator<bool> for Bits {
+    fn from_iter<T: IntoIterator<Item = bool>>(iter: T) -> Self {
+        let mut bits = Bits::default();
+
+        for bit in iter {
+            bits.push(bit);
+        }
+
+        bits
+    }
+}
+impl FromIterator<Bits> for Bits {
+    fn from_iter<T: IntoIterator<Item = Bits>>(iter: T) -> Self {
+        let mut out_bits = Bits::default();
+
+        for bits in iter {
+            out_bits.push_many(bits);
+        }
+
+        out_bits
+    }
+}
+
 impl Display for Bits {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         if self.valid_bits == 0 {
@@ -225,9 +248,11 @@ impl<T: Into<usize>> Index<T> for Bits {
 
 #[cfg(test)]
 mod tests {
-    use crate::utilities::bits::Bits;
     use alloc::{format, string::ToString};
+
     use proptest::{prop_assert, prop_assert_eq, prop_assert_ne};
+
+    use crate::utilities::bits::Bits;
 
     #[test]
     fn test_display() {

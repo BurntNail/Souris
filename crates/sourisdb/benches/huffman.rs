@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, Criterion, criterion_group, criterion_main};
 
 use sourisdb::utilities::{bits::Bits, huffman::Huffman};
 
@@ -24,17 +24,15 @@ fn bee_movie(c: &mut Criterion) {
 
     c.bench_function("decode first 500 beemovie", |b| {
         let huff = unsafe { Huffman::new_str(BEE_MOVIE).unwrap_unchecked() };
-        let data: Vec<Bits> = BEE_MOVIE
+        let data: Bits = BEE_MOVIE
             .lines()
             .take(500)
             .flat_map(|l| huff.encode_string(l))
             .collect();
 
         b.iter(|| {
-            for line in &data {
-                let decoded = huff.decode_string(line);
-                black_box(decoded);
-            }
+            let decoded = huff.decode_string(data.clone());
+            black_box(decoded);
         })
     });
 }

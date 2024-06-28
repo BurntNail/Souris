@@ -987,7 +987,7 @@ impl Value {
                         return Err(ValueSerError::NoHuffman);
                     };
                     let bits = Bits::deser(bytes)?;
-                    let Some(decoded) = huffman.decode_string(&bits) else {
+                    let Some(decoded) = huffman.decode_string(bits) else {
                         return Err(ValueSerError::UnableToDecodeHuffman);
                     };
 

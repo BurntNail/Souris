@@ -1,3 +1,16 @@
+//! `async_client` provides an asynchronous client for use with a `sourisd` client.
+//!
+//! When you create a new client using [`AsyncClient::new`], it polls the database's healthcheck endpoint to confirm that the database is running.
+//!
+//! ```rust
+//! use sourisdb::client::{AsyncClient, ClientError};
+//!
+//! async fn get_all_database_names_from_localhost () -> Result<Vec<String>, ClientError> {
+//!     let client = AsyncClient::new("localhost", 2256).await?;
+//!     client.get_all_dbs()
+//! }
+//! ```
+
 use core::fmt::Display;
 
 use http::StatusCode;
@@ -5,6 +18,7 @@ use reqwest::{Client, Response};
 
 use crate::{client::ClientError, store::Store, values::Value};
 
+///A client for interacting with `sourisd` asynchronously.
 #[derive(Debug, Clone)]
 pub struct AsyncClient {
     path: String,
@@ -13,17 +27,35 @@ pub struct AsyncClient {
 }
 
 impl AsyncClient {
+    ///Create a new asynchronous client using the provided path and port.
+    ///
+    /// ## Errors
+    /// Can fail with:
+    /// - [`ClientError::Reqwest`] if there
     pub async fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
         let path = path.to_string();
         let client = Client::new();
 
-        let rsp = client
+        match client
             .get(&format!("http://{path}:{port}/healthcheck"))
             .send()
-            .await?;
-        if rsp.status() != StatusCode::OK {
-            return Err(ClientError::ServerNotHealthy(rsp.status()));
-        }
+            .await
+        {
+            Ok(rsp) => {
+                if rsp.status() != StatusCode::OK {
+                    return Err(ClientError::ServerNotHealthy(rsp.status()));
+                }
+            }
+            Err(e) => {
+                if let Some(status) = e.status() {
+                    if status != StatusCode::OK {
+                        return Err(ClientError::ServerNotHealthy(status));
+                    }
+                } else {
+                    return Err(ClientError::Reqwest(e));
+                }
+            }
+        };
 
         Ok(Self { path, port, client })
     }
