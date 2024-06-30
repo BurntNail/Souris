@@ -39,5 +39,5 @@ sync_client = ["dep:ureq", "dep:http", "std"]
 async_client = ["dep:reqwest", "dep:http"]
 
 [[bench]]
-name = "huffman"
+name = "utilities"
 harness = false

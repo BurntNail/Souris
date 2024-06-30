@@ -139,6 +139,63 @@ impl<T: PartialEq> Node<T> {
         }
     }
 }
+impl Node<char> {
+    fn ser(&self) -> Vec<u8> {
+        match self {
+            Self::Leaf(ch) => Integer::u32(*ch as u32).ser().1,
+            Self::Branch { left, right } => {
+                let mut res = vec![b'('];
+                res.extend(left.ser());
+                res.push(b',');
+                res.extend(right.ser());
+                res.push(b')');
+                res
+            }
+        }
+    }
+
+    fn deser(cursor: &mut Cursor<u8>) -> Result<Node<char>, HuffmanSerError> {
+        fn confirm_next_char(
+            cursor: &mut Cursor<u8>,
+            ex_ch: char,
+            ex_byte: u8,
+        ) -> Result<(), HuffmanSerError> {
+            let Some(found_char) = cursor.next().copied() else {
+                return Err(HuffmanSerError::NotEnoughBytes);
+            };
+            if found_char != ex_byte {
+                return Err(HuffmanSerError::InvalidNodeFormat {
+                    ex: ex_ch,
+                    found: found_char,
+                });
+            }
+
+            Ok(())
+        }
+
+        let Some(ch) = cursor.next() else {
+            return Err(HuffmanSerError::NotEnoughBytes);
+        };
+
+        if *ch == b'(' {
+            let left = Box::new(Self::deser(cursor)?);
+            confirm_next_char(cursor, ',', b',')?;
+
+            let right = Box::new(Self::deser(cursor)?);
+            confirm_next_char(cursor, ')', b')')?;
+
+            Ok(Node::Branch { left, right })
+        } else {
+            cursor.move_backwards(1);
+            let ch = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
+            let Ok(ch) = char::try_from(ch) else {
+                return Err(HuffmanSerError::InvalidCharacter(ch));
+            };
+
+            Ok(Node::Leaf(ch))
+        }
+    }
+}
 
 ///Any possible error which could occur with huffman coding.
 #[derive(Debug)]
@@ -147,6 +204,10 @@ pub enum HuffmanSerError {
     InvalidCharacter(u32),
     ///An integer serialisation error - this can only occur during [`Huffman::deser`].
     Integer(IntegerSerError),
+    ///Not enough bytes were present
+    NotEnoughBytes,
+    ///The node couldn't be deserialised as an expected character was missing
+    InvalidNodeFormat { ex: char, found: u8 },
 }
 
 impl From<IntegerSerError> for HuffmanSerError {
@@ -164,6 +225,12 @@ impl Display for HuffmanSerError {
                 display_bytes_as_hex_array(&bytes.to_le_bytes())
             ),
             HuffmanSerError::Integer(i) => write!(f, "Error with integer: {i}"),
+            HuffmanSerError::NotEnoughBytes => write!(f, "Not enough bytes"),
+            HuffmanSerError::InvalidNodeFormat { ex, found } => write!(
+                f,
+                "Tried to deserialise node, expected: {} ({ex}) but found {found}",
+                *ex as u32
+            ),
         }
     }
 }
@@ -173,7 +240,7 @@ impl std::error::Error for HuffmanSerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Integer(i) => Some(i),
-            Self::InvalidCharacter(_) => None,
+            _ => None,
         }
     }
 }
@@ -479,56 +546,21 @@ impl Huffman<char> {
     ///Serialise the huffman tables into a series of bytes using [`Integer::ser`].
     ///
     /// Encoding Scheme:
-    /// - The length of one table using [`Integer::usize`].
-    /// - Then for each row of the conversion table, the character serialised using [`Integer::u32`], and then the weight using [`Integer::usize`].
+    ///
+    /// Serialises using a recursive algorithm that traverses the tree to produce something like this: ((a,(b,c)),(d,e)) - the brackets symbolise a node parent, and the left node comes left
     #[must_use]
     pub fn ser(&self) -> Vec<u8> {
-        let len = self.to_bits.len();
-        let (_, mut bytes) = Integer::usize(len).ser();
-
-        for (ch, bits) in self.to_bits.clone() {
-            let (_, ch) = Integer::u32(ch as u32).ser();
-            bytes.extend(ch);
-
-            let mut weight = 0;
-            let len = bits.len();
-            for (i, b) in bits.into_iter().enumerate() {
-                if b {
-                    weight += 1 << (len - 1 - i);
-                }
-            }
-
-            let (_, weight) = Integer::usize(weight).ser();
-            bytes.extend(weight);
-        }
-
-        bytes
+        self.root.ser()
     }
 
-    ///Deserialise a [`Cursor`] into a [`Huffman`].
+    ///Deserialise a [`Cursor`] into a [`Huffman`] using [`Node::deser`]
     ///
     /// ## Errors
-    /// - [`HuffmanSerError::InvalidCharacter`] if an invalid character is deserialised.
-    /// - [`HuffmanSerError::Integer`] if an [`Integer`] fails to deserialise. More details can be found in [`IntegerSerError`].
+    /// See [`Node::deser`].
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
-        let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-        let mut weights = HashMap::new();
-
-        for _ in 0..len {
-            let ch_bits = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-            let Some(ch) = char::from_u32(ch_bits) else {
-                return Err(HuffmanSerError::InvalidCharacter(ch_bits));
-            };
-
-            let weight = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-
-            weights.insert(ch, weight);
-        }
-
-        let root = Self::data_with_frequencies_to_node_tree(weights).unwrap();
+        let root = Node::deser(bytes)?;
 
         let mut to_bits = HashMap::new();
-
         Self::add_node_to_table(&root, &mut to_bits, Bits::default());
 
         Ok(Self { to_bits, root })

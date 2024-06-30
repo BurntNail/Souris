@@ -132,7 +132,7 @@ impl Bits {
     #[must_use]
     pub fn ser(&self) -> Vec<u8> {
         let (_, mut size) = Integer::usize(self.valid_bits).ser();
-        size.extend(&self.backing);
+        size.extend(self.get_proper_bytes());
 
         size
     }

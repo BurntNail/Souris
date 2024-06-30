@@ -277,16 +277,10 @@ impl Imaginary {
             let imaginary = Integer::deser(imaginary_signed_state, bytes)?;
             Ok(Self::CartesianForm { real, imaginary })
         } else {
-            let modulus = f64::from_le_bytes(
-                *bytes
-                    .read_specific()
-                    .ok_or(IntegerSerError::NotEnoughBytes)?,
-            );
-            let argument = f64::from_le_bytes(
-                *bytes
-                    .read_specific()
-                    .ok_or(IntegerSerError::NotEnoughBytes)?,
-            );
+            let modulus =
+                f64::from_le_bytes(*bytes.read_exact().ok_or(IntegerSerError::NotEnoughBytes)?);
+            let argument =
+                f64::from_le_bytes(*bytes.read_exact().ok_or(IntegerSerError::NotEnoughBytes)?);
 
             Ok(Self::PolarForm { modulus, argument })
         }

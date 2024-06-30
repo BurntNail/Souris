@@ -1023,13 +1023,13 @@ impl Value {
             ValueTy::Boolean => Self::Boolean((byte & 0b0000_0001) > 0),
             ValueTy::Null => Self::Null(()),
             ValueTy::SingleFloat => {
-                let Some(bytes) = bytes.read_specific() else {
+                let Some(bytes) = bytes.read_exact() else {
                     return Err(ValueSerError::NotEnoughBytes);
                 };
                 Self::SingleFloat(f32::from_le_bytes(*bytes))
             }
             ValueTy::DoubleFloat => {
-                let Some(bytes) = bytes.read_specific() else {
+                let Some(bytes) = bytes.read_exact() else {
                     return Err(ValueSerError::NotEnoughBytes);
                 };
                 Self::DoubleFloat(f64::from_le_bytes(*bytes))
@@ -1074,13 +1074,13 @@ impl Value {
                 Self::Timezone(tz)
             }
             ValueTy::Ipv4Addr => {
-                let Some([a, b, c, d]) = bytes.read_specific() else {
+                let Some([a, b, c, d]) = bytes.read_exact() else {
                     return Err(ValueSerError::NotEnoughBytes);
                 };
                 Self::Ipv4Addr(Ipv4Addr::new(*a, *b, *c, *d))
             }
             ValueTy::Ipv6Addr => {
-                let Some(bytes) = bytes.read_specific::<16>() else {
+                let Some(bytes) = bytes.read_exact::<16>() else {
                     return Err(ValueSerError::NotEnoughBytes);
                 };
 

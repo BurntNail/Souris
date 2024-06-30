@@ -153,7 +153,7 @@ impl Store {
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreSerError> {
         let mut bytes = Cursor::new(&bytes);
         {
-            let Some(magic_bytes) = bytes.read_specific() else {
+            let Some(magic_bytes) = bytes.read_exact() else {
                 return Err(StoreSerError::NotEnoughBytes);
             };
             if magic_bytes != b"SOURISDB" {

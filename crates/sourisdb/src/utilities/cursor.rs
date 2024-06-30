@@ -92,13 +92,13 @@ impl<'a, T> Cursor<'a, T> {
     ///
     /// let mut cursor = Cursor::new(&bytes);
     /// cursor.move_forwards(1);
-    /// let found_f64 = f64::from_le_bytes(*cursor.read_specific().unwrap());
+    /// let found_f64 = f64::from_le_bytes(*cursor.read_exact().unwrap());
     /// assert_eq!(expected_f64, found_f64);
     /// ```
     ///
     /// - If the elements would go out of bounds, `None` is returned, rather than a list with a different length.
     /// - If the cursor is at the end (can be checked using [`Cursor::is_finished`], `None` is **always** returned.
-    pub fn read_specific<const N: usize>(&mut self) -> Option<&'a [T; N]> {
+    pub fn read_exact<const N: usize>(&mut self) -> Option<&'a [T; N]> {
         let start = self.pos;
         let end = start.checked_add(N)?;
         if end > self.backing.len() {
@@ -119,6 +119,18 @@ impl<'a, T> Cursor<'a, T> {
         }
 
         Some(&self.backing[start..end])
+    }
+
+    ///Peeks at a certain generic number of bytes.
+    #[must_use]
+    pub fn peek_exact<const N: usize>(&self) -> Option<&'a [T; N]> {
+        let start = self.pos;
+        let end = start.checked_add(N)?;
+        if end > self.backing.len() {
+            return None;
+        }
+
+        (&self.backing[start..end]).try_into().ok()
     }
 
     #[must_use]
