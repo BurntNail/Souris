@@ -1,4 +1,8 @@
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{
+    string::ToString,
+    vec,
+    vec::{IntoIter, Vec},
+};
 use core::{
     fmt::{Debug, Display, Formatter},
     hash::{Hash, Hasher},
@@ -61,6 +65,13 @@ impl Bits {
         self.backing[backing_index] |= (u8::from(bit)) << interior_index;
 
         self.valid_bits += 1;
+    }
+
+    #[inline]
+    pub fn push_into_new(&self, bit: bool) -> Self {
+        let mut new = self.clone();
+        new.push(bit);
+        new
     }
 
     pub fn push_many(&mut self, bits: Self) {
@@ -190,6 +201,16 @@ impl FromIterator<Bits> for Bits {
         }
 
         out_bits
+    }
+}
+
+impl IntoIterator for Bits {
+    type Item = bool;
+    type IntoIter = IntoIter<bool>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let v: Vec<bool> = self.into();
+        v.into_iter()
     }
 }
 
