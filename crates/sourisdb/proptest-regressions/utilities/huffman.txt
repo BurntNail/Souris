@@ -7,3 +7,4 @@
 cc 8f006a5e565e4972cbf4e088a302c82e02a9d450ab52dc578edf6d60d65de896 # shrinks to s = "᨞"
 cc aaa14aff8a1739c156b4ea4093532d372ff56c8250347bb63294e38025d059fb # shrinks to s = "a"
 cc 05bd92729c7e018c2acdc22ea684ea6100565e85a499fd2f8eaa0e26ab5b0753 # shrinks to s = "  "
+cc 2c726d6690b882067b96c60b9c9f948eaaebc6e101dca9b8c257a05e0be41617 # shrinks to s = "\"\""
