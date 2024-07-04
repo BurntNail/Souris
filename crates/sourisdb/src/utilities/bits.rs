@@ -68,6 +68,7 @@ impl Bits {
     }
 
     #[inline]
+    #[must_use]
     pub fn push_into_new(&self, bit: bool) -> Self {
         let mut new = self.clone();
         new.push(bit);

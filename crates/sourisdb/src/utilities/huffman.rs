@@ -142,54 +142,30 @@ impl<T: PartialEq> Node<T> {
 impl Node<char> {
     fn ser(&self) -> Vec<u8> {
         match self {
-            Self::Leaf(ch) => Integer::u32(*ch as u32).ser().1,
+            Self::Leaf(ch) => Integer::u32(*ch as u32 + 1).ser().1, //to ensure that if we see a null byte, we don't serialise it as our control character. NB: u32::MAX is not a valid character so we also don't actually lose anything - only readability in the binary format, but that's long gone
             Self::Branch { left, right } => {
-                let mut res = vec![b'('];
+                let mut res = vec![0]; //null byte means new branch
                 res.extend(left.ser());
-                res.push(b',');
                 res.extend(right.ser());
-                res.push(b')');
                 res
             }
         }
     }
 
     fn deser(cursor: &mut Cursor<u8>) -> Result<Node<char>, HuffmanSerError> {
-        fn confirm_next_char(
-            cursor: &mut Cursor<u8>,
-            ex_ch: char,
-            ex_byte: u8,
-        ) -> Result<(), HuffmanSerError> {
-            let Some(found_char) = cursor.next().copied() else {
-                return Err(HuffmanSerError::NotEnoughBytes);
-            };
-            if found_char != ex_byte {
-                return Err(HuffmanSerError::InvalidNodeFormat {
-                    ex: ex_ch,
-                    found: found_char,
-                });
-            }
-
-            Ok(())
-        }
-
         let Some(ch) = cursor.next() else {
             return Err(HuffmanSerError::NotEnoughBytes);
         };
 
-        if *ch == b'(' {
+        if *ch == 0 {
             let left = Box::new(Self::deser(cursor)?);
-            confirm_next_char(cursor, ',', b',')?;
-
             let right = Box::new(Self::deser(cursor)?);
-            confirm_next_char(cursor, ')', b')')?;
-
             Ok(Node::Branch { left, right })
         } else {
             cursor.move_backwards(1);
-            let ch = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
-            let Ok(ch) = char::try_from(ch) else {
-                return Err(HuffmanSerError::InvalidCharacter(ch));
+            let ch: u32 = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
+            let Ok(ch) = char::try_from(ch - 1) else {
+                return Err(HuffmanSerError::InvalidCharacter(ch - 1));
             };
 
             Ok(Node::Leaf(ch))
@@ -333,11 +309,11 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     ) {
         match node {
             Node::Leaf(ch) => {
-                to_bits.insert(ch.clone(), bits_so_far.clone());
+                to_bits.insert(ch.clone(), bits_so_far);
             }
             Node::Branch { left, right } => {
                 let mut left_bits = bits_so_far.clone();
-                let mut right_bits = bits_so_far.clone();
+                let mut right_bits = bits_so_far;
                 left_bits.push(true);
                 right_bits.push(false);
 
@@ -612,7 +588,7 @@ mod tests {
             let _ = Huffman::new_str(s);
         }
 
-        // #[test]
+        #[test]
         fn works_on_arbritrary_ascii_strings (s in "[a-z]+[A-Z0-9]+") {
             let huffman = Huffman::new_str(&s).expect("unable to get huffman");
 
@@ -622,8 +598,19 @@ mod tests {
             prop_assert_eq!(s, decoded);
         }
 
-        // #[test]
-        fn ser_works_on_arbritrary_ascii (s in "[a-z]+[A-Z0-0]+") {
+        #[test]
+        fn works_on_arbritrary_strings (s in "..+") {
+            let huffman = Huffman::new_str(&s).expect("unable to get huffman");
+
+            let encoded = huffman.encode_string(&s).expect("unable to encode");
+            let decoded = huffman.decode_string(encoded).expect("unable to decode");
+
+            prop_assert_eq!(s, decoded);
+        }
+
+
+        #[test]
+        fn ser_works_on_arbritrary_strings (s in "..+") {
             let huffman = Huffman::new_str(&s).expect("unable to get huffman");
             let encoded = huffman.encode_string(&s).expect("unable to encode");
 
