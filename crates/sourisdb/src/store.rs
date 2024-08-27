@@ -11,15 +11,10 @@ use core::{
 };
 
 use hashbrown::HashMap;
-use lz4_flex::{block::DecompressError as Lz4DecompressError, compress, decompress};
-use miniz_oxide::{
-    deflate::compress_to_vec,
-    inflate::{decompress_to_vec, DecompressError as MinizDecompressError},
-};
 use serde_json::{Error as SJError, Value as SJValue};
 
 use crate::{
-    types::integer::{Integer, IntegerSerError, SignedState},
+    types::integer::{IntegerSerError},
     utilities::{
         cursor::Cursor,
         huffman::{Huffman, HuffmanSerError},
@@ -35,69 +30,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Store(HashMap<String, Value>);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
-enum CompressionType {
-    #[default]
-    None,
-    Lz4,
-    Miniz,
-}
-impl From<CompressionType> for u8 {
-    fn from(value: CompressionType) -> Self {
-        match value {
-            CompressionType::None => 0,
-            CompressionType::Lz4 => 1,
-            CompressionType::Miniz => 2,
-        }
-    }
-}
-impl TryFrom<u8> for CompressionType {
-    type Error = StoreSerError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Ok(match value {
-            0 => Self::None,
-            1 => Self::Lz4,
-            2 => Self::Miniz,
-            _ => return Err(StoreSerError::UnsupportedCompression(value)),
-        })
-    }
-}
-
 impl Store {
-    fn compress(bytes: &[u8]) -> (Option<Vec<u8>>, CompressionType) {
-        let raw = bytes;
-
-        let mut lz4 = Integer::from(raw.len()).ser().1;
-        lz4.extend(compress(bytes));
-
-        let miniz = compress_to_vec(bytes, 10);
-
-        if [miniz.len(), lz4.len()].iter().all(|x| *x >= raw.len()) {
-            (None, CompressionType::None)
-        } else if miniz.len() < lz4.len() {
-            (Some(miniz), CompressionType::Miniz)
-        } else {
-            (Some(lz4), CompressionType::Lz4)
-        }
-    }
-    fn decompress(
-        bytes: &[u8],
-        compression_type: CompressionType,
-    ) -> Result<Vec<u8>, StoreSerError> {
-        match compression_type {
-            CompressionType::None => Ok(bytes.to_vec()),
-            CompressionType::Lz4 => {
-                let mut cursor = Cursor::new(&bytes);
-                let original_len: usize =
-                    Integer::deser(SignedState::Unsigned, &mut cursor)?.try_into()?;
-
-                Ok(decompress(cursor.as_ref(), original_len)?)
-            }
-            CompressionType::Miniz => Ok(decompress_to_vec(bytes)?),
-        }
-    }
-
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
     pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
         fn add_value_text_to_string(value: &Value, string: &mut String) {
@@ -129,23 +62,16 @@ impl Store {
         add_value_text_to_string(&raw_map, &mut all_text);
 
         let huffman = Huffman::new_str(&all_text);
-        let raw_map = raw_map.ser(huffman.as_ref())?;
-
-        let (map, compression_ty) = Self::compress(&raw_map);
+        let map = raw_map.ser(huffman.as_ref())?;
 
         let mut res = vec![];
 
         res.extend(b"SOURISDB");
-        res.push(u8::from(compression_ty) | (u8::from(huffman.is_some()) << 7));
+        res.push(huffman.is_some() as u8);
         if let Some(huffman) = huffman {
             res.extend(huffman.ser());
         }
-
-        if let Some(map) = map {
-            res.extend(map);
-        } else {
-            res.extend(raw_map);
-        }
+        res.extend(map);
 
         Ok(res)
     }
@@ -160,20 +86,17 @@ impl Store {
                 return Err(StoreSerError::ExpectedMagicBytes);
             }
         }
-        let Some(compression_ty) = bytes.next().copied() else {
+        let Some(compression) = bytes.next().copied() else {
             return Err(StoreSerError::NotEnoughBytes);
         };
-        let is_huffman_encoded = (compression_ty & 0b1000_0000) > 0;
+        let is_huffman_encoded = (compression & 0b1) != 0;
         let huffman = if is_huffman_encoded {
             Some(Huffman::deser(&mut bytes)?)
         } else {
             None
         };
 
-        let compression_ty = CompressionType::try_from(compression_ty & 0b1111)?;
-        let uncompressed_bytes = Self::decompress(bytes.as_ref(), compression_ty)?;
-
-        let val = Value::deser(&mut Cursor::new(&uncompressed_bytes), huffman.as_ref())?;
+        let val = Value::deser(&mut Cursor::new(&bytes), huffman.as_ref())?;
         let ty = val.as_ty();
         let Some(map) = val.to_map() else {
             return Err(StoreSerError::ExpectedMap(ty));
@@ -272,8 +195,6 @@ pub enum StoreSerError {
     SerdeJson(SJError),
     UnableToConvertToJson,
     UnsupportedCompression(u8),
-    Lz4Decompress(Lz4DecompressError),
-    MinizDecompresss(MinizDecompressError),
     Huffman(HuffmanSerError),
 }
 
@@ -293,8 +214,6 @@ impl Display for StoreSerError {
             StoreSerError::UnsupportedCompression(b) => {
                 write!(f, "Unable to read compression type: {b:#b}")
             }
-            StoreSerError::Lz4Decompress(d) => write!(f, "Error with Lz4 decompression: {d}"),
-            StoreSerError::MinizDecompresss(d) => write!(f, "Error with miniz decompression: {d}"),
             StoreSerError::Huffman(h) => write!(f, "Error with huffman: {h}"),
         }
     }
@@ -315,16 +234,6 @@ impl From<IntegerSerError> for StoreSerError {
         Self::Integer(value)
     }
 }
-impl From<Lz4DecompressError> for StoreSerError {
-    fn from(value: Lz4DecompressError) -> Self {
-        Self::Lz4Decompress(value)
-    }
-}
-impl From<MinizDecompressError> for StoreSerError {
-    fn from(value: MinizDecompressError) -> Self {
-        Self::MinizDecompresss(value)
-    }
-}
 impl From<HuffmanSerError> for StoreSerError {
     fn from(value: HuffmanSerError) -> Self {
         Self::Huffman(value)
@@ -338,8 +247,6 @@ impl std::error::Error for StoreSerError {
             Self::Integer(i) => Some(i),
             Self::Value(e) => Some(e),
             Self::SerdeJson(e) => Some(e),
-            Self::Lz4Decompress(d) => Some(d),
-            Self::MinizDecompresss(d) => Some(d),
             Self::Huffman(h) => Some(h),
             _ => None,
         }
