@@ -18,7 +18,7 @@
 //! assert_eq!(cursor.items_remaining(), 6);
 //!```
 
-///An immutable cursor into a list of elements.
+///An immutable cursor into a borrowed slice of elements.
 pub struct Cursor<'a, T> {
     backing: &'a [T],
     pos: usize,
@@ -152,11 +152,7 @@ impl<'a, T> Cursor<'a, T> {
     /// If none are left, it returns an empty slice.
     #[must_use]
     pub fn peek_remaining(&self) -> &[T] {
-        if self.pos >= self.backing.len() {
-            &[]
-        } else {
-            &self.backing[self.pos..]
-        }
+        self.as_ref()
     }
 
     #[must_use]
@@ -189,7 +185,11 @@ impl<'a, T> Cursor<'a, T> {
 
 impl<'a, T> AsRef<[T]> for Cursor<'a, T> {
     fn as_ref(&self) -> &'a [T] {
-        &self.backing[self.pos..]
+        if self.pos >= self.backing.len() {
+            &[]
+        } else {
+            &self.backing[self.pos..]
+        }
     }
 }
 
