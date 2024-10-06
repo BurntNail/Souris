@@ -3,7 +3,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::utilities::{bits::Bits, cursor::Cursor, huffman::Huffman};
 
 const BEE_MOVIE: &str = include_str!("./beemoviescript.txt");
-const BEE_MOVIE_LINES: usize = 1;
+const BEE_MOVIE_LINES: usize = usize::MAX;
 
 fn en_de_code_beemovie(c: &mut Criterion) {
     c.bench_function("create huffman", |b| {

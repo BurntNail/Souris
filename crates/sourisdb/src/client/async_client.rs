@@ -6,7 +6,7 @@
 //! use sourisdb::client::{AsyncClient, ClientError};
 //!
 //! async fn get_all_database_names_from_localhost () -> Result<Vec<String>, ClientError> {
-//!     let client = AsyncClient::new("localhost", 2256).await?;
+//!     let client = AsyncClient::new("localhost", 7687).await?;
 //!     client.get_all_dbs()
 //! }
 //! ```
@@ -30,8 +30,8 @@ impl AsyncClient {
     ///Create a new asynchronous client using the provided path and port.
     ///
     /// ## Errors
-    /// Can fail with:
-    /// - [`ClientError::Reqwest`] if there
+    /// - [`ClientError::Reqwest`] if there is a non-status related error with Reqwest
+    /// - [`ClientError::ServerNotHealthy`] if we don't get back a [`StatusCode::OK`] from the server.
     pub async fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
         let path = path.to_string();
         let client = Client::new();
@@ -60,20 +60,41 @@ impl AsyncClient {
         Ok(Self { path, port, client })
     }
 
+
+    ///Get the names of all the databases present in the instance.
+    ///
+    /// ## Errors
+    /// - [`ClientError::Reqwest`] if there is an error with the HTTP request, or we cannot get the raw bytes out
+    /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn get_all_dbs(&self) -> Result<Vec<String>, ClientError> {
-        let rsp = self
+        Ok(self
             .client
             .get(&format!(
                 "http://{}:{}/v1/get_all_db_names",
                 self.path, self.port
             ))
             .send()
-            .await?;
-        rsp.error_for_status_to_client_error()?;
-        let body = rsp.bytes().await?;
-        Ok(serde_json::from_slice(body.as_ref())?)
+            .await?
+            .json()
+            .await?)
     }
 
+
+    ///Creates a new database in the connected instance with the given name.
+    ///
+    /// ## `overwrite_existing`
+    ///
+    /// If the database already exists, it will be cleared and `Ok(true)` will always be returned in the happy path.
+    ///
+    /// ## !`overwrite_existing`
+    ///
+    /// If the database already exists, it will be left as is and `Ok(false)` will be returned in the happy path.
+    ///
+    /// If it doesn't, then it will be created and `Ok(true)` will be returned.
+    ///
+    /// ## Errors
+    /// - [`ClientError::Reqwest`] if there is an error with the HTTP request.
+    /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn create_new_db(
         &self,
         overwrite_existing: bool,
@@ -98,6 +119,12 @@ impl AsyncClient {
         })
     }
 
+    /// Gets a given store by name. If the store doesn't exist, [`ClientError::HttpErrorCode`] will be returned with a code of [`StatusCode::NOT_FOUND`].
+    ///
+    /// ## Errors
+    /// - `[ClientError::HttpErrorCode`] if the database isn't found or another error occurs with the HTTP request.
+    /// - [`ClientError::Reqwest`] if a reqwest error occurs or the bytes cannot be obtained.
+    /// - [`ClientError::Store`] if the store cannot be deserialised from the bytes.
     pub async fn get_store(&self, db_name: &str) -> Result<Store, ClientError> {
         let rsp = self
             .client

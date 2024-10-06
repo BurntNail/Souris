@@ -14,10 +14,10 @@ use tokio::{
     sync::Mutex,
 };
 
-const DIR: &str = "souris/";
-
 mod meta {
+    ///File name for the database that stores the meta information
     pub const META_DB_FILE_NAME: &str = "meta.sdb";
+    ///Name of the key inside the meta information database that stores the array of databases
     pub const DB_FILE_NAMES_KEY: &str = "existing_dbs";
 }
 use crate::error::SourisError;
@@ -26,11 +26,19 @@ use meta::{DB_FILE_NAMES_KEY, META_DB_FILE_NAME};
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub struct SourisState {
+    ///The base location in which all databases reside
     base_location: PathBuf,
+    ///A map of all databases and their names
     dbs: Arc<Mutex<HashMap<String, Store>>>,
 }
 
 impl SourisState {
+    ///Create a new database.
+    ///
+    /// Returns [`StatusCode::OK`] if an existing database was overwritten, or [`StatusCode::CREATED`] if a new database was created.
+    ///
+    /// ## Errors
+    /// - [`SourisError::InvalidDatabaseName`] if the name is not ASCII or the name is `meta`.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn new_db(
         &self,
@@ -241,7 +249,7 @@ impl SourisState {
         let Some(base_location) = data_dir() else {
             bail!("Unable to find data directory");
         };
-        let base_location = base_location.join(DIR);
+        let base_location = base_location.join("souris/");
 
         let mut meta = get_store(base_location.join(META_DB_FILE_NAME)).await?;
 

@@ -128,7 +128,7 @@ impl std::error::Error for Error {
 #[allow(clippy::collapsible_if, clippy::too_many_lines)]
 fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
     let theme = ColorfulTheme::default();
-    let client = SyncClient::new(path.clone(), 2256)?;
+    let client = SyncClient::new(path.clone(), 7687)?;
 
     match command {
         Commands::CreateNew { db_name } => {

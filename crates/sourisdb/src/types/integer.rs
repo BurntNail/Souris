@@ -716,7 +716,7 @@ impl Integer {
     ///Deserialise bytes inside a [`Cursor`] into an Integer.
     ///
     /// ## Errors
-    /// - Can fail with [`IntegerSerError`] if there aren't enough bytes
+    /// - [`IntegerSerError`] if there aren't enough bytes
     pub fn deser(
         signed_state: SignedState,
         reader: &mut Cursor<u8>,
