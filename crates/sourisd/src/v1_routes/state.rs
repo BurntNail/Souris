@@ -14,6 +14,16 @@ use tokio::{
     sync::Mutex,
 };
 
+fn running_with_superuser () -> bool {
+    unsafe {
+        if libc::geteuid() != 0 {
+            false
+        } else {
+            true
+        }
+    }
+}
+
 mod meta {
     ///File name for the database that stores the meta information
     pub const META_DB_FILE_NAME: &str = "meta.sdb";
@@ -246,10 +256,14 @@ impl SourisState {
             Some(dbs)
         }
 
-        let Some(base_location) = data_dir() else {
-            bail!("Unable to find data directory");
+        let base_location = if running_with_superuser() {
+            PathBuf::from("/etc/souris/")
+        } else {
+            let Some(base_location) = data_dir() else {
+                bail!("Unable to find non-superuser data directory");
+            };
+            base_location.join("souris/")
         };
-        let base_location = base_location.join("souris/");
 
         let mut meta = get_store(base_location.join(META_DB_FILE_NAME)).await?;
 
