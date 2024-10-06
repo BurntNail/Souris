@@ -3,3 +3,4 @@ target/
 
 *.sdb
 *.json
+update.sh
