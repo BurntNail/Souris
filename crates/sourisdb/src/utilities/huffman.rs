@@ -249,7 +249,7 @@ impl<T> Iterator for MinHeap<T> {
             .list
             .iter()
             .enumerate()
-            .min_by_key(|(_i, (_t, weight))| *weight)?
+            .min_by_key(|(_i, (_t, weight))| *weight)? //yes, I could spend time optimising this. However, it's pretty cold code so there isn't much point. Also - the size of the minheap is never gonna be that big (i'd guess mostly maxing at around 100-ish characters) so it isn't that bad.
             .0;
         Some(self.list.swap_remove(index))
     }

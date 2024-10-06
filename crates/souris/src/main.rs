@@ -41,6 +41,7 @@ enum Commands {
     UpdateEntry,
     ExportToJSON {
         json_location: PathBuf,
+        add_souris_types: bool,
     },
     ImportFromJSON {
         json_location: PathBuf,
@@ -260,11 +261,11 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 println!("Cancelled updating key-value pair.");
             }
         }
-        Commands::ExportToJSON { json_location } => {
+        Commands::ExportToJSON { json_location, add_souris_types } => {
             let (name, store) = pick_db(&client, &theme)?;
             println!("Received Database {name:?}, converting to JSON");
 
-            match store.to_json() {
+            match store.to_json(add_souris_types) {
                 Some(json) => {
                     let json = serde_json::to_string_pretty(&json)?;
 

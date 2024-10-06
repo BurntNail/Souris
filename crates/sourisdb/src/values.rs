@@ -489,7 +489,7 @@ impl std::error::Error for ValueSerError {
 impl Value {
     ///if it is an integer outside the bounds of [`i64::MIN`] to [`u64::MAX`], then it will fail. it will also fail if it was a float that wasn't NaN or infinity
     #[allow(clippy::too_many_lines)]
-    pub fn convert_to_json(self) -> Option<SJValue> {
+    pub fn convert_to_json(self, add_souris_types: bool) -> Option<SJValue> {
         Some(match self {
             Value::Character(c) => SJValue::String(c.into()),
             Value::String(s) => SJValue::String(s),
@@ -501,20 +501,22 @@ impl Value {
             Value::DoubleFloat(f) => SJValue::Number(Number::from_f64(f)?),
             Value::Array(arr) => SJValue::Array(
                 arr.into_iter()
-                    .map(Value::convert_to_json)
+                    .map(|v| v.convert_to_json(add_souris_types))
                     .collect::<Option<Vec<_>>>()?,
             ),
             Value::Map(m) => SJValue::Object(
                 m.into_iter()
-                    .map(|(k, v)| Value::convert_to_json(v).map(|v| (k, v)))
+                    .map(|(k, v)| Value::convert_to_json(v, add_souris_types).map(|v| (k, v)))
                     .collect::<Option<SJMap<_, _>>>()?,
             ),
             Value::Imaginary(im) => {
                 let mut obj = SJMap::new();
-                obj.insert(
-                    "souris_type".into(),
-                    SJValue::Number(Number::from(u8::from(ValueTy::Imaginary))),
-                );
+                if add_souris_types {
+                    obj.insert(
+                        "souris_type".into(),
+                        SJValue::Number(Number::from(u8::from(ValueTy::Imaginary))),
+                    );
+                }
 
                 match im {
                     Imaginary::CartesianForm { real, imaginary } => {
@@ -542,10 +544,12 @@ impl Value {
             }
             Value::Timestamp(ts) => {
                 let mut obj = SJMap::new();
-                obj.insert(
-                    "souris_type".into(),
-                    SJValue::Number(Number::from(u8::from(ValueTy::Timestamp))),
-                );
+                if add_souris_types {
+                    obj.insert(
+                        "souris_type".into(),
+                        SJValue::Number(Number::from(u8::from(ValueTy::Timestamp))),
+                    );
+                }
 
                 obj.insert("timestamp".into(), SJValue::String(ts.to_string()));
 
@@ -553,10 +557,12 @@ impl Value {
             }
             Value::Timezone(tz) => {
                 let mut obj = SJMap::new();
-                obj.insert(
-                    "souris_type".into(),
-                    SJValue::Number(Number::from(u8::from(ValueTy::Timezone))),
-                );
+                if add_souris_types {
+                    obj.insert(
+                        "souris_type".into(),
+                        SJValue::Number(Number::from(u8::from(ValueTy::Timezone))),
+                    );
+                }
 
                 obj.insert("timezone".into(), SJValue::String(tz.to_string()));
 
@@ -564,10 +570,12 @@ impl Value {
             }
             Value::Binary(b) => {
                 let mut obj = SJMap::new();
-                obj.insert(
-                    "souris_type".into(),
-                    SJValue::Number(Number::from(u8::from(ValueTy::Binary))),
-                );
+                if add_souris_types {
+                    obj.insert(
+                        "souris_type".into(),
+                        SJValue::Number(Number::from(u8::from(ValueTy::Binary))),
+                    );
+                }
 
                 obj.insert(
                     "bytes".into(),
@@ -581,42 +589,51 @@ impl Value {
                 SJValue::Object(obj)
             }
             Value::Ipv4Addr(a) => {
-                let mut obj = SJMap::new();
-                obj.insert(
-                    "souris_type".into(),
-                    SJValue::Number(Number::from(u8::from(ValueTy::Ipv4Addr))),
+                let arr = SJValue::Array(
+                    a.octets()
+                        .into_iter()
+                        .map(|o| SJValue::Number(Number::from(o)))
+                        .collect(),
                 );
+                if add_souris_types {
+                    let mut obj = SJMap::new();
+                    obj.insert(
+                        "souris_type".into(),
+                        SJValue::Number(Number::from(u8::from(ValueTy::Ipv4Addr))),
+                    );
 
-                obj.insert(
-                    "octets".into(),
-                    SJValue::Array(
-                        a.octets()
-                            .into_iter()
-                            .map(|o| SJValue::Number(Number::from(o)))
-                            .collect(),
-                    ),
-                );
-
-                SJValue::Object(obj)
+                    obj.insert(
+                        "octets".into(),
+                        arr,
+                    );
+                    SJValue::Object(obj)
+                } else {
+                    arr
+                }
             }
             Value::Ipv6Addr(a) => {
-                let mut obj = SJMap::new();
-                obj.insert(
-                    "souris_type".into(),
-                    SJValue::Number(Number::from(u8::from(ValueTy::Ipv6Addr))),
+                let arr = SJValue::Array(
+                    a.segments()
+                        .into_iter()
+                        .map(|o| SJValue::Number(Number::from(o)))
+                        .collect(),
                 );
+                if add_souris_types {
+                    let mut obj = SJMap::new();
+                    obj.insert(
+                        "souris_type".into(),
+                        SJValue::Number(Number::from(u8::from(ValueTy::Ipv6Addr))),
+                    );
 
-                obj.insert(
-                    "octets".into(),
-                    SJValue::Array(
-                        a.segments()
-                            .into_iter()
-                            .map(|o| SJValue::Number(Number::from(o)))
-                            .collect(),
-                    ),
-                );
+                    obj.insert(
+                        "octets".into(),
+                        arr,
+                    );
 
-                SJValue::Object(obj)
+                    SJValue::Object(obj)
+                } else {
+                    arr
+                }
             }
         })
     }

@@ -112,7 +112,7 @@ impl Store {
     #[cfg(feature = "serde")]
     pub fn from_bytes<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, StoreSerError> {
         let s = Self::deser(bytes)?;
-        let v = s.to_json().ok_or(StoreSerError::UnableToConvertToJson)?;
+        let v = s.to_json(false).ok_or(StoreSerError::UnableToConvertToJson)?;
         Ok(serde_json::from_value(v)?)
     }
 
@@ -125,17 +125,17 @@ impl Store {
 
     ///fails if integer out of range, or float is NaN or infinite
     #[must_use]
-    pub fn to_json(mut self) -> Option<SJValue> {
+    pub fn to_json(mut self, add_souris_types: bool) -> Option<SJValue> {
         if self.len() == 1 {
             if let Some(v) = self.0.remove("JSON") {
-                return v.convert_to_json();
+                return v.convert_to_json(add_souris_types);
             }
         }
 
         Some(SJValue::Object(
             self.0
                 .into_iter()
-                .map(|(k, v)| v.convert_to_json().map(|v| (k, v)))
+                .map(|(k, v)| v.convert_to_json(add_souris_types).map(|v| (k, v)))
                 .collect::<Option<_>>()?,
         ))
     }

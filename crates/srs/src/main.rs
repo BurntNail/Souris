@@ -37,6 +37,7 @@ enum Commands {
     UpdateEntry,
     ExportToJSON {
         json_location: PathBuf,
+        add_souris_types: bool,
     },
     CreateNewFromJSON {
         json_location: PathBuf,
@@ -233,10 +234,10 @@ fn fun_main(Args { path, command }: Args) -> Result<(), Error> {
 
             println!("Successfully updated");
         }
-        Commands::ExportToJSON { json_location } => {
+        Commands::ExportToJSON { json_location, add_souris_types } => {
             let store = view_all(path, &theme)?;
 
-            match store.to_json() {
+            match store.to_json(add_souris_types) {
                 Some(json) => {
                     let json = serde_json::to_string_pretty(&json)?;
 
