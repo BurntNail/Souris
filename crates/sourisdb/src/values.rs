@@ -602,10 +602,7 @@ impl Value {
                         SJValue::Number(Number::from(u8::from(ValueTy::Ipv4Addr))),
                     );
 
-                    obj.insert(
-                        "octets".into(),
-                        arr,
-                    );
+                    obj.insert("octets".into(), arr);
                     SJValue::Object(obj)
                 } else {
                     arr
@@ -625,10 +622,7 @@ impl Value {
                         SJValue::Number(Number::from(u8::from(ValueTy::Ipv6Addr))),
                     );
 
-                    obj.insert(
-                        "octets".into(),
-                        arr,
-                    );
+                    obj.insert("octets".into(), arr);
 
                     SJValue::Object(obj)
                 } else {

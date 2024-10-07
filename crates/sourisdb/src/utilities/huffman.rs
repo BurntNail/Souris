@@ -67,7 +67,7 @@
 //! assert_eq!(input, &output);
 //! ```
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::{
     fmt::{Display, Formatter},
     hash::Hash,

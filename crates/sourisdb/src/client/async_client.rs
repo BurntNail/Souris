@@ -60,7 +60,6 @@ impl AsyncClient {
         Ok(Self { path, port, client })
     }
 
-
     ///Get the names of all the databases present in the instance.
     ///
     /// ## Errors
@@ -78,7 +77,6 @@ impl AsyncClient {
             .json()
             .await?)
     }
-
 
     ///Creates a new database in the connected instance with the given name.
     ///

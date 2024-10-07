@@ -14,7 +14,7 @@ use hashbrown::HashMap;
 use serde_json::{Error as SJError, Value as SJValue};
 
 use crate::{
-    types::integer::{IntegerSerError},
+    types::integer::IntegerSerError,
     utilities::{
         cursor::Cursor,
         huffman::{Huffman, HuffmanSerError},
@@ -112,7 +112,9 @@ impl Store {
     #[cfg(feature = "serde")]
     pub fn from_bytes<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, StoreSerError> {
         let s = Self::deser(bytes)?;
-        let v = s.to_json(false).ok_or(StoreSerError::UnableToConvertToJson)?;
+        let v = s
+            .to_json(false)
+            .ok_or(StoreSerError::UnableToConvertToJson)?;
         Ok(serde_json::from_value(v)?)
     }
 
