@@ -1,5 +1,8 @@
 [package]
 name = "sourisdb"
+description = "Database format focused on compression size without using external libraries."
+license = "MIT"
+repository = "https://github.com/BurntNail/souris"
 version = "0.1.0"
 edition = "2021"
 
