@@ -7,7 +7,8 @@ use crate::{client::ClientError, store::Store, values::Value};
 
 #[derive(Debug, Clone)]
 pub struct SyncClient {
-    path: String, //path is never changed, so just use arc<str> for cloning benefits
+    //TODO: option to change protocol
+    path: String, //path is never changed, so just maybe use arc<str> for cloning benefits
     port: u32,
     agent: Agent, //also internally arc-ed, so easy to clone
 }

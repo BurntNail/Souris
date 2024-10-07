@@ -1192,6 +1192,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mouse"
+version = "0.1.0"
+dependencies = [
+ "clap 4.5.6",
+ "dialoguer",
+ "serde_json",
+ "sourisdb",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1959,16 +1969,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "souris"
-version = "0.1.0"
-dependencies = [
- "clap 4.5.6",
- "dialoguer",
- "serde_json",
- "sourisdb",
-]
-
-[[package]]
 name = "sourisd"
 version = "0.1.0"
 dependencies = [
@@ -2010,18 +2010,6 @@ name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-
-[[package]]
-name = "srs"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "clap 4.5.6",
- "dialoguer",
- "serde_json",
- "sourisdb",
-]
 
 [[package]]
 name = "strsim"

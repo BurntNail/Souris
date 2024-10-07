@@ -23,7 +23,7 @@ use crate::{client::ClientError, store::Store, values::Value};
 pub struct AsyncClient {
     path: String,
     port: u32,
-    client: Client,
+    client: Client, //TODO: option to change the protocol
 }
 
 impl AsyncClient {
