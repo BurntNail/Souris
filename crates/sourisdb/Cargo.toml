@@ -46,3 +46,7 @@ async_client = ["dep:reqwest", "dep:http"]
 [[bench]]
 name = "utilities"
 harness = false
+
+[[bench]]
+name = "database"
+harness = false
