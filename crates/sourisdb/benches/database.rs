@@ -6,10 +6,7 @@ const EXAMPLE: &'static [u8] = include_bytes!("example.sdb");
 fn ser_and_deser(c: &mut Criterion) {
     let example = Store::deser(EXAMPLE).unwrap();
 
-
-    c.bench_function("serialise_store", |b| {
-        b.iter(|| black_box(example.ser()))
-    });
+    c.bench_function("serialise_store", |b| b.iter(|| black_box(example.ser())));
 
     c.bench_function("deserialise_store", |b| {
         b.iter(|| black_box(Store::deser(EXAMPLE)))

@@ -2,6 +2,6 @@
 //!
 //! Currently, there are two types - [`imaginary::Imaginary`] and [`integer::Integer`].
 
+pub mod binary;
 pub mod imaginary;
 pub mod integer;
-pub mod binary;

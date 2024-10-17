@@ -14,10 +14,8 @@ use tokio::{
     sync::Mutex,
 };
 
-fn running_with_superuser () -> bool {
-    unsafe {
-        libc::geteuid() == 0
-    }
+fn running_with_superuser() -> bool {
+    unsafe { libc::geteuid() == 0 }
 }
 
 mod meta {

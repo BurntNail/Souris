@@ -1,16 +1,17 @@
-use core::fmt::{Debug, Display, Formatter};
-use crate::display_bytes_as_hex_array;
-use serde_json::{Value as SJValue, Map as SJMap, Number};
-use crate::types::integer::{Integer, IntegerSerError, SignedState};
-use crate::utilities::bits::Bits;
-use crate::utilities::cursor::Cursor;
-use crate::values::ValueTy;
+use crate::{
+    display_bytes_as_hex_array,
+    types::integer::{Integer, IntegerSerError, SignedState},
+    utilities::{bits::Bits, cursor::Cursor},
+    values::ValueTy,
+};
 use alloc::{vec, vec::Vec};
+use core::fmt::{Debug, Display, Formatter};
+use serde_json::{Map as SJMap, Number, Value as SJValue};
 
 pub enum BinaryCompression {
     Nothing,
     RunLengthEncoding,
-    XORedRunLengthEncoding
+    XORedRunLengthEncoding,
 }
 
 impl From<BinaryCompression> for u8 {
@@ -18,9 +19,8 @@ impl From<BinaryCompression> for u8 {
         match compression {
             BinaryCompression::Nothing => 0,
             BinaryCompression::RunLengthEncoding => 1,
-            BinaryCompression::XORedRunLengthEncoding => 2
+            BinaryCompression::XORedRunLengthEncoding => 2,
         }
-
     }
 }
 
@@ -32,7 +32,7 @@ impl TryFrom<u8> for BinaryCompression {
             0 => Ok(Self::Nothing),
             1 => Ok(Self::RunLengthEncoding),
             2 => Ok(Self::XORedRunLengthEncoding),
-            _ => Err(BinarySerError::NoCompressionTypeFound(value))
+            _ => Err(BinarySerError::NoCompressionTypeFound(value)),
         }
     }
 }
@@ -47,7 +47,9 @@ pub enum BinarySerError {
 impl Display for BinarySerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::NoCompressionTypeFound(v) => write!(f, "Invalid compression discriminant found: {v}"),
+            Self::NoCompressionTypeFound(v) => {
+                write!(f, "Invalid compression discriminant found: {v}")
+            }
             Self::Integer(i) => write!(f, "Error parsing integer: {i}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes to deserialize."),
         }
@@ -71,7 +73,7 @@ impl From<IntegerSerError> for BinarySerError {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct BinaryData (pub Vec<u8>);
+pub struct BinaryData(pub Vec<u8>);
 
 impl Debug for BinaryData {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -86,7 +88,7 @@ impl Display for BinaryData {
     }
 }
 impl BinaryData {
-    pub fn to_json (self, add_souris_types: bool) -> SJValue {
+    pub fn to_json(self, add_souris_types: bool) -> SJValue {
         let mut obj = SJMap::new();
         if add_souris_types {
             obj.insert(
@@ -98,7 +100,8 @@ impl BinaryData {
         obj.insert(
             "bytes".into(),
             SJValue::Array(
-                self.0.into_iter()
+                self.0
+                    .into_iter()
                     .map(|n| SJValue::Number(Number::from(n)))
                     .collect(),
             ),
@@ -107,40 +110,39 @@ impl BinaryData {
         SJValue::Object(obj)
     }
 
-    fn rle (&self) -> Vec<u8> {
+    fn rle(&self) -> Vec<u8> {
         let mut output = vec![];
 
         if self.0.is_empty() {
             return output;
         }
 
-            let mut bits = {
-                let mut bits: Vec<bool> = Bits::from_binary(self.0.clone()).into();
-                bits.reverse();
-                Bits::from(bits) //reverse order so when i pop i get the first el, then the second etc
-            };
+        let mut bits = {
+            let mut bits: Vec<bool> = Bits::from_binary(self.0.clone()).into();
+            bits.reverse();
+            Bits::from(bits) //reverse order so when i pop i get the first el, then the second etc
+        };
 
-            let Some(mut current_bit) = bits.pop() else {
-                unreachable!()
-            };
-            let mut current_count: u8 = 1;
+        let Some(mut current_bit) = bits.pop() else {
+            unreachable!()
+        };
+        let mut current_count: u8 = 1;
 
-            while let Some(found_bit) = bits.pop() {
-                if current_count == 0b1111_1110 || found_bit != current_bit {
-                    let to_be_pushed = current_count + (current_bit as u8);
-                    output.push(to_be_pushed);
-                    current_count = 0;
-                }
-
-                current_bit = found_bit;
-                current_count += 1;
+        while let Some(found_bit) = bits.pop() {
+            if current_count == 0b1111_1110 || found_bit != current_bit {
+                let to_be_pushed = current_count + (current_bit as u8);
+                output.push(to_be_pushed);
+                current_count = 0;
             }
 
-        output
+            current_bit = found_bit;
+            current_count += 1;
+        }
 
+        output
     }
 
-    pub fn ser (&self) -> (BinaryCompression, Vec<u8>) {
+    pub fn ser(&self) -> (BinaryCompression, Vec<u8>) {
         let vanilla = {
             let mut backing = Integer::usize(self.0.len()).ser().1;
             backing.extend(&self.0);
@@ -154,7 +156,7 @@ impl BinaryData {
             out
         };
         // let rle_xor = {
-             //TODO someday when i get internet access and time
+        //TODO someday when i get internet access and time
         // };
 
         if vanilla.len() < rle.len() {
@@ -164,14 +166,15 @@ impl BinaryData {
         }
     }
 
-    pub fn deser (compression: BinaryCompression, cursor: &mut Cursor<u8>) -> Result<Self, BinarySerError> {
+    pub fn deser(
+        compression: BinaryCompression,
+        cursor: &mut Cursor<u8>,
+    ) -> Result<Self, BinarySerError> {
         let len = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
         let bytes = cursor.read(len).ok_or(BinarySerError::NotEnoughBytes)?;
 
         Ok(match compression {
-            BinaryCompression::Nothing => {
-                Self(bytes.to_vec())
-            }
+            BinaryCompression::Nothing => Self(bytes.to_vec()),
             BinaryCompression::RunLengthEncoding => {
                 let mut output = Bits::default();
 
@@ -183,7 +186,7 @@ impl BinaryData {
                 }
 
                 Self(output.get_proper_bytes())
-            },
+            }
             BinaryCompression::XORedRunLengthEncoding => {
                 todo!("when i get internet access and time :)")
             }

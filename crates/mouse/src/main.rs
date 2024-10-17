@@ -261,7 +261,10 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 println!("Cancelled updating key-value pair.");
             }
         }
-        Commands::ExportToJSON { json_location, add_souris_types } => {
+        Commands::ExportToJSON {
+            json_location,
+            add_souris_types,
+        } => {
             let (name, store) = pick_db(&client, &theme)?;
             println!("Received Database {name:?}, converting to JSON");
 

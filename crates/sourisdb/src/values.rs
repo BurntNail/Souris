@@ -19,12 +19,12 @@ use serde_json::{Error as SJError, Map as SJMap, Number, Value as SJValue};
 
 use crate::{
     types::{
+        binary::{BinaryCompression, BinaryData, BinarySerError},
         imaginary::Imaginary,
         integer::{Integer, IntegerSerError, SignedState},
     },
     utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
 };
-use crate::types::binary::{BinaryCompression, BinaryData, BinarySerError};
 
 #[derive(Clone)]
 pub enum Value {
@@ -396,7 +396,7 @@ pub enum ValueSerError {
     SerdeCustom(String),
     NoHuffman,
     UnableToDecodeHuffman,
-    BinarySerError(BinarySerError)
+    BinarySerError(BinarySerError),
 }
 
 impl Display for ValueSerError {
@@ -557,9 +557,7 @@ impl Value {
 
                 SJValue::Object(obj)
             }
-            Value::Binary(b) => {
-                b.to_json(add_souris_types)
-            }
+            Value::Binary(b) => b.to_json(add_souris_types),
             Value::Ipv4Addr(a) => {
                 let arr = SJValue::Array(
                     a.octets()
@@ -1085,12 +1083,11 @@ mod tests {
 
     use proptest::{arbitrary::any, prop_assert_eq, proptest};
 
+    use super::Value;
     use crate::{
-        types::{imaginary::Imaginary, integer::BiggestIntButSigned},
+        types::{binary::BinaryData, imaginary::Imaginary, integer::BiggestIntButSigned},
         utilities::cursor::Cursor,
     };
-    use crate::types::binary::BinaryData;
-    use super::Value;
 
     proptest! {
         #[test]
