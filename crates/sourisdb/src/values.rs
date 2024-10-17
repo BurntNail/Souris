@@ -1089,7 +1089,7 @@ mod tests {
         types::{imaginary::Imaginary, integer::BiggestIntButSigned},
         utilities::cursor::Cursor,
     };
-
+    use crate::types::binary::BinaryData;
     use super::Value;
 
     proptest! {
@@ -1117,11 +1117,11 @@ mod tests {
 
         #[test]
         fn test_bin (s in any::<Vec<u8>>()) {
-            let v = Value::Binary(s.clone());
+            let v = Value::Binary(BinaryData(s.clone()));
 
             let bytes = v.ser(None).unwrap();
             let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
-            let out = out_value.as_binary().unwrap().to_vec();
+            let out = out_value.as_binary().unwrap().0.to_vec();
 
             prop_assert_eq!(s, out);
         }

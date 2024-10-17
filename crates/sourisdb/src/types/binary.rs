@@ -153,9 +153,9 @@ impl BinaryData {
             out.extend(&rle);
             out
         };
-        let rle_xor = {
-            //TODO someday when i get internet access and time
-        };
+        // let rle_xor = {
+             //TODO someday when i get internet access and time
+        // };
 
         if vanilla.len() < rle.len() {
             (BinaryCompression::Nothing, vanilla)
