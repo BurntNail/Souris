@@ -18,7 +18,6 @@ use hashbrown::HashMap;
 use serde_json::{Error as SJError, Map as SJMap, Number, Value as SJValue};
 
 use crate::{
-    display_bytes_as_hex_array,
     types::{
         imaginary::Imaginary,
         integer::{Integer, IntegerSerError, SignedState},
@@ -800,7 +799,7 @@ impl Value {
             }
             Self::Binary(b) => {
                 let (ct, bytes) = b.ser();
-                ty |= ct.into();
+                ty |= u8::from(ct);
 
                 res.push(ty);
                 res.extend(bytes.iter());

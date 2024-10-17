@@ -5,6 +5,7 @@ use crate::types::integer::{Integer, IntegerSerError, SignedState};
 use crate::utilities::bits::Bits;
 use crate::utilities::cursor::Cursor;
 use crate::values::ValueTy;
+use alloc::{vec, vec::Vec};
 
 pub enum BinaryCompression {
     Nothing,
@@ -12,13 +13,14 @@ pub enum BinaryCompression {
     XORedRunLengthEncoding
 }
 
-impl Into<u8> for BinaryCompression {
-    fn into(self) -> u8 {
-        match self {
-            Self::Nothing => 0,
-            Self::RunLengthEncoding => 1,
-            Self::XORedRunLengthEncoding => 2
+impl From<BinaryCompression> for u8 {
+    fn from(compression: BinaryCompression) -> Self {
+        match compression {
+            BinaryCompression::Nothing => 0,
+            BinaryCompression::RunLengthEncoding => 1,
+            BinaryCompression::XORedRunLengthEncoding => 2
         }
+
     }
 }
 
@@ -69,10 +71,10 @@ impl From<IntegerSerError> for BinarySerError {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct BinaryData (Vec<u8>);
+pub struct BinaryData (pub Vec<u8>);
 
 impl Debug for BinaryData {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("BinaryData")
             .field("data", &display_bytes_as_hex_array(&self.0))
             .finish()
@@ -113,9 +115,9 @@ impl BinaryData {
         }
 
             let mut bits = {
-                let mut cloned = self.0.clone();
-                cloned.reverse(); //reverse it to get the first bits at the end where I can easily pop them
-                Bits::from(cloned)
+                let mut bits: Vec<bool> = Bits::from_binary(self.0.clone()).into();
+                bits.reverse();
+                Bits::from(bits) //reverse order so when i pop i get the first el, then the second etc
             };
 
             let Some(mut current_bit) = bits.pop() else {

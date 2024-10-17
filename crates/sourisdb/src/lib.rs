@@ -11,9 +11,6 @@
 
 extern crate alloc;
 extern crate core;
-extern crate core;
-extern crate core;
-extern crate core;
 
 use alloc::{
     format,

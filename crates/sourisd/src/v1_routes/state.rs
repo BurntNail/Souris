@@ -16,11 +16,7 @@ use tokio::{
 
 fn running_with_superuser () -> bool {
     unsafe {
-        if libc::geteuid() != 0 {
-            false
-        } else {
-            true
-        }
+        libc::geteuid() == 0
     }
 }
 

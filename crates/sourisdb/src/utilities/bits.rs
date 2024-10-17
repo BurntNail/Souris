@@ -66,6 +66,13 @@ impl Bits {
 
         self.valid_bits += 1;
     }
+    
+    pub fn from_binary (backing: Vec<u8>) -> Self {
+        Self {
+            valid_bits: backing.len() * 8,
+            backing
+        }
+    }
 
     #[inline]
     #[must_use]
