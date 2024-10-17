@@ -101,7 +101,7 @@ impl Bits {
         }
     }
 
-    fn get_proper_bytes(&self) -> Vec<u8> {
+    pub fn get_proper_bytes(&self) -> Vec<u8> {
         let interior_index = self.valid_bits % 8;
         if interior_index == 0 {
             return self.backing.clone();

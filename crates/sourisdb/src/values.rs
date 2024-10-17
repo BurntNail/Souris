@@ -25,12 +25,13 @@ use crate::{
     },
     utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
 };
+use crate::types::binary::{BinaryCompression, BinaryData, BinarySerError};
 
 #[derive(Clone)]
 pub enum Value {
     Character(char),
     String(String),
-    Binary(Vec<u8>),
+    Binary(BinaryData),
     Boolean(bool),
     Integer(Integer),
     Imaginary(Imaginary),
@@ -101,7 +102,7 @@ macro_rules! as_ty {
     };
 }
 
-as_ty!(Character char -> char, String str -> String, Boolean bool -> bool, Integer int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), DoubleFloat double_float -> f64, SingleFloat single_float -> f32, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Binary binary -> Vec<u8>);
+as_ty!(Character char -> char, String str -> String, Boolean bool -> bool, Integer int -> Integer, Imaginary imaginary -> Imaginary, Timestamp timestamp -> NaiveDateTime, JSON json -> SJValue, Null null -> (), DoubleFloat double_float -> f64, SingleFloat single_float -> f32, Array array -> Vec<Value>, Map map -> HashMap<String, Value>, Timezone tz -> Tz, Ipv4Addr ipv4 -> Ipv4Addr, Ipv6Addr ipv6 -> Ipv6Addr, Binary binary -> BinaryData);
 
 macro_rules! from_integer {
     ($($t:ty),+) => {
@@ -235,29 +236,10 @@ impl Hash for Value {
 #[allow(clippy::missing_fields_in_debug)]
 impl Debug for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let mut s = f.debug_struct("Value");
-        s.field("ty", &self.as_ty());
-
-        match &self {
-            Self::Character(ch) => s.field("content", ch),
-            Self::String(str) => s.field("content", str),
-            Self::Binary(b) => s.field("content", &display_bytes_as_hex_array(b)),
-            Self::Boolean(b) => s.field("content", b),
-            Self::Integer(i) => s.field("content", i),
-            Self::Imaginary(i) => s.field("content", i),
-            Self::Timestamp(ndt) => s.field("content", ndt),
-            Self::JSON(v) => s.field("content", v),
-            Self::DoubleFloat(f) => s.field("content", f),
-            Self::Null(o) => s.field("content", o),
-            Self::Array(a) => s.field("content", a),
-            Self::Map(m) => s.field("content", m),
-            Self::Ipv4Addr(m) => s.field("content", m),
-            Self::Ipv6Addr(m) => s.field("content", m),
-            Self::SingleFloat(m) => s.field("content", m),
-            Self::Timezone(m) => s.field("content", m),
-        };
-
-        s.finish()
+        f.debug_struct("Value")
+            .field("ty", &self.as_ty())
+            .field("content", &self)
+            .finish()
     }
 }
 
@@ -267,7 +249,7 @@ impl Display for Value {
             Self::Character(ch) => write!(f, "{ch:?}"),
             Self::String(str) => write!(f, "{str:?}"),
             Self::Binary(b) => {
-                write!(f, "{}", display_bytes_as_hex_array(b))
+                write!(f, "{b}")
             }
             Self::Boolean(b) => write!(f, "{b}"),
             Self::Integer(i) => write!(f, "{i}"),
@@ -415,6 +397,7 @@ pub enum ValueSerError {
     SerdeCustom(String),
     NoHuffman,
     UnableToDecodeHuffman,
+    BinarySerError(BinarySerError)
 }
 
 impl Display for ValueSerError {
@@ -448,6 +431,7 @@ impl Display for ValueSerError {
                     "Encountered huffman-encoded string but was unable to decode it"
                 )
             }
+            ValueSerError::BinarySerError(e) => write!(f, "Error de/serializing binary: {e}"),
         }
     }
 }
@@ -472,6 +456,11 @@ impl From<chrono_tz::ParseError> for ValueSerError {
         Self::TzError(value)
     }
 }
+impl From<BinarySerError> for ValueSerError {
+    fn from(value: BinarySerError) -> Self {
+        Self::BinarySerError(value)
+    }
+}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ValueSerError {
@@ -481,6 +470,7 @@ impl std::error::Error for ValueSerError {
             ValueSerError::NonUTF8String(e) => Some(e),
             ValueSerError::SerdeJson(e) => Some(e),
             ValueSerError::TzError(e) => Some(e),
+            ValueSerError::BinarySerError(e) => Some(e),
             _ => None,
         }
     }
@@ -569,24 +559,7 @@ impl Value {
                 SJValue::Object(obj)
             }
             Value::Binary(b) => {
-                let mut obj = SJMap::new();
-                if add_souris_types {
-                    obj.insert(
-                        "souris_type".into(),
-                        SJValue::Number(Number::from(u8::from(ValueTy::Binary))),
-                    );
-                }
-
-                obj.insert(
-                    "bytes".into(),
-                    SJValue::Array(
-                        b.into_iter()
-                            .map(|n| SJValue::Number(Number::from(n)))
-                            .collect(),
-                    ),
-                );
-
-                SJValue::Object(obj)
+                b.to_json(add_souris_types)
             }
             Value::Ipv4Addr(a) => {
                 let arr = SJValue::Array(
@@ -704,7 +677,7 @@ impl Value {
                                         .map(|x| x.as_u64().and_then(|x| u8::try_from(x).ok()))
                                         .collect::<Option<Vec<_>>>()
                                     {
-                                        return Value::Binary(bytes);
+                                        return Value::Binary(BinaryData(bytes));
                                     }
                                 }
                             }
@@ -826,11 +799,11 @@ impl Value {
                 }
             }
             Self::Binary(b) => {
-                let (_, len_bytes) = Integer::from(b.len()).ser();
+                let (ct, bytes) = b.ser();
+                ty |= ct.into();
 
                 res.push(ty);
-                res.extend(len_bytes);
-                res.extend(b.iter());
+                res.extend(bytes.iter());
             }
             Self::Boolean(b) => {
                 ty |= u8::from(*b);
@@ -1024,12 +997,8 @@ impl Value {
                 Self::JSON(value)
             }
             ValueTy::Binary => {
-                let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-                let bytes = bytes
-                    .read(len)
-                    .ok_or(ValueSerError::NotEnoughBytes)?
-                    .to_vec();
-                Self::Binary(bytes)
+                let ct = BinaryCompression::try_from(byte & 0b000_1111)?;
+                Self::Binary(BinaryData::deser(ct, bytes)?)
             }
             ValueTy::Boolean => Self::Boolean((byte & 0b0000_0001) > 0),
             ValueTy::Null => Self::Null(()),

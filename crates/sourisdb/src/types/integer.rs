@@ -633,7 +633,7 @@ impl FromStr for Integer {
 #[derive(Debug)]
 #[allow(clippy::module_name_repetitions)]
 ///Error type for dealing with serialisation errors related to [`Integer`]s.
-pub enum IntegerSerError {
+pub enum IntegerSerError     {
     ///An invalid signed state was found - these should only be `0b1` and `0b0`
     InvalidSignedStateDiscriminant(u8),
     ///Not enough bytes were within the cursor to deserialise the integer

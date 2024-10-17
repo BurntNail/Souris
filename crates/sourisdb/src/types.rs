@@ -4,3 +4,4 @@
 
 pub mod imaginary;
 pub mod integer;
+pub mod binary;
