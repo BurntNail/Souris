@@ -1,24 +1,22 @@
 //! `value_utils` currently only provides one function - `get_value_from_stdin` which allows you to easily get a value from `stdin` using `dialoguer`.
 
-use alloc::{string::String, vec, vec::Vec};
-use std::{fmt::Display, format, println};
-
-use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
-pub use dialoguer;
+use std::{fmt::{Display, Formatter}, format, println, str::FromStr, string::String, vec::Vec, fs::File, path::PathBuf};
+use std::io::Read;
+use sourisdb::chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
 use dialoguer::{theme::Theme, Confirm, FuzzySelect, Input};
-
-use crate::{
-    hashbrown::HashMap,
-    serde_json::Value as SJValue,
-    types::imaginary::Imaginary,
-    values::{Value, ValueTy},
-};
+use sourisdb::types::binary::BinaryData;
+use sourisdb::types::imaginary::Imaginary;
+use sourisdb::values::{Value, ValueTy};
+use serde_json::Value as SJValue;
+use sourisdb::chrono_tz;
+use sourisdb::hashbrown::HashMap;
+use crate::Error;
 
 ///Get a [`Value`] from stdin using `dialoguer`. NB: a theme should be provided, but these are easy to construct.
 ///
 ///```rust,no_run
 /// use dialoguer::theme::ColorfulTheme;
-/// use sourisdb::utilities::value_utils::get_value_from_stdin;
+/// use mouse::value_utils::get_value_from_stdin;
 ///
 /// let theme = ColorfulTheme::default();
 /// let val = get_value_from_stdin("Value: ", &theme).unwrap();
@@ -31,7 +29,7 @@ use crate::{
 pub fn get_value_from_stdin(
     prompt: impl Display,
     theme: &dyn Theme,
-) -> Result<Value, dialoguer::Error> {
+) -> Result<Value, Error> {
     println!("{prompt}");
 
     let tys = [

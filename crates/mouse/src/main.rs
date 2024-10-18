@@ -19,6 +19,9 @@ use sourisdb::{
     utilities::value_utils::get_value_from_stdin,
     values::ValueSerError,
 };
+use crate::value_utils::get_value_from_stdin;
+
+mod value_utils;
 
 #[derive(Parser, Debug)]
 #[command(version, author)]
