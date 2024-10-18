@@ -64,7 +64,7 @@ enum Error {
     Value(ValueSerError),
     Store(StoreSerError),
     NoDatabasesFound,
-    Client(ClientError),
+    Client(Box<ClientError>),
 }
 
 impl Display for Error {
@@ -108,7 +108,7 @@ impl From<StoreSerError> for Error {
 }
 impl From<ClientError> for Error {
     fn from(value: ClientError) -> Self {
-        Self::Client(value)
+        Self::Client(Box::new(value))
     }
 }
 
