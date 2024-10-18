@@ -1216,12 +1216,12 @@ dependencies = [
 
 [[package]]
 name = "mouse"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap 4.5.20",
  "dialoguer",
  "serde_json",
- "sourisdb",
+ "sourisdb 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1960,14 +1960,14 @@ dependencies = [
 
 [[package]]
 name = "sourisd"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "color-eyre",
  "dirs",
  "libc",
  "serde",
- "sourisdb",
+ "sourisdb 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio",
  "tower-http",
  "tracing",
@@ -1990,6 +1990,26 @@ dependencies = [
  "paste",
  "proptest",
  "reqwest",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
+name = "sourisdb"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11e6f869007da94b5212f63a739201f5f2cb1e94349b2b39a33f3403cf9fe66a"
+dependencies = [
+ "axum",
+ "cfg-if",
+ "chrono",
+ "chrono-tz",
+ "comfy-table",
+ "dialoguer",
+ "hashbrown 0.14.5",
+ "http",
+ "paste",
  "serde",
  "serde_json",
  "ureq",

@@ -3,7 +3,7 @@ name = "sourisd"
 description = "Daemon for SourisDB."
 license = "MIT"
 repository = "https://github.com/BurntNail/souris"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,7 +11,7 @@ edition = "2021"
 [dependencies]
 axum = {version = "0.7.5", features = ["macros"]}
 color-eyre = "0.6.3"
-sourisdb = {path = "../sourisdb", features = ["std", "serde", "axum"]}
+sourisdb = {version = "0.2.0", features = ["std", "serde", "axum"]}
 dirs = "5.0.1"
 tokio = { version = "1.37.0", features = ["full"] }
 tracing = "0.1.40"
