@@ -71,10 +71,61 @@ pub fn get_value_from_stdin(
             Value::String(st)
         }
         ValueTy::Binary => {
-            let st: String = Input::with_theme(theme)
-                .with_prompt("What text to be interpreted as UTF-8 bytes?")
-                .interact()?;
-            Value::Binary(st.as_bytes().to_vec())
+            #[derive(Clone)]
+            struct ValidFile(PathBuf);
+            impl Display for ValidFile {
+                fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                    write!(f, "{:?}", &self.0)
+                }
+            }
+            enum FileNotFoundError {
+                NotFound,
+                IsADirectory
+            }
+            impl Display for FileNotFoundError {
+                fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                    match self {
+                        Self::NotFound => write!(f, "File not found"),
+                        Self::IsADirectory => write!(f, "Path provided is a directory"),
+                    }
+                }
+            }
+            impl FromStr for ValidFile {
+                type Err = FileNotFoundError;
+
+                fn from_str(s: &str) -> Result<Self, Self::Err> {
+                    let pb = PathBuf::from(s);
+                    
+                    if pb.is_dir() {
+                        Err(FileNotFoundError::IsADirectory)
+                    } else if !pb.exists() {
+                        Err(FileNotFoundError::NotFound)
+                    } else {
+                        Ok(ValidFile(pb))
+                    }
+                }
+            }
+            
+            let ValidFile(pb) = loop {
+                match Input::with_theme(theme)
+                    .with_prompt("Please enter the path to the file with the binary")
+                    .interact() {
+                    Ok(x) => break x,
+                    Err(_) => {},
+                }
+            };
+            
+            let mut output = vec![];
+            let mut file = File::open(pb)?;
+            let mut tmp = [0_u8; 128];
+            loop {
+                match file.read(&mut tmp)? {
+                    0 => break,
+                    n => output.extend_from_slice(&tmp[..n])
+                }
+            }
+
+            Value::Binary(BinaryData(output))
         }
         ValueTy::Boolean => {
             let b = FuzzySelect::with_theme(theme)

@@ -16,7 +16,6 @@ use dialoguer::{
 use sourisdb::{
     client::{ClientError, SyncClient},
     store::{Store, StoreSerError},
-    utilities::value_utils::get_value_from_stdin,
     values::ValueSerError,
 };
 use crate::value_utils::get_value_from_stdin;
