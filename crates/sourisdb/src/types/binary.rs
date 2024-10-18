@@ -1,7 +1,7 @@
 use crate::{
     display_bytes_as_hex_array,
     types::integer::{Integer, IntegerSerError, SignedState},
-    utilities::{bits::Bits, cursor::Cursor},
+    utilities::cursor::Cursor,
     values::ValueTy,
 };
 use alloc::{vec, vec::Vec};
@@ -116,28 +116,37 @@ impl BinaryData {
         if self.0.is_empty() {
             return output;
         }
-
-        let mut bits = {
-            let mut bits: Vec<bool> = Bits::from_binary(self.0.clone()).into();
-            bits.reverse();
-            Bits::from(bits) //reverse order so when i pop i get the first el, then the second etc
-        };
-
-        let Some(mut current_bit) = bits.pop() else {
-            unreachable!()
-        };
-        let mut current_count: u8 = 1;
-
-        while let Some(found_bit) = bits.pop() {
-            if current_count == 0b1111_1110 || found_bit != current_bit || bits.is_empty() {
-                let to_be_pushed = current_count + (current_bit as u8);
-                output.push(to_be_pushed);
+        
+        let mut bytes = self.0.clone();
+        bytes.reverse();
+        
+        let mut current_count = 1;
+        let mut current = bytes.pop().unwrap();
+        
+        while let Some(byte) = bytes.pop() {
+            if current != byte {
+                output.push(current_count);
+                output.push(current);
+                
+                current_count = 1;
+                current = byte;
+            } else {
+                current_count += 1;
+            }
+            
+            if current_count == u8::MAX {
+                output.push(current_count);
+                output.push(current);
+                
                 current_count = 0;
             }
-
-            current_bit = found_bit;
-            current_count += 1;
         }
+        if current_count != 0 {
+            output.push(current_count);
+            output.push(current);
+        }
+
+
 
         output
     }
@@ -151,15 +160,15 @@ impl BinaryData {
         let rle = {
             let rle = self.rle();
 
-            let mut out = Integer::usize(rle.len()).ser().1;
+            let mut out = Integer::usize(rle.len() / 2).ser().1;
             out.extend(&rle);
             out
         };
         // let rle_xor = {
-        //TODO someday when i get internet access and time
+        //TODO eventually
         // };
 
-        if vanilla.len() < rle.len() {
+        if vanilla.len() <= rle.len() {
             (BinaryCompression::Nothing, vanilla)
         } else {
             (BinaryCompression::RunLengthEncoding, rle)
@@ -171,25 +180,56 @@ impl BinaryData {
         cursor: &mut Cursor<u8>,
     ) -> Result<Self, BinarySerError> {
         let len = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
-        let bytes = cursor.read(len).ok_or(BinarySerError::NotEnoughBytes)?;
-
+        
         Ok(match compression {
-            BinaryCompression::Nothing => Self(bytes.to_vec()),
+            BinaryCompression::Nothing => Self(cursor.read(len).ok_or(BinarySerError::NotEnoughBytes)?.to_vec()),
             BinaryCompression::RunLengthEncoding => {
-                let mut output = Bits::default();
+                let mut output = vec![];
 
-                for byte in bytes {
-                    let bit = if byte & 0b0000_0001 > 0 { true } else { false };
-                    let len = byte & 0b1111_1110;
+                for _ in 0..len {
+                    let count = cursor.next().copied().ok_or(BinarySerError::NotEnoughBytes)?;
+                    let byte = cursor.next().copied().ok_or(BinarySerError::NotEnoughBytes)?;
 
-                    (0..len).into_iter().for_each(|_| output.push(bit));
+                    (0..count).for_each(|_| output.push(byte))
                 }
 
-                Self(output.get_proper_bytes())
+                Self(output)
             }
             BinaryCompression::XORedRunLengthEncoding => {
-                todo!("when i get internet access and time :)")
+                unimplemented!()
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_rle_specific_cases () {
+        const CASES: &[&[u8]] = &[
+            &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF],
+            &[],
+            &[0],
+            &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF]
+        ];
+        
+        for case in CASES {
+            let vec = case.to_vec();
+            let bd = BinaryData(vec.clone());
+            
+            let encoded = {
+                let rle = bd.rle(); //forcing RLE to ensure it works
+                let mut out = Integer::usize(rle.len() / 2).ser().1;
+                out.extend(&rle);
+                out
+            };
+            
+            let mut cursor = Cursor::new(&encoded);
+            let BinaryData(decoded) = BinaryData::deser(BinaryCompression::RunLengthEncoding, &mut cursor).unwrap();
+            
+            assert_eq!(decoded, vec);
+        }
     }
 }
