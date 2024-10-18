@@ -129,7 +129,7 @@ impl BinaryData {
         let mut current_count: u8 = 1;
 
         while let Some(found_bit) = bits.pop() {
-            if current_count == 0b1111_1110 || found_bit != current_bit {
+            if current_count == 0b1111_1110 || found_bit != current_bit || bits.is_empty() {
                 let to_be_pushed = current_count + (current_bit as u8);
                 output.push(to_be_pushed);
                 current_count = 0;
