@@ -216,23 +216,28 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             println!();
 
             let mut keys = store.keys().collect::<Vec<_>>();
-            let key = FuzzySelect::with_theme(&theme)
-                .with_prompt("Select key to be removed:")
-                .items(&keys)
-                .interact()?;
-            let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
-
-            drop(keys);
-            drop(store);
-
-            if Confirm::with_theme(&theme)
-                .with_prompt("Confirm Removal?")
-                .interact()?
-            {
-                client.remove_entry_from_db(&db_name, &key)?;
-                println!("Successfully removed database");
+            
+            if keys.is_empty() {
+                println!("Database already empty.")
             } else {
-                println!("Cancelled removing database.");
+                let key = FuzzySelect::with_theme(&theme)
+                    .with_prompt("Select key to be removed:")
+                    .items(&keys)
+                    .interact()?;
+                let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
+
+                drop(keys);
+                drop(store);
+
+                if Confirm::with_theme(&theme)
+                    .with_prompt("Confirm Removal?")
+                    .interact()?
+                {
+                    client.remove_entry_from_db(&db_name, &key)?;
+                    println!("Successfully removed Key");
+                } else {
+                    println!("Cancelled removing database.");
+                }
             }
         }
         Commands::UpdateEntry => {
@@ -241,26 +246,31 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             println!();
 
             let mut keys = store.keys().collect::<Vec<_>>();
-            let key = FuzzySelect::with_theme(&theme)
-                .with_prompt("Select key to be updated:")
-                .items(&keys)
-                .interact()?;
-            let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
-
-            drop(keys);
-            drop(store);
-
-            let new_val = get_value_from_stdin("New Value: ", &theme)?;
-
-            if Confirm::with_theme(&theme)
-                .with_prompt("Confirm Update?")
-                .interact()?
-            {
-                if !client.add_entry_to_db(&db_name, &key, &new_val)? {
-                    println!("Successfully overwrote existing key-value pair.");
-                }
+            
+            if keys.is_empty() {
+                println!("Database is empty.")
             } else {
-                println!("Cancelled updating key-value pair.");
+                let key = FuzzySelect::with_theme(&theme)
+                    .with_prompt("Select key to be updated:")
+                    .items(&keys)
+                    .interact()?;
+                let key = keys.swap_remove(key).clone(); //idc if it gets swapped as we drop it next
+
+                drop(keys);
+                drop(store);
+
+                let new_val = get_value_from_stdin("New Value: ", &theme)?;
+
+                if Confirm::with_theme(&theme)
+                    .with_prompt("Confirm Update?")
+                    .interact()?
+                {
+                    if !client.add_entry_to_db(&db_name, &key, &new_val)? {
+                        println!("Successfully overwrote existing key-value pair.");
+                    }
+                } else {
+                    println!("Cancelled updating key-value pair.");
+                }
             }
         }
         Commands::ExportToJSON {
