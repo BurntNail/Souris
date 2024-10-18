@@ -1,5 +1,7 @@
 # Souris
 
+[![wakatime](https://wakatime.com/badge/github/BurntNail/Souris.svg)](https://wakatime.com/badge/github/BurntNail/Souris)
+
 A tiny `no_std` database designed to minimise size over all else. If you're using `sourisd`, then it's also all stored in-memory for ultimate speed!
 
 Named after mice, because they're tiny.
