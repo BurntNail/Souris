@@ -26,7 +26,7 @@ use crate::{
     utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Character(char),
     String(String),
@@ -229,16 +229,6 @@ impl Hash for Value {
                 f.to_le_bytes().hash(state);
             }
         }
-    }
-}
-
-#[allow(clippy::missing_fields_in_debug)]
-impl Debug for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Value")
-            .field("ty", &self.as_ty())
-            .field("content", &self)
-            .finish()
     }
 }
 
