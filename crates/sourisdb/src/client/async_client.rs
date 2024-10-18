@@ -12,10 +12,10 @@
 //! ```
 
 use core::fmt::Display;
-
+use alloc::string::{ToString, String};
 use http::StatusCode;
 use reqwest::{Client, Response};
-
+use alloc::{vec::Vec, format};
 use crate::{client::ClientError, store::Store, values::Value};
 
 ///A client for interacting with `sourisd` asynchronously.

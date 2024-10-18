@@ -7,15 +7,14 @@
 //! The sync client is backed by [`ureq`] and the async client by [`reqwest`].
 
 use core::fmt::{Display, Formatter};
-
-use http::{status::InvalidStatusCode, StatusCode};
+use crate::{store::StoreSerError, values::ValueSerError};
+use http::StatusCode;
 
 #[cfg(feature = "async_client")]
 pub use async_client::AsyncClient;
 #[cfg(feature = "sync_client")]
 pub use sync_client::SyncClient;
 
-use crate::{store::StoreSerError, values::ValueSerError};
 
 #[cfg(feature = "async_client")]
 mod async_client;
@@ -42,7 +41,7 @@ pub enum ClientError {
     IO(std::io::Error),
     ///An invalid status code was found - this error occurs when turning a `u32` into a `StatusCode` in the sync client.
     #[cfg(feature = "sync_client")]
-    InvalidStatusCode(InvalidStatusCode),
+    InvalidStatusCode(http::status::InvalidStatusCode),
     ///In the clients' constructors, a request is made to the healthcheck endpoint of the server. This error occurs if that does not return `200 OK`.
     ServerNotHealthy(StatusCode),
     ///An error occurred with `serde_json`.
@@ -58,7 +57,9 @@ impl Display for ClientError {
             Self::Reqwest(r) => write!(f, "Error with reqwest: {r}"),
             Self::Store(s) => write!(f, "Error with store: {s}"),
             Self::HttpErrorCode(sc) => write!(f, "Error with response: {sc:?}"),
+            #[cfg(feature = "sync_client")]
             Self::IO(e) => write!(f, "IO Error: {e}"),
+            #[cfg(feature = "sync_client")]
             Self::InvalidStatusCode(e) => write!(f, "Invalid status code provided: {e}"),
             Self::ServerNotHealthy(sc) => write!(
                 f,
@@ -106,8 +107,8 @@ impl From<std::io::Error> for ClientError {
     }
 }
 #[cfg(feature = "sync_client")]
-impl From<InvalidStatusCode> for ClientError {
-    fn from(value: InvalidStatusCode) -> Self {
+impl From<http::status::InvalidStatusCode> for ClientError {
+    fn from(value: http::status::InvalidStatusCode) -> Self {
         Self::InvalidStatusCode(value)
     }
 }
@@ -122,6 +123,7 @@ impl From<ValueSerError> for ClientError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ClientError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
