@@ -24,9 +24,8 @@ mod meta {
     ///Name of the key inside the meta information database that stores the array of databases
     pub const DB_FILE_NAMES_KEY: &str = "existing_dbs";
 }
-use crate::error::SourisError;
+use crate::{error::SourisError, v1_routes::value::KeyAndDb};
 use meta::{DB_FILE_NAMES_KEY, META_DB_FILE_NAME};
-use crate::v1_routes::value::KeyAndDb;
 
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
@@ -141,14 +140,19 @@ impl SourisState {
         dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)
     }
 
-    pub async fn add_key_value_pair(&self, KeyAndDb{key, db_name}: KeyAndDb, v: Value) -> StatusCode {
+    pub async fn add_key_value_pair(
+        &self,
+        KeyAndDb { key, db_name }: KeyAndDb,
+        v: Value,
+    ) -> StatusCode {
         let mut dbs = self.dbs.lock().await;
 
         let db = if let Some(d) = dbs.get_mut(&db_name) {
             d
         } else {
             dbs.insert(db_name.clone(), Store::default());
-            dbs.get_mut(&db_name).expect("just added this database key lol")
+            dbs.get_mut(&db_name)
+                .expect("just added this database key lol")
         };
 
         match db.insert(key, v) {
@@ -157,7 +161,10 @@ impl SourisState {
         }
     }
 
-    pub async fn get_value(&self, KeyAndDb {key, db_name}: KeyAndDb) -> Result<Value, SourisError> {
+    pub async fn get_value(
+        &self,
+        KeyAndDb { key, db_name }: KeyAndDb,
+    ) -> Result<Value, SourisError> {
         let dbs = self.dbs.lock().await;
 
         let Some(db) = dbs.get(&db_name) else {
@@ -170,7 +177,7 @@ impl SourisState {
         Ok(key)
     }
 
-    pub async fn remove_key(&self, KeyAndDb {key, db_name}: KeyAndDb) -> Result<(), SourisError> {
+    pub async fn remove_key(&self, KeyAndDb { key, db_name }: KeyAndDb) -> Result<(), SourisError> {
         let mut dbs = self.dbs.lock().await;
 
         let Some(db) = dbs.get_mut(&db_name) else {

@@ -8,6 +8,7 @@ use alloc::{vec, vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
 use serde_json::{Map as SJMap, Number, Value as SJValue};
 
+#[derive(Debug, Copy, Clone)]
 pub enum BinaryCompression {
     Nothing,
     RunLengthEncoding,
@@ -88,6 +89,7 @@ impl Display for BinaryData {
     }
 }
 impl BinaryData {
+    #[must_use]
     pub fn to_json(self, add_souris_types: bool) -> SJValue {
         let mut obj = SJMap::new();
         if add_souris_types {
@@ -116,28 +118,27 @@ impl BinaryData {
         if self.0.is_empty() {
             return output;
         }
-        
+
         let mut bytes = self.0.clone();
         bytes.reverse();
-        
+
         let mut current_count = 1;
         let mut current = bytes.pop().unwrap();
-        
+
         while let Some(byte) = bytes.pop() {
             if current != byte {
                 output.push(current_count);
                 output.push(current);
-                
-                current_count = 1;
+
+                current_count = 0;
                 current = byte;
-            } else {
-                current_count += 1;
             }
-            
+            current_count += 1;
+
             if current_count == u8::MAX {
                 output.push(current_count);
                 output.push(current);
-                
+
                 current_count = 0;
             }
         }
@@ -146,11 +147,10 @@ impl BinaryData {
             output.push(current);
         }
 
-
-
         output
     }
 
+    #[must_use]
     pub fn ser(&self) -> (BinaryCompression, Vec<u8>) {
         let vanilla = {
             let mut backing = Integer::usize(self.0.len()).ser().1;
@@ -180,17 +180,28 @@ impl BinaryData {
         cursor: &mut Cursor<u8>,
     ) -> Result<Self, BinarySerError> {
         let len = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
-        
+
         Ok(match compression {
-            BinaryCompression::Nothing => Self(cursor.read(len).ok_or(BinarySerError::NotEnoughBytes)?.to_vec()),
+            BinaryCompression::Nothing => Self(
+                cursor
+                    .read(len)
+                    .ok_or(BinarySerError::NotEnoughBytes)?
+                    .to_vec(),
+            ),
             BinaryCompression::RunLengthEncoding => {
                 let mut output = vec![];
 
                 for _ in 0..len {
-                    let count = cursor.next().copied().ok_or(BinarySerError::NotEnoughBytes)?;
-                    let byte = cursor.next().copied().ok_or(BinarySerError::NotEnoughBytes)?;
+                    let count = cursor
+                        .next()
+                        .copied()
+                        .ok_or(BinarySerError::NotEnoughBytes)?;
+                    let byte = cursor
+                        .next()
+                        .copied()
+                        .ok_or(BinarySerError::NotEnoughBytes)?;
 
-                    (0..count).for_each(|_| output.push(byte))
+                    (0..count).for_each(|_| output.push(byte));
                 }
 
                 Self(output)
@@ -205,30 +216,33 @@ impl BinaryData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
-    fn test_rle_specific_cases () {
+    fn test_rle_specific_cases() {
         const CASES: &[&[u8]] = &[
-            &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF],
+            &[
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF,
+            ],
             &[],
             &[0],
-            &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF]
+            &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
         ];
-        
+
         for case in CASES {
             let vec = case.to_vec();
             let bd = BinaryData(vec.clone());
-            
+
             let encoded = {
                 let rle = bd.rle(); //forcing RLE to ensure it works
                 let mut out = Integer::usize(rle.len() / 2).ser().1;
                 out.extend(&rle);
                 out
             };
-            
+
             let mut cursor = Cursor::new(&encoded);
-            let BinaryData(decoded) = BinaryData::deser(BinaryCompression::RunLengthEncoding, &mut cursor).unwrap();
-            
+            let BinaryData(decoded) =
+                BinaryData::deser(BinaryCompression::RunLengthEncoding, &mut cursor).unwrap();
+
             assert_eq!(decoded, vec);
         }
     }

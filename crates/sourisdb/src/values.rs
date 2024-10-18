@@ -468,6 +468,7 @@ impl std::error::Error for ValueSerError {
 impl Value {
     ///if it is an integer outside the bounds of [`i64::MIN`] to [`u64::MAX`], then it will fail. it will also fail if it was a float that wasn't NaN or infinity
     #[allow(clippy::too_many_lines)]
+    #[must_use]
     pub fn convert_to_json(self, add_souris_types: bool) -> Option<SJValue> {
         Some(match self {
             Value::Character(c) => SJValue::String(c.into()),

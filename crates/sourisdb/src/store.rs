@@ -67,7 +67,7 @@ impl Store {
         let mut res = vec![];
 
         res.extend(b"SOURISDB");
-        res.push(huffman.is_some() as u8);
+        res.push(u8::from(huffman.is_some()));
         if let Some(huffman) = huffman {
             res.extend(huffman.ser());
         }

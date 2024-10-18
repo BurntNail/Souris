@@ -353,6 +353,7 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
 
     ///Decode a series of `T`s from a [`Bits`]. Will return `None` if a sequence in the `bits` cannot be found in the conversion tables calculated during the original [`Huffman::new`] incantation.
     #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn decode(&self, bits: Bits) -> Option<Vec<T>> {
         let mut result = Vec::new();
         let mut current_node = &self.root;

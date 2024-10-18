@@ -1221,7 +1221,7 @@ dependencies = [
  "clap 4.5.19",
  "dialoguer",
  "serde_json",
- "sourisdb 0.1.0",
+ "sourisdb",
 ]
 
 [[package]]
@@ -1967,31 +1967,11 @@ dependencies = [
  "dirs",
  "libc",
  "serde",
- "sourisdb 0.1.0",
+ "sourisdb",
  "tokio",
  "tower-http",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "sourisdb"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fe011be090e5ab10383e1c4d4e2623264795f569c34b171a7cc163d471fe807"
-dependencies = [
- "axum",
- "cfg-if",
- "chrono",
- "chrono-tz",
- "comfy-table",
- "dialoguer",
- "hashbrown 0.14.5",
- "http",
- "paste",
- "serde",
- "serde_json",
- "ureq",
 ]
 
 [[package]]

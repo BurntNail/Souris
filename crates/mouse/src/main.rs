@@ -13,12 +13,12 @@ use dialoguer::{
     Confirm, Error as DError, FuzzySelect, Input,
 };
 
+use crate::value_utils::get_value_from_stdin;
 use sourisdb::{
     client::{ClientError, SyncClient},
     store::{Store, StoreSerError},
     values::ValueSerError,
 };
-use crate::value_utils::get_value_from_stdin;
 
 mod value_utils;
 
@@ -216,9 +216,9 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             println!();
 
             let mut keys = store.keys().collect::<Vec<_>>();
-            
+
             if keys.is_empty() {
-                println!("Database already empty.")
+                println!("Database already empty.");
             } else {
                 let key = FuzzySelect::with_theme(&theme)
                     .with_prompt("Select key to be removed:")
@@ -246,9 +246,9 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
             println!();
 
             let mut keys = store.keys().collect::<Vec<_>>();
-            
+
             if keys.is_empty() {
-                println!("Database is empty.")
+                println!("Database is empty.");
             } else {
                 let key = FuzzySelect::with_theme(&theme)
                     .with_prompt("Select key to be updated:")

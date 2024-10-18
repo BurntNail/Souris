@@ -14,6 +14,7 @@ pub struct SyncClient {
 }
 
 impl SyncClient {
+    #[allow(clippy::result_large_err)]
     pub fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
         let path = path.to_string();
         let agent = Agent::new();
@@ -29,6 +30,7 @@ impl SyncClient {
         Ok(Self { path, port, agent })
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn get_all_dbs(&self) -> Result<Vec<String>, ClientError> {
         let rsp = self
             .agent
@@ -42,6 +44,7 @@ impl SyncClient {
         Ok(serde_json::from_slice(&body)?)
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn create_new_db(&self, overwrite_existing: bool, name: &str) -> Result<bool, ClientError> {
         let rsp = self
             .agent
@@ -60,6 +63,7 @@ impl SyncClient {
         })
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn get_store(&self, db_name: &str) -> Result<Store, ClientError> {
         let rsp = self
             .agent
@@ -71,6 +75,7 @@ impl SyncClient {
         Ok(Store::deser(&body)?)
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn add_db_with_contents(
         &self,
         overwrite_existing: bool,
@@ -98,6 +103,7 @@ impl SyncClient {
         })
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn add_entry_to_db(
         &self,
         database_name: &str,
@@ -118,6 +124,7 @@ impl SyncClient {
         })
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn remove_entry_from_db(&self, database_name: &str, key: &str) -> Result<(), ClientError> {
         self.agent
             .post(&format!("http://{}:{}/v1/rm_kv", self.path, self.port))
@@ -127,6 +134,7 @@ impl SyncClient {
         Ok(())
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn remove_db(&self, database_name: &str) -> Result<(), ClientError> {
         self.agent
             .post(&format!("http://{}:{}/v1/rm_db", self.path, self.port))
@@ -137,6 +145,7 @@ impl SyncClient {
 }
 
 trait ResponseExt {
+    #[allow(clippy::result_large_err)]
     fn status_code(&self) -> Result<StatusCode, ClientError>;
     fn body(self) -> Result<Vec<u8>, std::io::Error>;
 }

@@ -67,6 +67,7 @@ impl Bits {
         self.valid_bits += 1;
     }
 
+    #[must_use]
     pub fn from_binary(backing: Vec<u8>) -> Self {
         Self {
             valid_bits: backing.len() * 8,
@@ -90,6 +91,8 @@ impl Bits {
         }
     }
 
+    #[allow(clippy::missing_panics_doc)]
+    #[must_use]
     pub fn pop(&mut self) -> Option<bool> {
         if self.valid_bits == 0 {
             return None;
@@ -108,6 +111,7 @@ impl Bits {
         }
     }
 
+    #[must_use]
     pub fn get_proper_bytes(&self) -> Vec<u8> {
         let interior_index = self.valid_bits % 8;
         if interior_index == 0 {

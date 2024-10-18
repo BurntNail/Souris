@@ -1,16 +1,26 @@
 //! `value_utils` currently only provides one function - `get_value_from_stdin` which allows you to easily get a value from `stdin` using `dialoguer`.
 
-use std::{fmt::{Display, Formatter}, format, println, str::FromStr, string::String, vec::Vec, fs::File, path::PathBuf};
-use std::io::Read;
-use sourisdb::chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
-use dialoguer::{theme::Theme, Confirm, FuzzySelect, Input};
-use sourisdb::types::binary::BinaryData;
-use sourisdb::types::imaginary::Imaginary;
-use sourisdb::values::{Value, ValueTy};
-use serde_json::Value as SJValue;
-use sourisdb::chrono_tz;
-use sourisdb::hashbrown::HashMap;
 use crate::Error;
+use dialoguer::{theme::Theme, Confirm, FuzzySelect, Input};
+use serde_json::Value as SJValue;
+use sourisdb::{
+    chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime},
+    chrono_tz,
+    hashbrown::HashMap,
+    types::{binary::BinaryData, imaginary::Imaginary},
+    values::{Value, ValueTy},
+};
+use std::{
+    fmt::{Display, Formatter},
+    format,
+    fs::File,
+    io::Read,
+    path::PathBuf,
+    println,
+    str::FromStr,
+    string::String,
+    vec::Vec,
+};
 
 ///Get a [`Value`] from stdin using `dialoguer`. NB: a theme should be provided, but these are easy to construct.
 ///
@@ -26,10 +36,7 @@ use crate::Error;
 /// ## Errors
 /// This function can return a `dialoguer::Error`, which *(as of 0.11.0)* is only a wrapper over [`std::io::Error`]. This means that the function only fails with IO errors, like `stdin` being unusual.
 #[allow(clippy::too_many_lines)]
-pub fn get_value_from_stdin(
-    prompt: impl Display,
-    theme: &dyn Theme,
-) -> Result<Value, Error> {
+pub fn get_value_from_stdin(prompt: impl Display, theme: &dyn Theme) -> Result<Value, Error> {
     println!("{prompt}");
 
     let tys = [
@@ -80,7 +87,7 @@ pub fn get_value_from_stdin(
             }
             enum FileNotFoundError {
                 NotFound,
-                IsADirectory
+                IsADirectory,
             }
             impl Display for FileNotFoundError {
                 fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -95,7 +102,7 @@ pub fn get_value_from_stdin(
 
                 fn from_str(s: &str) -> Result<Self, Self::Err> {
                     let pb = PathBuf::from(s);
-                    
+
                     if pb.is_dir() {
                         Err(FileNotFoundError::IsADirectory)
                     } else if !pb.exists() {
@@ -105,23 +112,23 @@ pub fn get_value_from_stdin(
                     }
                 }
             }
-            
+
             let ValidFile(pb) = loop {
-                match Input::with_theme(theme)
+                if let Ok(x) = Input::with_theme(theme)
                     .with_prompt("Please enter the path to the file with the binary")
-                    .interact() {
-                    Ok(x) => break x,
-                    Err(_) => {},
+                    .interact()
+                {
+                    break x;
                 }
             };
-            
+
             let mut output = vec![];
             let mut file = File::open(pb)?;
             let mut tmp = [0_u8; 128];
             loop {
                 match file.read(&mut tmp)? {
                     0 => break,
-                    n => output.extend_from_slice(&tmp[..n])
+                    n => output.extend_from_slice(&tmp[..n]),
                 }
             }
 
