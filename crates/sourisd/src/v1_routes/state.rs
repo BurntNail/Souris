@@ -26,6 +26,7 @@ mod meta {
 }
 use crate::error::SourisError;
 use meta::{DB_FILE_NAMES_KEY, META_DB_FILE_NAME};
+use crate::v1_routes::value::KeyAndDb;
 
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
@@ -140,39 +141,39 @@ impl SourisState {
         dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)
     }
 
-    pub async fn add_key_value_pair(&self, db: String, k: String, v: Value) -> StatusCode {
+    pub async fn add_key_value_pair(&self, KeyAndDb{key, db_name}: KeyAndDb, v: Value) -> StatusCode {
         let mut dbs = self.dbs.lock().await;
 
-        let db = if let Some(d) = dbs.get_mut(&db) {
+        let db = if let Some(d) = dbs.get_mut(&db_name) {
             d
         } else {
-            dbs.insert(db.clone(), Store::default());
-            dbs.get_mut(&db).expect("just added this database key lol")
+            dbs.insert(db_name.clone(), Store::default());
+            dbs.get_mut(&db_name).expect("just added this database key lol")
         };
 
-        match db.insert(k, v) {
+        match db.insert(key, v) {
             Some(_) => StatusCode::OK,
             None => StatusCode::CREATED,
         }
     }
 
-    pub async fn get_value(&self, db: String, k: &String) -> Result<Value, SourisError> {
+    pub async fn get_value(&self, KeyAndDb {key, db_name}: KeyAndDb) -> Result<Value, SourisError> {
         let dbs = self.dbs.lock().await;
 
-        let Some(db) = dbs.get(&db) else {
+        let Some(db) = dbs.get(&db_name) else {
             return Err(SourisError::DatabaseNotFound);
         };
-        let Some(key) = db.get(k).cloned() else {
+        let Some(key) = db.get(&key).cloned() else {
             return Err(SourisError::KeyNotFound);
         };
 
         Ok(key)
     }
 
-    pub async fn remove_key(&self, db: String, key: String) -> Result<(), SourisError> {
+    pub async fn remove_key(&self, KeyAndDb {key, db_name}: KeyAndDb) -> Result<(), SourisError> {
         let mut dbs = self.dbs.lock().await;
 
-        let Some(db) = dbs.get_mut(&db) else {
+        let Some(db) = dbs.get_mut(&db_name) else {
             return Err(SourisError::DatabaseNotFound);
         };
 

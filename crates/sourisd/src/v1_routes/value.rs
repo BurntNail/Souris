@@ -16,27 +16,28 @@ pub struct KeyAndDb {
 
 #[axum::debug_handler]
 pub async fn add_kv(
-    Query(KeyAndDb { db_name: db, key }): Query<KeyAndDb>,
+    Query(kanddb): Query<KeyAndDb>,
     State(state): State<SourisState>,
     value: Value,
 ) -> StatusCode {
-    state.add_key_value_pair(db, key, value).await
+    info!(?value, "Adding value");
+    state.add_key_value_pair(kanddb, value).await
 }
 
 #[axum::debug_handler]
 pub async fn get_value(
-    Query(KeyAndDb { key, db_name: db }): Query<KeyAndDb>,
+    Query(kanddb): Query<KeyAndDb>,
     State(state): State<SourisState>,
 ) -> Result<Value, SourisError> {
-    state.get_value(db, &key).await
+    state.get_value(kanddb).await
 }
 
 #[axum::debug_handler]
 pub async fn rm_key(
-    Query(KeyAndDb { key, db_name: db }): Query<KeyAndDb>,
+    Query(kanddb): Query<KeyAndDb>,
     State(state): State<SourisState>,
 ) -> Result<StatusCode, SourisError> {
-    state.remove_key(key, db).await?;
+    state.remove_key(kanddb).await?;
 
     Ok(StatusCode::OK)
 }
