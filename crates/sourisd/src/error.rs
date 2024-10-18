@@ -76,8 +76,7 @@ impl IntoResponse for SourisError {
         error!(?self, "Returning error");
 
         let code = match self {
-            Self::DatabaseNotFound | Self::KeyNotFound => StatusCode::NOT_FOUND,
-            Self::InvalidDatabaseName => StatusCode::BAD_REQUEST,
+            Self::DatabaseNotFound | Self::KeyNotFound | Self::InvalidDatabaseName => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
