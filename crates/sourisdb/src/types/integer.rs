@@ -783,18 +783,14 @@ mod tests {
     };
 
     #[test]
-    fn integer_cases () {
-        for (case, ex) in &[
-            ("-1", -1),
-            ("-129", -129),
-            ("-257", -257)
-        ] {
+    fn integer_cases() {
+        for (case, ex) in &[("-1", -1), ("-129", -129), ("-257", -257)] {
             let int: Integer = Integer::from_str(case).unwrap();
             let (ss, ser) = int.ser();
-            
+
             let deser = Integer::deser(ss, &mut Cursor::new(&ser)).unwrap();
             assert_eq!(int, deser);
-            
+
             let out: i32 = deser.try_into().unwrap();
             assert_eq!(*ex, out);
         }

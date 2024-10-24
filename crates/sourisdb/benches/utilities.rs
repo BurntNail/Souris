@@ -1,7 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use sourisdb::types::binary::{BinaryCompression, BinaryData};
-use sourisdb::types::integer::Integer;
-use sourisdb::utilities::{bits::Bits, cursor::Cursor, huffman::Huffman};
+use sourisdb::{
+    types::{
+        binary::{BinaryCompression, BinaryData},
+        integer::Integer,
+    },
+    utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
+};
 
 const BEE_MOVIE: &str = include_str!("./beemoviescript.txt");
 const BEE_MOVIE_LINES: usize = usize::MAX;
@@ -95,7 +99,7 @@ fn ser_de_bits(c: &mut Criterion) {
     });
 }
 
-fn rle_and_un_rle (c: &mut Criterion) {
+fn rle_and_un_rle(c: &mut Criterion) {
     c.bench_function("serialise rle", |b| {
         let binary_data = BinaryData(EXAMPLE_BINARY.to_vec());
         b.iter(|| {
@@ -123,7 +127,6 @@ fn rle_and_un_rle (c: &mut Criterion) {
             cursor.set_pos(0);
         });
     });
-
 }
 
 criterion_group!(runtime, en_de_code_beemovie);

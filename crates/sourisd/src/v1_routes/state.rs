@@ -4,11 +4,11 @@ use dirs::data_dir;
 use sourisdb::{store::Store, values::Value};
 use std::{
     collections::HashMap,
+    env::var,
     fmt::Debug,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use std::env::var;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},

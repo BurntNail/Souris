@@ -151,26 +151,32 @@ impl BinaryData {
         output
     }
 
-    fn un_rle (len: usize, cursor: &mut Cursor<u8>) -> Result<Self, BinarySerError> {
+    fn un_rle(len: usize, cursor: &mut Cursor<u8>) -> Result<Self, BinarySerError> {
         //complicated version that's like 70% slower lol
-/*        let mut alloc_size = 0;
-        let mut to_be_added = Vec::with_capacity(len);
+        /*        let mut alloc_size = 0;
+                let mut to_be_added = Vec::with_capacity(len);
 
-        for _ in 0..len {
-            let [count, byte] = cursor.read_exact().copied().ok_or(BinarySerError::NotEnoughBytes)?;
-            alloc_size += count as usize;
-            to_be_added.push((count, byte));
-        }
+                for _ in 0..len {
+                    let [count, byte] = cursor.read_exact().copied().ok_or(BinarySerError::NotEnoughBytes)?;
+                    alloc_size += count as usize;
+                    to_be_added.push((count, byte));
+                }
 
-        let mut output = Vec::with_capacity(alloc_size);
+                let mut output = Vec::with_capacity(alloc_size);
 
-        for (count, byte) in to_be_added {
-            (0..count).for_each(|_| output.push(byte));
-        }
-*/
+                for (count, byte) in to_be_added {
+                    (0..count).for_each(|_| output.push(byte));
+                }
+        */
 
         let mut output = vec![];
-        for (count, byte) in cursor.read(len * 2).ok_or(BinarySerError::NotEnoughBytes)?.into_iter().copied().tuples() {
+        for (count, byte) in cursor
+            .read(len * 2)
+            .ok_or(BinarySerError::NotEnoughBytes)?
+            .into_iter()
+            .copied()
+            .tuples()
+        {
             (0..count).for_each(|_| output.push(byte));
         }
 
@@ -215,9 +221,7 @@ impl BinaryData {
                     .ok_or(BinarySerError::NotEnoughBytes)?
                     .to_vec(),
             ),
-            BinaryCompression::RunLengthEncoding => {
-                Self::un_rle(len, cursor)?
-            }
+            BinaryCompression::RunLengthEncoding => Self::un_rle(len, cursor)?,
             BinaryCompression::XORedRunLengthEncoding => {
                 unimplemented!()
             }

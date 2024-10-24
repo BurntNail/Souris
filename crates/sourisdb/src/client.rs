@@ -6,15 +6,14 @@
 //!
 //! The sync client is backed by [`ureq`] and the async client by [`reqwest`].
 
-use core::fmt::{Display, Formatter};
 use crate::{store::StoreSerError, values::ValueSerError};
+use core::fmt::{Display, Formatter};
 use http::StatusCode;
 
 #[cfg(feature = "async_client")]
 pub use async_client::AsyncClient;
 #[cfg(feature = "sync_client")]
 pub use sync_client::SyncClient;
-
 
 #[cfg(feature = "async_client")]
 mod async_client;
