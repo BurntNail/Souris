@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use color_eyre::eyre::bail;
+use color_eyre::eyre::{bail, Context};
 use dirs::data_dir;
 use sourisdb::{store::Store, values::Value};
 use std::{
@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use std::env::var;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
@@ -258,7 +259,11 @@ impl SourisState {
             Some(dbs)
         }
 
-        let base_location = if running_with_superuser() {
+        let base_location = if let Ok(loc) = var("BASE_LOCATION") {
+            let path = PathBuf::from(loc);
+            std::fs::create_dir_all(&path).context("trying to create custom base location")?;
+            path
+        } else if running_with_superuser() {
             PathBuf::from("/etc/souris/")
         } else {
             let Some(base_location) = data_dir() else {
