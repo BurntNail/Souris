@@ -43,6 +43,7 @@ enum Commands {
     UpdateEntry,
     ExportToJSON {
         json_location: PathBuf,
+        #[arg(short, long)]
         add_souris_types: bool,
     },
     ImportFromJSON {
