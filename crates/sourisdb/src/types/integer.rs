@@ -201,6 +201,12 @@ macro_rules! from_signed {
                         content: [0; INTEGER_MAX_SIZE],
                         number_of_bytes_used: 0,
                     }
+                } else if n == -1 {
+                    Self {
+                        signed_state: SignedState::SignedNegative,
+                        content: [u8::MAX; INTEGER_MAX_SIZE],
+                        number_of_bytes_used: 1,
+                    }
                 } else if n < 0 {
                     let mut content = [u8::MAX; INTEGER_MAX_SIZE];
                     let mut last_non_filled_byte = 0;
@@ -775,6 +781,24 @@ mod tests {
         types::integer::{BiggestInt, BiggestIntButSigned, Integer},
         utilities::cursor::Cursor,
     };
+
+    #[test]
+    fn integer_cases () {
+        for (case, ex) in &[
+            ("-1", -1),
+            ("-129", -129),
+            ("-257", -257)
+        ] {
+            let int: Integer = Integer::from_str(case).unwrap();
+            let (ss, ser) = int.ser();
+            
+            let deser = Integer::deser(ss, &mut Cursor::new(&ser)).unwrap();
+            assert_eq!(int, deser);
+            
+            let out: i32 = deser.try_into().unwrap();
+            assert_eq!(*ex, out);
+        }
+    }
 
     proptest! {
         #[test]
