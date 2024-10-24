@@ -142,11 +142,10 @@ async fn main() {
 
     //port chosen as SOUR in T9 code
     //TODO: option to change port
-    let http_listener = TcpListener::bind("127.0.0.1:7687").await.unwrap();
+    let http_listener = TcpListener::bind("0.0.0.0:7687").await.unwrap();
 
     axum::serve(http_listener, router)
         .with_graceful_shutdown(shutdown_signal(stop_tx, saver))
         .await
         .unwrap();
 }
-//TODO: docker container
