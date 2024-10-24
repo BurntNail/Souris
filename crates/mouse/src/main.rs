@@ -350,6 +350,10 @@ fn pick_db_name(
     if names.is_empty() {
         return Err(Error::NoDatabasesFound);
     }
+    if names.len() == 1 {
+        let Some(first) = names.pop() else {unreachable!()};
+        return Ok(first);
+    }
 
     let chosen_index = FuzzySelect::with_theme(theme)
         .items(&names)
