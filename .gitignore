@@ -4,3 +4,7 @@ target/
 *.sdb
 *.json
 update.sh
+
+perf.data
+perf.data.old
+flamegraph.svg

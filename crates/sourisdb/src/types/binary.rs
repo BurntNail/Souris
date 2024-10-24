@@ -6,6 +6,7 @@ use crate::{
 };
 use alloc::{vec, vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
+use itertools::Itertools;
 use serde_json::{Map as SJMap, Number, Value as SJValue};
 
 #[derive(Debug, Copy, Clone)]
@@ -112,7 +113,7 @@ impl BinaryData {
         SJValue::Object(obj)
     }
 
-    fn rle(&self) -> Vec<u8> {
+    pub fn rle(&self) -> Vec<u8> {
         let mut output = vec![];
 
         if self.0.is_empty() {
@@ -148,6 +149,32 @@ impl BinaryData {
         }
 
         output
+    }
+
+    fn un_rle (len: usize, cursor: &mut Cursor<u8>) -> Result<Self, BinarySerError> {
+        //complicated version that's like 70% slower lol
+/*        let mut alloc_size = 0;
+        let mut to_be_added = Vec::with_capacity(len);
+
+        for _ in 0..len {
+            let [count, byte] = cursor.read_exact().copied().ok_or(BinarySerError::NotEnoughBytes)?;
+            alloc_size += count as usize;
+            to_be_added.push((count, byte));
+        }
+
+        let mut output = Vec::with_capacity(alloc_size);
+
+        for (count, byte) in to_be_added {
+            (0..count).for_each(|_| output.push(byte));
+        }
+*/
+
+        let mut output = vec![];
+        for (count, byte) in cursor.read(len * 2).ok_or(BinarySerError::NotEnoughBytes)?.into_iter().copied().tuples() {
+            (0..count).for_each(|_| output.push(byte));
+        }
+
+        Ok(Self(output))
     }
 
     #[must_use]
@@ -189,22 +216,7 @@ impl BinaryData {
                     .to_vec(),
             ),
             BinaryCompression::RunLengthEncoding => {
-                let mut output = vec![];
-
-                for _ in 0..len {
-                    let count = cursor
-                        .next()
-                        .copied()
-                        .ok_or(BinarySerError::NotEnoughBytes)?;
-                    let byte = cursor
-                        .next()
-                        .copied()
-                        .ok_or(BinarySerError::NotEnoughBytes)?;
-
-                    (0..count).for_each(|_| output.push(byte));
-                }
-
-                Self(output)
+                Self::un_rle(len, cursor)?
             }
             BinaryCompression::XORedRunLengthEncoding => {
                 unimplemented!()

@@ -9,7 +9,6 @@ edition = "2021"
 [package.metadata.docs.rs]
 all-features = true
 
-
 [dev-dependencies]
 proptest = "1.4.0"
 chrono = { version = "0.4.38", features = ["arbitrary"] }
@@ -34,6 +33,7 @@ paste = "1.0"
 ureq = { version = "2.9.7", optional = true }
 http = { version = "1.1.0", optional = true }
 reqwest = { version = "0.12.5", optional = true, features = ["json"] }
+itertools = "0.13.0"
 
 [features]
 default = []

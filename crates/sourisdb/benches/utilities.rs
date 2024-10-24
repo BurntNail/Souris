@@ -1,9 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
+use sourisdb::types::binary::{BinaryCompression, BinaryData};
+use sourisdb::types::integer::Integer;
 use sourisdb::utilities::{bits::Bits, cursor::Cursor, huffman::Huffman};
 
 const BEE_MOVIE: &str = include_str!("./beemoviescript.txt");
 const BEE_MOVIE_LINES: usize = usize::MAX;
+
+const EXAMPLE_BINARY: &[u8] = include_bytes!("./example.sdb");
 
 fn en_de_code_beemovie(c: &mut Criterion) {
     c.bench_function("create huffman", |b| {
@@ -92,6 +95,37 @@ fn ser_de_bits(c: &mut Criterion) {
     });
 }
 
+fn rle_and_un_rle (c: &mut Criterion) {
+    c.bench_function("serialise rle", |b| {
+        let binary_data = BinaryData(EXAMPLE_BINARY.to_vec());
+        b.iter(|| {
+            let rle = binary_data.rle();
+            black_box(rle);
+        });
+    });
+
+    c.bench_function("deserialise rle", |b| {
+        let binary_data = BinaryData(EXAMPLE_BINARY.to_vec());
+
+        let encoded = {
+            let rle = binary_data.rle(); //forcing RLE to ensure it tests the rle stuff
+            let mut out = Integer::usize(rle.len() / 2).ser().1;
+            out.extend(&rle);
+            out
+        };
+
+        let mut cursor = Cursor::new(&encoded);
+
+        b.iter(|| {
+            let BinaryData(decoded) =
+                BinaryData::deser(BinaryCompression::RunLengthEncoding, &mut cursor).unwrap();
+            black_box(decoded);
+            cursor.set_pos(0);
+        });
+    });
+
+}
+
 criterion_group!(runtime, en_de_code_beemovie);
-criterion_group!(serde, ser_de_huffman, ser_de_bits);
+criterion_group!(serde, ser_de_huffman, ser_de_bits, rle_and_un_rle);
 criterion_main!(runtime, serde);
