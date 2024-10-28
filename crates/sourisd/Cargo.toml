@@ -19,3 +19,4 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "json"] }
 serde = { version = "1.0.198", features = ["derive"] }
 tower-http = { version = "0.5.2", features = ["trace"] }
 libc = "0.2.159"
+moka = { version = "0.12.8", features = ["future"] }

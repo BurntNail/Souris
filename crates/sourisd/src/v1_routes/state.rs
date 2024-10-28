@@ -9,6 +9,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use axum::body::Bytes;
+use moka::future::Cache;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
@@ -35,6 +37,7 @@ pub struct SourisState {
     base_location: PathBuf,
     ///A map of all databases and their names
     dbs: Arc<Mutex<HashMap<String, Store>>>,
+    db_cache: Cache<String, Bytes>,
 }
 
 impl SourisState {
@@ -53,25 +56,13 @@ impl SourisState {
         if name == "meta" || !name.is_ascii() {
             return Err(SourisError::InvalidDatabaseName);
         }
-
+        
         let mut dbs = self.dbs.lock().await;
-
-        if dbs.contains_key(&name) {
-            trace!(
-                ?name,
-                "Tried to add new store, found existing store with name."
-            );
-
-            if overwrite_existing {
-                let Some(db) = dbs.get_mut(&name) else {
-                    unreachable!("just checked that the key exists")
-                };
-                db.clear();
-            }
+        
+        if dbs.contains_key(&name) && !overwrite_existing {
             return Ok(StatusCode::OK);
         }
-
-        dbs.insert(name.clone(), Store::default());
+        dbs.insert(name, Store::default());
 
         Ok(StatusCode::CREATED)
     }
@@ -83,31 +74,25 @@ impl SourisState {
         overwrite_existing: bool,
         contents: Store,
     ) -> StatusCode {
-        let mut stores = self.dbs.lock().await;
-
-        let mut contained = false;
-        if stores.contains_key(&name) {
-            contained = true;
-            if !overwrite_existing {
-                return StatusCode::OK;
-            }
+        let mut dbs = self.dbs.lock().await;
+        
+        if dbs.contains_key(&name) && !overwrite_existing {
+            return StatusCode::OK;
         }
 
-        stores.insert(name, contents);
-
-        if contained {
-            StatusCode::OK
-        } else {
-            StatusCode::CREATED
-        }
+        dbs.insert(name, contents);
+        StatusCode::CREATED
     }
 
     ///returns whether it cleared a database
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn clear_db(&self, name: String) -> Result<(), SourisError> {
+        self.db_cache.invalidate(&name).await;
+
         let mut dbs = self.dbs.lock().await;
-        if let Some(store) = dbs.get_mut(&name) {
-            store.clear();
+
+        if dbs.contains_key(&name) {
+            dbs.insert(name, Store::default());
             Ok(())
         } else {
             trace!("Unable to find store.");
@@ -118,12 +103,16 @@ impl SourisState {
     ///returns whether it removed a database
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn remove_db(&self, name: String) -> Result<(), SourisError> {
+        self.db_cache.invalidate(&name).await;
+
         let mut dbs = self.dbs.lock().await;
+
         if !dbs.contains_key(&name) {
             return Err(SourisError::DatabaseNotFound);
         }
 
         dbs.remove(&name);
+        drop(dbs);
 
         let file_name = self.base_location.join(format!("{name}.sdb"));
 
@@ -136,9 +125,19 @@ impl SourisState {
         Ok(())
     }
 
-    pub async fn get_db(&self, name: String) -> Result<Store, SourisError> {
+    pub async fn get_db(&self, name: String) -> Result<Bytes, SourisError> {
+        if let Some(bytes) = self.db_cache.get(&name).await {
+            return Ok(bytes);
+        }
+        
         let dbs = self.dbs.lock().await;
-        dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)
+        let db = dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)?;
+        
+        let sered = db.ser()?;
+        let bytes = Bytes::from(sered);
+        
+        self.db_cache.insert(name, bytes.clone()).await;
+        Ok(bytes)
     }
 
     pub async fn add_key_value_pair(
@@ -146,6 +145,8 @@ impl SourisState {
         KeyAndDb { key, db_name }: KeyAndDb,
         v: Value,
     ) -> StatusCode {
+        self.db_cache.invalidate(&db_name).await;
+        
         let mut dbs = self.dbs.lock().await;
 
         let db = if let Some(d) = dbs.get_mut(&db_name) {
@@ -284,6 +285,7 @@ impl SourisState {
         let s = Self {
             base_location,
             dbs: Arc::new(Mutex::new(dbs)),
+            db_cache: Cache::new(200)
         };
 
         Ok(s)

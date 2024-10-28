@@ -65,7 +65,7 @@ pub async fn remove_db(
 pub async fn get_db(
     State(state): State<SourisState>,
     Query(DbByName { db_name: name }): Query<DbByName>,
-) -> Result<Store, SourisError> {
+) -> Result<Bytes, SourisError> {
     state.get_db(name).await
 }
 
