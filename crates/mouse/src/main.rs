@@ -351,7 +351,9 @@ fn pick_db_name(
         return Err(Error::NoDatabasesFound);
     }
     if names.len() == 1 {
-        let Some(first) = names.pop() else {unreachable!()};
+        let Some(first) = names.pop() else {
+            unreachable!()
+        };
         return Ok(first);
     }
 

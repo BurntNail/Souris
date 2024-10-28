@@ -1,6 +1,7 @@
-use axum::http::StatusCode;
+use axum::{body::Bytes, http::StatusCode};
 use color_eyre::eyre::{bail, Context};
 use dirs::data_dir;
+use moka::future::Cache;
 use sourisdb::{store::Store, values::Value};
 use std::{
     collections::HashMap,
@@ -9,8 +10,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use axum::body::Bytes;
-use moka::future::Cache;
+use std::collections::hash_map::Entry;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
@@ -56,9 +56,9 @@ impl SourisState {
         if name == "meta" || !name.is_ascii() {
             return Err(SourisError::InvalidDatabaseName);
         }
-        
+
         let mut dbs = self.dbs.lock().await;
-        
+
         if dbs.contains_key(&name) && !overwrite_existing {
             return Ok(StatusCode::OK);
         }
@@ -75,7 +75,7 @@ impl SourisState {
         contents: Store,
     ) -> StatusCode {
         let mut dbs = self.dbs.lock().await;
-        
+
         if dbs.contains_key(&name) && !overwrite_existing {
             return StatusCode::OK;
         }
@@ -90,9 +90,9 @@ impl SourisState {
         self.db_cache.invalidate(&name).await;
 
         let mut dbs = self.dbs.lock().await;
-
-        if dbs.contains_key(&name) {
-            dbs.insert(name, Store::default());
+        
+        if let Entry::Occupied(mut e) = dbs.entry(name) {
+            e.insert(Store::default());
             Ok(())
         } else {
             trace!("Unable to find store.");
@@ -129,13 +129,16 @@ impl SourisState {
         if let Some(bytes) = self.db_cache.get(&name).await {
             return Ok(bytes);
         }
-        
+
         let dbs = self.dbs.lock().await;
-        let db = dbs.get(&name).cloned().ok_or(SourisError::DatabaseNotFound)?;
-        
+        let db = dbs
+            .get(&name)
+            .cloned()
+            .ok_or(SourisError::DatabaseNotFound)?;
+
         let sered = db.ser()?;
         let bytes = Bytes::from(sered);
-        
+
         self.db_cache.insert(name, bytes.clone()).await;
         Ok(bytes)
     }
@@ -146,7 +149,7 @@ impl SourisState {
         v: Value,
     ) -> StatusCode {
         self.db_cache.invalidate(&db_name).await;
-        
+
         let mut dbs = self.dbs.lock().await;
 
         let db = if let Some(d) = dbs.get_mut(&db_name) {
@@ -285,7 +288,7 @@ impl SourisState {
         let s = Self {
             base_location,
             dbs: Arc::new(Mutex::new(dbs)),
-            db_cache: Cache::new(200)
+            db_cache: Cache::new(200),
         };
 
         Ok(s)

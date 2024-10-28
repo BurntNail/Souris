@@ -113,6 +113,7 @@ impl BinaryData {
         SJValue::Object(obj)
     }
 
+    #[must_use]
     pub fn rle(&self) -> Vec<u8> {
         let mut output = vec![];
 
@@ -173,7 +174,7 @@ impl BinaryData {
         for (count, byte) in cursor
             .read(len * 2)
             .ok_or(BinarySerError::NotEnoughBytes)?
-            .into_iter()
+            .iter()
             .copied()
             .tuples()
         {
