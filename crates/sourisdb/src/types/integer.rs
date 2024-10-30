@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn integer_cases() {
-        for (case, ex) in &[("-1", -1), ("-129", -129), ("-257", -257)] {
+        for (case, ex) in &[("-1", -1), ("-129", -129), ("-257", -257), ("238", 238), ("239", 239), ("240", 240), ("241", 241)] {
             let int: Integer = Integer::from_str(case).unwrap();
             let (ss, ser) = int.ser();
 

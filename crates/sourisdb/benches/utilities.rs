@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::{
     types::{
-        binary::{BinaryCompression, BinaryData},
+        binary::{BinaryCompression, BinaryData, rle::{rle, un_rle}},
         integer::Integer,
     },
     utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
@@ -101,18 +101,18 @@ fn ser_de_bits(c: &mut Criterion) {
 
 fn rle_and_un_rle(c: &mut Criterion) {
     c.bench_function("serialise rle", |b| {
-        let binary_data = BinaryData(EXAMPLE_BINARY.to_vec());
+        let binary_data = EXAMPLE_BINARY.to_vec();
         b.iter(|| {
-            let rle = binary_data.rle();
+            let rle = rle(binary_data.clone());
             black_box(rle);
         });
     });
 
     c.bench_function("deserialise rle", |b| {
-        let binary_data = BinaryData(EXAMPLE_BINARY.to_vec());
+        let binary_data = EXAMPLE_BINARY.to_vec();
 
         let encoded = {
-            let rle = binary_data.rle(); //forcing RLE to ensure it tests the rle stuff
+            let rle = rle(binary_data); //forcing RLE to ensure it tests the rle stuff
             let mut out = Integer::usize(rle.len() / 2).ser().1;
             out.extend(&rle);
             out
