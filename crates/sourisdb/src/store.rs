@@ -21,6 +21,7 @@ use crate::{
     },
     values::{Value, ValueSerError, ValueTy},
 };
+use crate::types::binary::{BinaryCompression, BinaryData, BinarySerError};
 
 ///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
 ///
@@ -64,16 +65,24 @@ impl Store {
         let huffman = Huffman::new_str(&all_text);
         let map = raw_map.ser(huffman.as_ref())?;
 
-        let mut res = vec![];
-
-        res.extend(b"SOURISDB");
-        res.push(u8::from(huffman.is_some()));
-        if let Some(huffman) = huffman {
-            res.extend(huffman.ser());
-        }
-        res.extend(map);
-
-        Ok(res)
+        let huffman_exists = huffman.is_some();
+        let mut res = if let Some(huffman) = huffman {
+            huffman.ser()
+        } else {
+            vec![]
+        };
+        res.extend(&map);
+        
+        let (compression_type, compressed) = BinaryData(res).ser();
+        
+        let magic_ty = (u8::from(huffman_exists) << 7) | u8::from(compression_type);
+        
+        let mut fin = vec![];
+        fin.extend(b"SOURISDB");
+        fin.push(magic_ty);
+        fin.extend(compressed);
+        
+        Ok(fin)
     }
 
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreSerError> {
@@ -89,7 +98,12 @@ impl Store {
         let Some(compression) = bytes.next().copied() else {
             return Err(StoreSerError::NotEnoughBytes);
         };
-        let is_huffman_encoded = (compression & 0b1) != 0;
+        let is_huffman_encoded = (compression & 0b1000_0000) != 0;
+        let compression_ty = BinaryCompression::try_from(compression & 0b0111_1111)?;
+        
+        let bytes = BinaryData::deser(compression_ty, &mut bytes)?.0;
+        let mut bytes = Cursor::new(&bytes);
+        
         let huffman = if is_huffman_encoded {
             Some(Huffman::deser(&mut bytes)?)
         } else {
@@ -198,6 +212,7 @@ pub enum StoreSerError {
     UnableToConvertToJson,
     UnsupportedCompression(u8),
     Huffman(HuffmanSerError),
+    Binary(BinarySerError),
 }
 
 impl Display for StoreSerError {
@@ -217,6 +232,7 @@ impl Display for StoreSerError {
                 write!(f, "Unable to read compression type: {b:#b}")
             }
             StoreSerError::Huffman(h) => write!(f, "Error with huffman: {h}"),
+            StoreSerError::Binary(b) => write!(f, "Error with binary compression: {b}"),
         }
     }
 }
@@ -239,6 +255,11 @@ impl From<IntegerSerError> for StoreSerError {
 impl From<HuffmanSerError> for StoreSerError {
     fn from(value: HuffmanSerError) -> Self {
         Self::Huffman(value)
+    }
+}
+impl From<BinarySerError> for StoreSerError {
+    fn from(value: BinarySerError) -> Self {
+        Self::Binary(value)
     }
 }
 
