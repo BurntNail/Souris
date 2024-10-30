@@ -7,9 +7,11 @@ use crate::{
 use alloc::{vec::Vec};
 use core::fmt::{Debug, Display, Formatter};
 use serde_json::{Map as SJMap, Number, Value as SJValue};
+use crate::types::binary::lz::{lz, un_lz};
 use crate::types::binary::rle::{rle, un_rle};
 
 pub mod rle;
+pub mod lz;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BinaryCompression {
@@ -130,11 +132,20 @@ impl BinaryData {
             out.extend(&rle);
             out
         };
-
-        if vanilla.len() <= rle.len() {
+        let lz = {
+            let lz = lz(self.0.clone());
+            
+            let mut out = Integer::usize(lz.len()).ser().1;
+            out.extend(&lz);
+            out
+        };
+        
+        if vanilla.len() <= rle.len() && vanilla.len() <= lz.len() {
             (BinaryCompression::Nothing, vanilla)
-        } else {
+        } else if rle.len() <= lz.len() {
             (BinaryCompression::RunLengthEncoding, rle)
+        } else {
+            (BinaryCompression::LempelZiv, lz)
         }
     }
 
@@ -153,7 +164,7 @@ impl BinaryData {
             ),
             BinaryCompression::RunLengthEncoding => Self(un_rle(len, cursor)?),
             BinaryCompression::LempelZiv => {
-                unimplemented!()
+                Self(un_lz(len, cursor)?)
             }
         })
     }
