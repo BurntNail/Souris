@@ -56,7 +56,9 @@ impl SourisState {
         if name == "meta" || !name.is_ascii() {
             return Err(SourisError::InvalidDatabaseName);
         }
-
+        
+        self.db_cache.invalidate(&name).await;
+        
         let mut dbs = self.dbs.lock().await;
 
         if dbs.contains_key(&name) && !overwrite_existing {
@@ -74,6 +76,7 @@ impl SourisState {
         overwrite_existing: bool,
         contents: Store,
     ) -> StatusCode {
+        self.db_cache.invalidate(&name).await;
         let mut dbs = self.dbs.lock().await;
 
         if dbs.contains_key(&name) && !overwrite_existing {
@@ -183,6 +186,7 @@ impl SourisState {
     }
 
     pub async fn remove_key(&self, KeyAndDb { key, db_name }: KeyAndDb) -> Result<(), SourisError> {
+        self.db_cache.invalidate(&db_name).await;
         let mut dbs = self.dbs.lock().await;
 
         let Some(db) = dbs.get_mut(&db_name) else {
