@@ -7,7 +7,7 @@
 //!
 //! async fn get_all_database_names_from_localhost () -> Result<Vec<String>, ClientError> {
 //!     let client = AsyncClient::new("localhost", 7687).await?;
-//!     client.get_all_dbs()
+//!     client.get_all_dbs().await
 //! }
 //! ```
 
@@ -176,7 +176,7 @@ impl AsyncClient {
         key: &str,
         value: &Value,
     ) -> Result<bool, ClientError> {
-        let value = value.ser(None)?;
+        let value = value.ser(None);
         let rsp = self
             .client
             .put(&format!("http://{}:{}/v1/add_kv", self.path, self.port))

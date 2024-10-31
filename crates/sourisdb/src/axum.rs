@@ -53,11 +53,7 @@ use crate::{
 
 impl IntoResponse for Value {
     fn into_response(self) -> Response {
-        match self.ser(None) {
-            //TODO: huffman-ser this
-            Ok(b) => Bytes::from(b).into_response(),
-            Err(e) => SourisRejection::Value(e, false).into_response(),
-        }
+        Bytes::from(self.ser(None)).into_response()
     }
 }
 

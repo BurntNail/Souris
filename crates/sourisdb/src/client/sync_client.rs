@@ -110,7 +110,7 @@ impl SyncClient {
         key: &str,
         value: &Value,
     ) -> Result<bool, ClientError> {
-        let value = value.ser(None)?;
+        let value = value.ser(None);
         let rsp = self
             .agent
             .put(&format!("http://{}:{}/v1/add_kv", self.path, self.port))
