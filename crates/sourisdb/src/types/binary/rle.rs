@@ -6,16 +6,14 @@ use alloc::vec::Vec;
 
 #[must_use]
 pub fn rle(mut bytes: Vec<u8>) -> Vec<u8> {
-    let mut output = vec![];
-
-    if bytes.is_empty() {
-        return output;
-    }
-
     bytes.reverse();
-
+    
+    let mut output = vec![];
+    
     let mut current_count = 1;
-    let mut current = bytes.pop().unwrap();
+    let Some(mut current) = bytes.pop() else {
+        return output;
+    };
 
     while let Some(byte) = bytes.pop() {
         if current != byte {
@@ -42,6 +40,10 @@ pub fn rle(mut bytes: Vec<u8>) -> Vec<u8> {
     output
 }
 
+///Uncompresses Run-Length-Encoded bytes
+/// 
+/// # Errors
+/// - [`BinarySerError::NotEnoughBytes`] if there aren't enough bytes.
 pub fn un_rle(len: usize, cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
     //complicated version that's like 70% slower lol
     /*        let mut alloc_size = 0;
@@ -76,6 +78,8 @@ pub fn un_rle(len: usize, cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerE
 
 #[cfg(test)]
 mod tests {
+    use crate::types::binary::{BinaryCompression, BinaryData};
+    use crate::types::integer::Integer;
     use super::*;
 
     #[test]

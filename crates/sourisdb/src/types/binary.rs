@@ -134,12 +134,12 @@ impl BinaryData {
         };
         let lz = {
             let lz = lz(self.0.clone());
-            
+
             let mut out = Integer::usize(lz.len()).ser().1;
             out.extend(&lz);
             out
         };
-        
+
         if vanilla.len() <= rle.len() && vanilla.len() <= lz.len() {
             (BinaryCompression::Nothing, vanilla)
         } else if rle.len() <= lz.len() {
@@ -149,6 +149,12 @@ impl BinaryData {
         }
     }
 
+    ///Uncompresses bytes using the specified method.
+    /// 
+    /// # Errors
+    /// - [`IntegerSerError`] if we cannot deserialise the length
+    /// - [`BinarySerError::NotEnoughBytes`] if there are not enough bytes
+    /// - [`BinarySerError`] if there are any issues with the Run-Length-Encoding
     pub fn deser(
         compression: BinaryCompression,
         cursor: &mut Cursor<u8>,

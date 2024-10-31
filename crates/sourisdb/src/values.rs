@@ -755,8 +755,9 @@ impl Value {
         }
     }
 
+    ///Serialises a [`Value`] into bytes
     #[allow(clippy::too_many_lines)]
-    pub fn ser(&self, huffman: Option<&Huffman<char>>) -> Result<Vec<u8>, ValueSerError> {
+    pub fn ser(&self, huffman: Option<&Huffman<char>>) -> Vec<u8> {
         let mut res = vec![];
 
         let mut ty = u8::from(self.as_ty()) << 4;
@@ -839,7 +840,7 @@ impl Value {
             }
             Self::JSON(v) => {
                 res.push(ty);
-                res.extend(Value::String(v.to_string()).ser(huffman)?);
+                res.extend(Value::String(v.to_string()).ser(huffman));
             }
             Self::Null(()) => {
                 res.push(ty);
@@ -865,8 +866,8 @@ impl Value {
                 }
 
                 for (k, v) in m.clone() {
-                    res.extend(Value::String(k).ser(huffman)?);
-                    res.extend(v.ser(huffman)?);
+                    res.extend(Value::String(k).ser(huffman));
+                    res.extend(v.ser(huffman));
                 }
             }
             Self::Array(a) => {
@@ -883,13 +884,13 @@ impl Value {
                 }
 
                 for v in a.clone() {
-                    res.extend(v.ser(huffman)?);
+                    res.extend(v.ser(huffman));
                 }
             }
             Self::Timezone(tz) => {
                 let name = tz.name();
                 res.push(ty);
-                res.extend(Value::String(name.into()).ser(huffman)?);
+                res.extend(Value::String(name.into()).ser(huffman));
             }
             Self::Ipv4Addr(a) => {
                 res.push(ty);
@@ -901,9 +902,19 @@ impl Value {
             }
         }
 
-        Ok(res)
+        res
     }
 
+    ///Deserialises bytes into a [`Value`]. If you don't have a Huffman tree, just pass `None` in.
+    /// 
+    /// # Errors
+    /// - [`ValueSerError::NotEnoughBytes`] if there aren't enough bytes.
+    /// - [`ValueSerError::InvalidType`] if we encounter an invalid [`ValueTy`]
+    /// - [`IntegerSerError::InvalidSignedStateDiscriminant`] if we encounter an invalid [`SignedState`]
+    /// - [`IntegerSerError`] if we cannot deserialise an [`Integer`]/[`Imaginary`]
+    /// - [`BinarySerError::NoCompressionTypeFound`] if we cannot find the compression type
+    /// - [`BinarySerError`] if we cannot deserialise binary
+    /// - [`ValueSerError::UnexpectedValueType`] if we expected to find one type but found another. This can be found in the [`Value::Timezone`] deserialisation where we immediately try to deserialise a [`Value::String`].
     #[allow(clippy::many_single_char_names, clippy::too_many_lines)]
     pub fn deser(
         bytes: &mut Cursor<u8>,
@@ -1085,7 +1096,7 @@ mod tests {
         fn test_ch (c in any::<char>()) {
             let v = Value::Character(c);
 
-            let bytes = v.ser(None).unwrap();
+            let bytes = v.ser(None);
             let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.to_char().unwrap();
 
@@ -1096,7 +1107,7 @@ mod tests {
         fn test_str (s in any::<String>()) {
             let v = Value::String(s.clone());
 
-            let bytes = v.ser(None).unwrap();
+            let bytes = v.ser(None);
             let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.as_str().unwrap().to_string();
 
@@ -1107,7 +1118,7 @@ mod tests {
         fn test_bin (s in any::<Vec<u8>>()) {
             let v = Value::Binary(BinaryData(s.clone()));
 
-            let bytes = v.ser(None).unwrap();
+            let bytes = v.ser(None);
             let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.as_binary().unwrap().0.to_vec();
 
@@ -1118,7 +1129,7 @@ mod tests {
         fn test_bool (s in any::<bool>()) {
             let v = Value::Boolean(s.clone());
 
-            let bytes = v.ser(None).unwrap();
+            let bytes = v.ser(None);
             let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let out = out_value.to_bool().unwrap();
 
@@ -1133,7 +1144,7 @@ mod tests {
 
             let val = Value::Imaginary(Imaginary::PolarForm { modulus, argument });
 
-            let bytes = val.ser(None).unwrap();
+            let bytes = val.ser(None);
             let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             let Some(Imaginary::PolarForm { modulus: nm, argument: na }) = out_value.to_imaginary() else {
                 panic!("unable to get out in correct form")
@@ -1147,7 +1158,7 @@ mod tests {
         fn test_int (i in any::<BiggestIntButSigned>()) {
             let v = Value::Integer(i.into());
 
-            let bytes = v.ser(None).unwrap();
+            let bytes = v.ser(None);
             let out_value = Value::deser(&mut Cursor::new(&bytes), None).unwrap();
             prop_assert_eq!(v, out_value.clone());
 

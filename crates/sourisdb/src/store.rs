@@ -21,6 +21,7 @@ use crate::{
     },
     values::{Value, ValueSerError, ValueTy},
 };
+use crate::types::binary::{BinaryCompression, BinaryData, BinarySerError};
 
 ///A key-value store where the keys are [`String`]s and the values are [`Value`]s - this is a thin wrapper around [`hashbrown::HashMap`] and implements both [`Deref`] and [`DerefMut`] pointing to it. This database is optimised for storage when serialised.
 ///
@@ -32,6 +33,9 @@ pub struct Store(HashMap<String, Value>);
 
 impl Store {
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
+    /// 
+    /// # Errors
+    /// - [`ValueSerError`] if there is an error serialising the internal map as a [`Value::Map`]
     pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
         fn add_value_text_to_string(value: &Value, string: &mut String) {
             match value {
@@ -62,20 +66,36 @@ impl Store {
         add_value_text_to_string(&raw_map, &mut all_text);
 
         let huffman = Huffman::new_str(&all_text);
-        let map = raw_map.ser(huffman.as_ref())?;
+        let map = raw_map.ser(huffman.as_ref());
 
-        let mut res = vec![];
-
-        res.extend(b"SOURISDB");
-        res.push(u8::from(huffman.is_some()));
-        if let Some(huffman) = huffman {
-            res.extend(huffman.ser());
-        }
-        res.extend(map);
-
-        Ok(res)
+        let huffman_exists = huffman.is_some();
+        let mut res = if let Some(huffman) = huffman {
+            huffman.ser()
+        } else {
+            vec![]
+        };
+        res.extend(&map);
+        
+        let (compression_type, compressed) = BinaryData(res).ser();
+        
+        let magic_ty = (u8::from(huffman_exists) << 7) | u8::from(compression_type);
+        
+        let mut fin = vec![];
+        fin.extend(b"SOURISDB");
+        fin.push(magic_ty);
+        fin.extend(compressed);
+        
+        Ok(fin)
     }
 
+    /// Deserialises bytes (which must require the magic bytes) into a Store.
+    /// 
+    /// # Errors
+    /// - [`StoreSerError::NotEnoughBytes`] if we can't read enough bytes.
+    /// - [`StoreSerError::ExpectedMagicBytes`] if we don't find the magic bytes.
+    /// - [`BinarySerError`] if we cannot work out which binary compression type was used, or there's an error deserialising the binary.
+    /// - [`HuffmanSerError`] if we cannot deserialise anything huffman related
+    /// - [`ValueSerError`] if we cannot turn the bytes back into [`Value::Map`]
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreSerError> {
         let mut bytes = Cursor::new(&bytes);
         {
@@ -89,7 +109,12 @@ impl Store {
         let Some(compression) = bytes.next().copied() else {
             return Err(StoreSerError::NotEnoughBytes);
         };
-        let is_huffman_encoded = (compression & 0b1) != 0;
+        let is_huffman_encoded = (compression & 0b1000_0000) != 0;
+        let compression_ty = BinaryCompression::try_from(compression & 0b0111_1111)?;
+        
+        let bytes = BinaryData::deser(compression_ty, &mut bytes)?.0;
+        let mut bytes = Cursor::new(&bytes);
+        
         let huffman = if is_huffman_encoded {
             Some(Huffman::deser(&mut bytes)?)
         } else {
@@ -104,6 +129,11 @@ impl Store {
         Ok(Self(map))
     }
 
+    ///Gets a store back from bytes that represent JSON.
+    /// 
+    /// # Errors
+    /// 
+    /// - [`serde_json::Error`] if we cannot parse the JSON.
     pub fn from_json_bytes(json: &[u8]) -> Result<Self, StoreSerError> {
         let val = serde_json::from_slice(json)?;
         Ok(Self::from_json(val))
@@ -198,6 +228,7 @@ pub enum StoreSerError {
     UnableToConvertToJson,
     UnsupportedCompression(u8),
     Huffman(HuffmanSerError),
+    Binary(BinarySerError),
 }
 
 impl Display for StoreSerError {
@@ -217,6 +248,7 @@ impl Display for StoreSerError {
                 write!(f, "Unable to read compression type: {b:#b}")
             }
             StoreSerError::Huffman(h) => write!(f, "Error with huffman: {h}"),
+            StoreSerError::Binary(b) => write!(f, "Error with binary compression: {b}"),
         }
     }
 }
@@ -239,6 +271,11 @@ impl From<IntegerSerError> for StoreSerError {
 impl From<HuffmanSerError> for StoreSerError {
     fn from(value: HuffmanSerError) -> Self {
         Self::Huffman(value)
+    }
+}
+impl From<BinarySerError> for StoreSerError {
+    fn from(value: BinarySerError) -> Self {
+        Self::Binary(value)
     }
 }
 
