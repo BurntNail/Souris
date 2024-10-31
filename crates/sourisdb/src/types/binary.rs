@@ -17,7 +17,7 @@ pub mod lz;
 pub enum BinaryCompression {
     Nothing,
     RunLengthEncoding,
-    LempelZiv, //basic algo taken only from: https://go-compression.github.io/algorithms/lz/. I did not go to the next page
+    LempelZiv, //LZ77, not LZSS from https://go-compression.github.io/algorithms/lz/
 }
 
 impl From<BinaryCompression> for u8 {
@@ -133,11 +133,7 @@ impl BinaryData {
             out
         };
         let lz = {
-            let lz = lz(self.0.clone());
-
-            let mut out = Integer::usize(lz.len()).ser().1;
-            out.extend(&lz);
-            out
+            lz(self.0.clone())
         };
 
         if vanilla.len() <= rle.len() && vanilla.len() <= lz.len() {
@@ -159,18 +155,20 @@ impl BinaryData {
         compression: BinaryCompression,
         cursor: &mut Cursor<u8>,
     ) -> Result<Self, BinarySerError> {
-        let len = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
 
         Ok(match compression {
-            BinaryCompression::Nothing => Self(
-                cursor
-                    .read(len)
-                    .ok_or(BinarySerError::NotEnoughBytes)?
-                    .to_vec(),
-            ),
-            BinaryCompression::RunLengthEncoding => Self(un_rle(len, cursor)?),
+            BinaryCompression::Nothing => {
+                let length = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
+                Self(
+                    cursor
+                        .read(length)
+                        .ok_or(BinarySerError::NotEnoughBytes)?
+                        .to_vec(),
+                )
+            },
+            BinaryCompression::RunLengthEncoding => Self(un_rle(cursor)?),
             BinaryCompression::LempelZiv => {
-                Self(un_lz(len, cursor)?)
+                Self(un_lz(cursor)?)
             }
         })
     }
