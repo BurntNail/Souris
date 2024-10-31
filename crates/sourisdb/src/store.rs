@@ -33,6 +33,9 @@ pub struct Store(HashMap<String, Value>);
 
 impl Store {
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
+    /// 
+    /// # Errors
+    /// - [`ValueSerError`] if there is an error serialising the internal map as a [`Value::Map`]
     pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
         fn add_value_text_to_string(value: &Value, string: &mut String) {
             match value {
@@ -63,7 +66,7 @@ impl Store {
         add_value_text_to_string(&raw_map, &mut all_text);
 
         let huffman = Huffman::new_str(&all_text);
-        let map = raw_map.ser(huffman.as_ref())?;
+        let map = raw_map.ser(huffman.as_ref());
 
         let huffman_exists = huffman.is_some();
         let mut res = if let Some(huffman) = huffman {
@@ -85,6 +88,14 @@ impl Store {
         Ok(fin)
     }
 
+    /// Deserialises bytes (which must require the magic bytes) into a Store.
+    /// 
+    /// # Errors
+    /// - [`StoreSerError::NotEnoughBytes`] if we can't read enough bytes.
+    /// - [`StoreSerError::ExpectedMagicBytes`] if we don't find the magic bytes.
+    /// - [`BinarySerError`] if we cannot work out which binary compression type was used, or there's an error deserialising the binary.
+    /// - [`HuffmanSerError`] if we cannot deserialise anything huffman related
+    /// - [`ValueSerError`] if we cannot turn the bytes back into [`Value::Map`]
     pub fn deser(bytes: &[u8]) -> Result<Self, StoreSerError> {
         let mut bytes = Cursor::new(&bytes);
         {
@@ -118,6 +129,11 @@ impl Store {
         Ok(Self(map))
     }
 
+    ///Gets a store back from bytes that represent JSON.
+    /// 
+    /// # Errors
+    /// 
+    /// - [`serde_json::Error`] if we cannot parse the JSON.
     pub fn from_json_bytes(json: &[u8]) -> Result<Self, StoreSerError> {
         let val = serde_json::from_slice(json)?;
         Ok(Self::from_json(val))

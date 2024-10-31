@@ -149,6 +149,11 @@ impl Bits {
         size
     }
 
+    ///Deserialises bytes into bits
+    /// 
+    /// # Errors
+    /// - [`IntegerSerError`] if we cannot find the number of valid bits
+    /// - [`IntegerSerError::NotEnoughBytes`] if we do not have enough bytes 
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,

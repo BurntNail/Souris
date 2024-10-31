@@ -117,15 +117,13 @@ impl BinaryData {
     pub fn rle(&self) -> Vec<u8> {
         let mut output = vec![];
 
-        if self.0.is_empty() {
-            return output;
-        }
-
         let mut bytes = self.0.clone();
         bytes.reverse();
 
         let mut current_count = 1;
-        let mut current = bytes.pop().unwrap();
+        let Some(mut current) = bytes.pop() else {
+            return output;
+        };
 
         while let Some(byte) = bytes.pop() {
             if current != byte {
@@ -209,6 +207,12 @@ impl BinaryData {
         }
     }
 
+    ///Uncompresses bytes using the specified method.
+    /// 
+    /// # Errors
+    /// - [`IntegerSerError`] if we cannot deserialise the length
+    /// - [`BinarySerError::NotEnoughBytes`] if there are not enough bytes
+    /// - [`BinarySerError`] if there are any issues with the Run-Length-Encoding
     pub fn deser(
         compression: BinaryCompression,
         cursor: &mut Cursor<u8>,
