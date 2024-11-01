@@ -5,8 +5,7 @@ use alloc::vec;
 use hashbrown::HashSet;
 use crate::types::integer::{Integer, SignedState};
 
-const SLIDING_WINDOW_SIZE: usize = 4096;
-
+#[derive(Copy, Clone, Debug)]
 enum LzItem {
     Byte(u8),
     Token {
@@ -19,45 +18,73 @@ enum LzItem {
 #[allow(clippy::missing_panics_doc)]
 pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
     fn subslice_in_slice(subslice: &[u8], slice: &[u8]) -> Option<usize> {
-        if subslice.is_empty() {
-            return Some(0);
+        if subslice.is_empty() || slice.len() < subslice.len() {
+            return None;
         }
         slice.windows(subslice.len()).position(|window| window == subslice)
     }
 
     if bytes.is_empty() {
-        return Integer::usize(0).ser().1;
+        //number of replacemements:
+        let mut output = Integer::usize(0).ser().1;
+        let number_of_items = output.clone();
+        output.extend(number_of_items);
+        
+        return output;
     }
 
     let mut compressed = vec![];
+
+
+    let mut check_characters = vec![];
     let mut search_buffer = vec![];
-    let mut tmp = vec![];
     let mut i = 0;
 
-    for byte in bytes.iter().copied() {
-        tmp.push(byte);
+    for ch in bytes.iter().copied() {
+        let is_last = i == bytes.len() - 1;
 
-        let found_index = subslice_in_slice(&tmp, &bytes);
-        if found_index.is_none_or(|x| x == bytes.len() - 1) {
-            if tmp.len() > 1 {
-                //if we failed, get the previous index
-                let length = tmp.len();
-                let index = subslice_in_slice(&tmp[..(length - 1)], &bytes).unwrap(); //unreachable
-                let offset = i - index - length;
-                
-                compressed.push(LzItem::Token {length, offset});
-            } else {
-                compressed.push(LzItem::Byte(byte));
+        let next_index = {
+            check_characters.push(ch);
+            let res = subslice_in_slice(&check_characters, &search_buffer);
+            check_characters.pop();
+            res
+        };
+
+        let mut char_is_added = false;
+        if next_index.is_none() || is_last {
+            if is_last && next_index.is_some() {
+                char_is_added = true;
+                check_characters.push(ch);
             }
-        }
 
-        search_buffer.push(byte);
-        i += 1;
-        
-        if tmp.len() > SLIDING_WINDOW_SIZE {
-            tmp.remove(0);
+            if check_characters.len() > 1 {
+                let index = match subslice_in_slice(&check_characters, &search_buffer) {
+                    Some(idx) => idx,
+                    None => unreachable!("Invalid temporary buffer in LZ77 with multiple failing elements"),
+                };
+                let offset = i - index - check_characters.len();
+                let length = check_characters.len();
+
+                //TODO: LZSS rather than LZ77
+
+                compressed.push(LzItem::Token {offset, length});
+                search_buffer.extend(&check_characters);
+            } else {
+                compressed.extend(check_characters.iter().copied().map(LzItem::Byte));
+                search_buffer.extend(&check_characters);
+            }
+
+            check_characters.clear();
         }
+        
+        if !char_is_added {
+            check_characters.push(ch);
+        }
+        
+        i += 1;
     }
+    
+    compressed.extend(check_characters.iter().copied().map(LzItem::Byte));
 
     
     let token_indicies: Vec<usize> = compressed.iter().enumerate().filter_map(|(i, item)| {
@@ -103,7 +130,7 @@ pub fn un_lz (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
         if token_indicies.contains(&i) {
             let offset: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
             let length: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
-            
+
             let start = output.len() - offset;
             let end = start + length;
             
