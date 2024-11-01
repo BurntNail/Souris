@@ -128,7 +128,7 @@ impl BinaryData {
             backing.extend(&self.0);
             backing
         };
-        let rle = rle(self.0.clone());
+        let rle = rle(&self.0);
         let lz = lz(&self.0);
 
         if vanilla.len() <= rle.len() && vanilla.len() <= lz.len() {

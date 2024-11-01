@@ -9,41 +9,43 @@ use alloc::{vec, vec::Vec};
 use itertools::Itertools;
 
 #[must_use]
-pub fn rle(mut bytes: Vec<u8>) -> Vec<u8> {
-    bytes.reverse();
+pub fn rle(bytes: &[u8]) -> Vec<u8> {
+    let mut iter = bytes.iter();
 
-    let mut current_count = 1;
-    let Some(mut current) = bytes.pop() else {
-        return Integer::usize(0).ser().1;
-    };
+    match iter.next().copied() {
+        None => Integer::usize(0).ser().1,
+        Some(mut current) => {
+            let mut compressed = vec![];
+            let mut current_count = 1;
 
-    let mut compressed = vec![];
-    while let Some(byte) = bytes.pop() {
-        if current != byte {
-            compressed.push(current_count);
-            compressed.push(current);
+            for byte in iter.copied() {
+                if current != byte {
+                    compressed.push(current_count);
+                    compressed.push(current);
 
-            current_count = 0;
-            current = byte;
-        }
-        current_count += 1;
+                    current_count = 0;
+                    current = byte;
+                }
+                current_count += 1;
 
-        if current_count == u8::MAX {
-            compressed.push(current_count);
-            compressed.push(current);
+                if current_count == u8::MAX {
+                    compressed.push(current_count);
+                    compressed.push(current);
 
-            current_count = 0;
+                    current_count = 0;
+                }
+            }
+            if current_count != 0 {
+                compressed.push(current_count);
+                compressed.push(current);
+            }
+
+            let mut output = Integer::usize(compressed.len()).ser().1;
+            output.extend(&compressed);
+
+            output
         }
     }
-    if current_count != 0 {
-        compressed.push(current_count);
-        compressed.push(current);
-    }
-
-    let mut output = Integer::usize(compressed.len()).ser().1;
-    output.extend(&compressed);
-
-    output
 }
 
 ///Uncompresses Run-Length-Encoded bytes
@@ -84,12 +86,13 @@ mod tests {
             &[],
             &[0],
             &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
+            &[0xAB; 10_000],
         ];
 
         for case in CASES {
             let vec = case.to_vec();
 
-            let encoded = rle(vec.clone());
+            let encoded = rle(&vec);
             let mut cursor = Cursor::new(&encoded);
             let decoded = un_rle(&mut cursor).unwrap();
 

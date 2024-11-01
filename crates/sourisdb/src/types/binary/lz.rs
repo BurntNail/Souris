@@ -181,6 +181,8 @@ mod tests {
             &[],
             &[0],
             &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
+            &[0xAB; 10_000],
+            &[0; MAX_SLIDING_WINDOW_SIZE],
         ];
 
         for case in CASES {
