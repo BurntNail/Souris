@@ -44,10 +44,6 @@ pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
     let mut search_end = 0;
     
     for i in 0..bytes.len() {
-        if i % 100_000 == 0 {
-            eprintln!("index {i} / {}", bytes.len());
-        }
-
         let is_last = i == bytes.len() - 1;
         let next_index = subslice_in_slice(&bytes[check_start..=check_end], &bytes[search_start..search_end]);
 
