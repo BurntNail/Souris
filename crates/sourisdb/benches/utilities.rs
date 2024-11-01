@@ -1,7 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use sourisdb::{
-    utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
-};
+use sourisdb::utilities::{bits::Bits, cursor::Cursor, huffman::Huffman};
 
 const EXAMPLE_DATA: &str = include_str!("./exampledata.json");
 const EXAMPLE_DATA_LINES: usize = usize::MAX;

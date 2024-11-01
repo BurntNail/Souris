@@ -1,17 +1,21 @@
 use crate::{
     display_bytes_as_hex_array,
-    types::integer::{Integer, IntegerSerError, SignedState},
+    types::{
+        binary::{
+            lz::{lz, un_lz},
+            rle::{rle, un_rle},
+        },
+        integer::{Integer, IntegerSerError, SignedState},
+    },
     utilities::cursor::Cursor,
     values::ValueTy,
 };
-use alloc::{vec::Vec};
+use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
 use serde_json::{Map as SJMap, Number, Value as SJValue};
-use crate::types::binary::lz::{lz, un_lz};
-use crate::types::binary::rle::{rle, un_rle};
 
-pub mod rle;
 pub mod lz;
+pub mod rle;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BinaryCompression {
@@ -117,7 +121,6 @@ impl BinaryData {
         SJValue::Object(obj)
     }
 
-
     #[must_use]
     pub fn ser(&self) -> (BinaryCompression, Vec<u8>) {
         let vanilla = {
@@ -138,7 +141,7 @@ impl BinaryData {
     }
 
     ///Uncompresses bytes using the specified method.
-    /// 
+    ///
     /// # Errors
     /// - [`IntegerSerError`] if we cannot deserialise the length
     /// - [`BinarySerError::NotEnoughBytes`] if there are not enough bytes
@@ -147,7 +150,6 @@ impl BinaryData {
         compression: BinaryCompression,
         cursor: &mut Cursor<u8>,
     ) -> Result<Self, BinarySerError> {
-
         Ok(match compression {
             BinaryCompression::Nothing => {
                 let length = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
@@ -157,11 +159,9 @@ impl BinaryData {
                         .ok_or(BinarySerError::NotEnoughBytes)?
                         .to_vec(),
                 )
-            },
-            BinaryCompression::RunLengthEncoding => Self(un_rle(cursor)?),
-            BinaryCompression::LempelZiv => {
-                Self(un_lz(cursor)?)
             }
+            BinaryCompression::RunLengthEncoding => Self(un_rle(cursor)?),
+            BinaryCompression::LempelZiv => Self(un_lz(cursor)?),
         })
     }
 }

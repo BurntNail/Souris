@@ -1,15 +1,17 @@
+use crate::{
+    types::{
+        binary::BinarySerError,
+        integer::{Integer, SignedState},
+    },
+    utilities::cursor::Cursor,
+};
+use alloc::{vec, vec::Vec};
 use itertools::Itertools;
-use crate::types::binary::BinarySerError;
-use crate::utilities::cursor::Cursor;
-use alloc::vec;
-use alloc::vec::Vec;
-use crate::types::integer::{Integer, SignedState};
 
 #[must_use]
 pub fn rle(mut bytes: Vec<u8>) -> Vec<u8> {
     bytes.reverse();
-    
-    
+
     let mut current_count = 1;
     let Some(mut current) = bytes.pop() else {
         return Integer::usize(0).ser().1;
@@ -37,7 +39,7 @@ pub fn rle(mut bytes: Vec<u8>) -> Vec<u8> {
         compressed.push(current_count);
         compressed.push(current);
     }
-    
+
     let mut output = Integer::usize(compressed.len()).ser().1;
     output.extend(&compressed);
 
@@ -45,7 +47,7 @@ pub fn rle(mut bytes: Vec<u8>) -> Vec<u8> {
 }
 
 ///Uncompresses Run-Length-Encoded bytes
-/// 
+///
 /// # Errors
 /// - [`BinarySerError::NotEnoughBytes`] if there aren't enough bytes.
 pub fn un_rle(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
@@ -53,9 +55,9 @@ pub fn un_rle(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
     if len == 0 {
         return Ok(vec![]);
     }
-    
+
     let mut output = vec![];
-    
+
     for (count, byte) in cursor
         .read(len)
         .ok_or(BinarySerError::NotEnoughBytes)?

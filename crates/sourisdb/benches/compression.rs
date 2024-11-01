@@ -1,14 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::{
-    types::binary::rle::rle,
-    utilities::{cursor::Cursor},
+    types::binary::rle::{rle, un_rle},
+    utilities::cursor::Cursor,
 };
-use sourisdb::types::binary::rle::un_rle;
 
 const EXAMPLE_JSON: &str = include_str!("exampledata.json");
 
 fn rle_and_un_rle(c: &mut Criterion) {
-
     c.bench_function("serialise rle", |b| {
         let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
         b.iter(|| {

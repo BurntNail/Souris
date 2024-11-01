@@ -4,13 +4,12 @@ use dirs::data_dir;
 use moka::future::Cache;
 use sourisdb::{store::Store, values::Value};
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     env::var,
     fmt::Debug,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use std::collections::hash_map::Entry;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
@@ -56,9 +55,9 @@ impl SourisState {
         if name == "meta" || !name.is_ascii() {
             return Err(SourisError::InvalidDatabaseName);
         }
-        
+
         self.db_cache.invalidate(&name).await;
-        
+
         let mut dbs = self.dbs.lock().await;
 
         if dbs.contains_key(&name) && !overwrite_existing {
@@ -93,7 +92,7 @@ impl SourisState {
         self.db_cache.invalidate(&name).await;
 
         let mut dbs = self.dbs.lock().await;
-        
+
         if let Entry::Occupied(mut e) = dbs.entry(name) {
             e.insert(Store::default());
             Ok(())
