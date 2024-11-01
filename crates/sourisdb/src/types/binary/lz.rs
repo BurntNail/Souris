@@ -18,25 +18,11 @@ enum LzItem {
 #[must_use]
 #[allow(clippy::missing_panics_doc)]
 pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
-    fn subslice_in_slice (subslice: &[u8], slice: &[u8]) -> Option<usize> {
-        let subslice_len = subslice.len();
-        let mut i = 0;
-        let mut offset = 0;
-
-        for element in slice.iter().copied() {
-            if subslice_len <= offset {
-                return Some(i - subslice_len);
-            }
-
-            if subslice[offset] == element {
-                offset += 1;
-            } else {
-                offset = 0;
-            }
-            i += 1;
+    fn subslice_in_slice(subslice: &[u8], slice: &[u8]) -> Option<usize> {
+        if subslice.is_empty() {
+            return Some(0);
         }
-
-        None
+        slice.windows(subslice.len()).position(|window| window == subslice)
     }
 
     if bytes.is_empty() {
