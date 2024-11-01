@@ -1,15 +1,17 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::store::Store;
 
-const EXAMPLE: &'static [u8] = include_bytes!("example.sdb");
+const EXAMPLE_JSON: &str = include_str!("exampledata.json");
 
 fn ser_and_deser(c: &mut Criterion) {
-    let example = Store::deser(EXAMPLE).unwrap();
+    let json = serde_json::from_str(EXAMPLE_JSON).unwrap();
+    let example = Store::from_json(json);
+    let sered = example.ser().unwrap();
 
     c.bench_function("serialise_store", |b| b.iter(|| black_box(example.ser())));
 
     c.bench_function("deserialise_store", |b| {
-        b.iter(|| black_box(Store::deser(EXAMPLE)))
+        b.iter(|| black_box(Store::deser(&sered)))
     });
 }
 

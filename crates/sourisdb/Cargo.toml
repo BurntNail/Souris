@@ -50,3 +50,7 @@ harness = false
 [[bench]]
 name = "database"
 harness = false
+
+[[bench]]
+name = "compression"
+harness = false

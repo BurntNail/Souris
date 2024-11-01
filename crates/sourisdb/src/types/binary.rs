@@ -125,16 +125,8 @@ impl BinaryData {
             backing.extend(&self.0);
             backing
         };
-        let rle = {
-            let rle = rle(self.0.clone());
-
-            let mut out = Integer::usize(rle.len() / 2).ser().1;
-            out.extend(&rle);
-            out
-        };
-        let lz = {
-            lz(self.0.clone())
-        };
+        let rle = rle(self.0.clone());
+        let lz = lz(self.0.clone());
 
         if vanilla.len() <= rle.len() && vanilla.len() <= lz.len() {
             (BinaryCompression::Nothing, vanilla)

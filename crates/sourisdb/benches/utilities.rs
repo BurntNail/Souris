@@ -1,29 +1,23 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::{
-    types::{
-        binary::{BinaryCompression, BinaryData, rle::{rle, un_rle}},
-        integer::Integer,
-    },
     utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
 };
 
-const BEE_MOVIE: &str = include_str!("./beemoviescript.txt");
-const BEE_MOVIE_LINES: usize = usize::MAX;
-
-const EXAMPLE_BINARY: &[u8] = include_bytes!("./example.sdb");
+const EXAMPLE_DATA: &str = include_str!("./exampledata.json");
+const EXAMPLE_DATA_LINES: usize = usize::MAX;
 
 fn en_de_code_beemovie(c: &mut Criterion) {
     c.bench_function("create huffman", |b| {
         b.iter(|| {
-            let huff = unsafe { Huffman::new_str(BEE_MOVIE).unwrap_unchecked() };
+            let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
             black_box(huff);
         })
     });
 
     c.bench_function("encode huffman", |b| {
-        let huff = unsafe { Huffman::new_str(BEE_MOVIE).unwrap_unchecked() };
+        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
         b.iter(|| {
-            for line in BEE_MOVIE.lines().take(BEE_MOVIE_LINES) {
+            for line in EXAMPLE_DATA.lines().take(EXAMPLE_DATA_LINES) {
                 let encoded = huff.encode_string(line).unwrap();
                 black_box(encoded);
             }
@@ -31,10 +25,10 @@ fn en_de_code_beemovie(c: &mut Criterion) {
     });
 
     c.bench_function("decode huffman", |b| {
-        let huff = unsafe { Huffman::new_str(BEE_MOVIE).unwrap_unchecked() };
-        let data: Bits = BEE_MOVIE
+        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+        let data: Bits = EXAMPLE_DATA
             .lines()
-            .take(BEE_MOVIE_LINES)
+            .take(EXAMPLE_DATA_LINES)
             .flat_map(|l| huff.encode_string(l))
             .collect();
 
@@ -47,7 +41,7 @@ fn en_de_code_beemovie(c: &mut Criterion) {
 
 fn ser_de_huffman(c: &mut Criterion) {
     c.bench_function("serialise huffman", |b| {
-        let huff = Huffman::new_str(BEE_MOVIE).unwrap();
+        let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
 
         b.iter(|| {
             let sered = huff.ser();
@@ -56,7 +50,7 @@ fn ser_de_huffman(c: &mut Criterion) {
     });
 
     c.bench_function("deserialise huffman", |b| {
-        let huff = Huffman::new_str(BEE_MOVIE).unwrap();
+        let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
         let sered = huff.ser();
 
         b.iter(|| {
@@ -69,10 +63,10 @@ fn ser_de_huffman(c: &mut Criterion) {
 
 fn ser_de_bits(c: &mut Criterion) {
     c.bench_function("serialise bits", |b| {
-        let huff = unsafe { Huffman::new_str(BEE_MOVIE).unwrap_unchecked() };
-        let data: Bits = BEE_MOVIE
+        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+        let data: Bits = EXAMPLE_DATA
             .lines()
-            .take(BEE_MOVIE_LINES)
+            .take(EXAMPLE_DATA_LINES)
             .flat_map(|l| huff.encode_string(l))
             .collect();
 
@@ -83,10 +77,10 @@ fn ser_de_bits(c: &mut Criterion) {
     });
 
     c.bench_function("deserialise bits", |b| {
-        let huff = unsafe { Huffman::new_str(BEE_MOVIE).unwrap_unchecked() };
-        let data: Bits = BEE_MOVIE
+        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+        let data: Bits = EXAMPLE_DATA
             .lines()
-            .take(BEE_MOVIE_LINES)
+            .take(EXAMPLE_DATA_LINES)
             .flat_map(|l| huff.encode_string(l))
             .collect();
         let sered = data.ser();
@@ -99,36 +93,6 @@ fn ser_de_bits(c: &mut Criterion) {
     });
 }
 
-fn rle_and_un_rle(c: &mut Criterion) {
-    c.bench_function("serialise rle", |b| {
-        let binary_data = EXAMPLE_BINARY.to_vec();
-        b.iter(|| {
-            let rle = rle(binary_data.clone());
-            black_box(rle);
-        });
-    });
-
-    c.bench_function("deserialise rle", |b| {
-        let binary_data = EXAMPLE_BINARY.to_vec();
-
-        let encoded = {
-            let rle = rle(binary_data); //forcing RLE to ensure it tests the rle stuff
-            let mut out = Integer::usize(rle.len() / 2).ser().1;
-            out.extend(&rle);
-            out
-        };
-
-        let mut cursor = Cursor::new(&encoded);
-
-        b.iter(|| {
-            let BinaryData(decoded) =
-                BinaryData::deser(BinaryCompression::RunLengthEncoding, &mut cursor).unwrap();
-            black_box(decoded);
-            cursor.set_pos(0);
-        });
-    });
-}
-
 criterion_group!(runtime, en_de_code_beemovie);
-criterion_group!(serde, ser_de_huffman, ser_de_bits, rle_and_un_rle);
+criterion_group!(serde, ser_de_huffman, ser_de_bits);
 criterion_main!(runtime, serde);

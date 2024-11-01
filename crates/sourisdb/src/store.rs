@@ -67,7 +67,7 @@ impl Store {
 
         let huffman = Huffman::new_str(&all_text);
         let map = raw_map.ser(huffman.as_ref());
-
+        
         let huffman_exists = huffman.is_some();
         let mut res = if let Some(huffman) = huffman {
             huffman.ser()
