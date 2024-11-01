@@ -18,7 +18,7 @@ enum LzItem {
 
 #[must_use]
 #[allow(clippy::missing_panics_doc)]
-pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
+pub fn lz (bytes: &[u8]) -> Vec<u8> {
     fn subslice_in_slice(subslice: &[u8], slice: &[u8]) -> Option<usize> {
         if subslice.is_empty() || slice.len() < subslice.len() {
             return None;
@@ -55,9 +55,8 @@ pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
             }
 
             if (check_end - check_start) > 1 {
-                let index = match subslice_in_slice(&&bytes[check_start..check_end], &bytes[search_start..search_end]) {
-                    Some(idx) => idx,
-                    None => unreachable!("Invalid temporary buffer in LZ77 with multiple failing elements"),
+                let Some(index) =  subslice_in_slice(&bytes[check_start..check_end], &bytes[search_start..search_end]) else {
+                    unreachable!("Invalid temporary buffer in LZ77 with multiple failing elements");
                 };
                 let length = check_end - check_start;
                 let offset = i - index - length;
@@ -67,7 +66,7 @@ pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
                 compressed.push(LzItem::Token {offset, length});
                 search_end = check_end;
             } else {
-                compressed.extend((&bytes[check_start..check_end]).iter().copied().map(LzItem::Byte));
+                compressed.extend(bytes[check_start..check_end].iter().copied().map(LzItem::Byte));
                 search_end = check_end;
             }
 
@@ -83,7 +82,7 @@ pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
         }
     }
 
-    compressed.extend((&bytes[check_start..check_end]).iter().copied().map(LzItem::Byte));
+    compressed.extend(bytes[check_start..check_end].iter().copied().map(LzItem::Byte));
 
     
     let token_indicies: Vec<usize> = compressed.iter().enumerate().filter_map(|(i, item)| {
@@ -114,6 +113,10 @@ pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
 }
 
 ///Uncompresses LZ-format bytes
+/// 
+/// # Errors
+/// - [`IntegerSerError`] if we cannot deserialise one of the component [`Integer`]s
+/// - [`BinarySerError::NotEnoughBytes`] if there aren't enough bytes.
 pub fn un_lz (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
     let number_of_replacements: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
     let mut token_indicies = HashSet::new();
@@ -133,7 +136,7 @@ pub fn un_lz (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
             let start = output.len() - offset;
             let end = start + length;
             
-            output.extend((&output[start..end]).to_vec());
+            output.extend(output[start..end].to_vec());
         } else {
             output.push(*cursor.next().ok_or(BinarySerError::NotEnoughBytes)?);
         }
@@ -161,7 +164,7 @@ mod tests {
         for case in CASES {
             let vec = case.to_vec();
 
-            let encoded = lz(vec.clone());
+            let encoded = lz(&vec);
             let mut cursor = Cursor::new(&encoded);
             let decoded = un_lz(&mut cursor).unwrap();
 
