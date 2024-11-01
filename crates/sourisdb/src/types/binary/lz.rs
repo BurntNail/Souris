@@ -5,6 +5,8 @@ use alloc::vec;
 use hashbrown::HashSet;
 use crate::types::integer::{Integer, SignedState};
 
+const MAX_SLIDING_WINDOW_SIZE: usize = 4096;
+
 #[derive(Copy, Clone, Debug)]
 enum LzItem {
     Byte(u8),
@@ -25,66 +27,67 @@ pub fn lz (bytes: Vec<u8>) -> Vec<u8> {
     }
 
     if bytes.is_empty() {
-        //number of replacemements:
+        //number of replacements:
         let mut output = Integer::usize(0).ser().1;
+        //number of items
         let number_of_items = output.clone();
         output.extend(number_of_items);
-        
+
         return output;
     }
 
     let mut compressed = vec![];
 
+    let mut check_start = 0;
+    let mut check_end = 0;
+    let search_start = 0;
+    let mut search_end = 0;
+    
+    for i in 0..bytes.len() {
+        if i % 100_000 == 0 {
+            eprintln!("index {i} / {}", bytes.len());
+        }
 
-    let mut check_characters = vec![];
-    let mut search_buffer = vec![];
-    let mut i = 0;
-
-    for ch in bytes.iter().copied() {
         let is_last = i == bytes.len() - 1;
-
-        let next_index = {
-            check_characters.push(ch);
-            let res = subslice_in_slice(&check_characters, &search_buffer);
-            check_characters.pop();
-            res
-        };
+        let next_index = subslice_in_slice(&bytes[check_start..=check_end], &bytes[search_start..search_end]);
 
         let mut char_is_added = false;
         if next_index.is_none() || is_last {
             if is_last && next_index.is_some() {
                 char_is_added = true;
-                check_characters.push(ch);
+                check_end += 1;
             }
 
-            if check_characters.len() > 1 {
-                let index = match subslice_in_slice(&check_characters, &search_buffer) {
+            if (check_end - check_start) > 1 {
+                let index = match subslice_in_slice(&&bytes[check_start..check_end], &bytes[search_start..search_end]) {
                     Some(idx) => idx,
                     None => unreachable!("Invalid temporary buffer in LZ77 with multiple failing elements"),
                 };
-                let offset = i - index - check_characters.len();
-                let length = check_characters.len();
+                let length = check_end - check_start;
+                let offset = i - index - length;
 
                 //TODO: LZSS rather than LZ77
 
                 compressed.push(LzItem::Token {offset, length});
-                search_buffer.extend(&check_characters);
+                search_end = check_end;
             } else {
-                compressed.extend(check_characters.iter().copied().map(LzItem::Byte));
-                search_buffer.extend(&check_characters);
+                compressed.extend((&bytes[check_start..check_end]).iter().copied().map(LzItem::Byte));
+                search_end = check_end;
             }
 
-            check_characters.clear();
+            check_start = check_end;
         }
-        
+
         if !char_is_added {
-            check_characters.push(ch);
+            check_end += 1;
         }
-        
-        i += 1;
+
+        if (check_end - check_start) > MAX_SLIDING_WINDOW_SIZE {
+            check_start += 1;
+        }
     }
-    
-    compressed.extend(check_characters.iter().copied().map(LzItem::Byte));
+
+    compressed.extend((&bytes[check_start..check_end]).iter().copied().map(LzItem::Byte));
 
     
     let token_indicies: Vec<usize> = compressed.iter().enumerate().filter_map(|(i, item)| {
