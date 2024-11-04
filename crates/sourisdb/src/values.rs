@@ -906,7 +906,7 @@ impl Value {
     }
 
     ///Deserialises bytes into a [`Value`]. If you don't have a Huffman tree, just pass `None` in.
-    /// 
+    ///
     /// # Errors
     /// - [`ValueSerError::NotEnoughBytes`] if there aren't enough bytes.
     /// - [`ValueSerError::InvalidType`] if we encounter an invalid [`ValueTy`]

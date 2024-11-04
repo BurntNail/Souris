@@ -13,15 +13,15 @@ all-features = true
 proptest = "1.4.0"
 chrono = { version = "0.4.38", features = ["arbitrary"] }
 axum = { version = "0.7.5", features = ["macros"] }
-criterion = { version = "0.4", features = ["html_reports"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [dependencies]
 axum = { version = "0.7", optional = true }
 chrono = "0.4"
-hashbrown = "0.14"
+hashbrown = "0.15"
 serde = { version = "1.0", optional = true, features = ["derive"] }
 serde_json = "1.0"
-chrono-tz = "0.9"
+chrono-tz = "0.10"
 comfy-table = { version = "7.1", optional = true }
 dialoguer = { version = "0.11", optional = true, features = ["fuzzy-matcher",
     "fuzzy-select",
@@ -30,14 +30,15 @@ dialoguer = { version = "0.11", optional = true, features = ["fuzzy-matcher",
 ] }
 cfg-if = "1.0"
 paste = "1.0"
-ureq = { version = "2.9.7", optional = true }
-http = { version = "1.1.0", optional = true }
-reqwest = { version = "0.12.5", optional = true, features = ["json"] }
-itertools = "0.13.0"
+ureq = { version = "2.9", optional = true }
+http = { version = "1.1", optional = true }
+reqwest = { version = "0.12", optional = true, features = ["json"] }
+itertools = "0.13"
+lz4_flex = { version = "0.11", default-features = false }
 
 [features]
 default = []
-std = ["dep:comfy-table", "dep:dialoguer"]
+std = ["dep:comfy-table", "dep:dialoguer", "lz4_flex/std"]
 axum = ["std", "dep:axum", "serde"]
 serde = ["dep:serde", "chrono/serde", "hashbrown/serde", "chrono-tz/serde"]
 sync_client = ["dep:ureq", "dep:http", "std"]
@@ -49,4 +50,8 @@ harness = false
 
 [[bench]]
 name = "database"
+harness = false
+
+[[bench]]
+name = "compression"
 harness = false
