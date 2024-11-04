@@ -2,7 +2,6 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::utilities::{bits::Bits, cursor::Cursor, huffman::Huffman};
 
 const EXAMPLE_DATA: &str = include_str!("./exampledata.json");
-const EXAMPLE_DATA_LINES: usize = usize::MAX;
 
 fn en_de_code_beemovie(c: &mut Criterion) {
     c.bench_function("create huffman", |b| {
@@ -15,20 +14,14 @@ fn en_de_code_beemovie(c: &mut Criterion) {
     c.bench_function("encode huffman", |b| {
         let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
         b.iter(|| {
-            for line in EXAMPLE_DATA.lines().take(EXAMPLE_DATA_LINES) {
-                let encoded = huff.encode_string(line).unwrap();
-                black_box(encoded);
-            }
+            let encoded = huff.encode_string(EXAMPLE_DATA).unwrap();
+            black_box(encoded);
         })
     });
 
     c.bench_function("decode huffman", |b| {
         let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
-        let data: Bits = EXAMPLE_DATA
-            .lines()
-            .take(EXAMPLE_DATA_LINES)
-            .flat_map(|l| huff.encode_string(l))
-            .collect();
+        let data = huff.encode_string(EXAMPLE_DATA).unwrap();
 
         b.iter(|| {
             let decoded = huff.decode_string(data.clone()).unwrap();
@@ -62,11 +55,7 @@ fn ser_de_huffman(c: &mut Criterion) {
 fn ser_de_bits(c: &mut Criterion) {
     c.bench_function("serialise bits", |b| {
         let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
-        let data: Bits = EXAMPLE_DATA
-            .lines()
-            .take(EXAMPLE_DATA_LINES)
-            .flat_map(|l| huff.encode_string(l))
-            .collect();
+        let data = huff.encode_string(EXAMPLE_DATA).unwrap();
 
         b.iter(|| {
             let sered = data.ser();
@@ -76,11 +65,7 @@ fn ser_de_bits(c: &mut Criterion) {
 
     c.bench_function("deserialise bits", |b| {
         let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
-        let data: Bits = EXAMPLE_DATA
-            .lines()
-            .take(EXAMPLE_DATA_LINES)
-            .flat_map(|l| huff.encode_string(l))
-            .collect();
+        let data = huff.encode_string(EXAMPLE_DATA).unwrap();
         let sered = data.ser();
 
         b.iter(|| {
