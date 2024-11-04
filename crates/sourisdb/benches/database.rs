@@ -4,8 +4,10 @@ use sourisdb::store::Store;
 const EXAMPLE_JSON: &str = include_str!("smallexampledata.json");
 
 fn ser_and_deser(c: &mut Criterion) {
-    let json = serde_json::from_str(EXAMPLE_JSON).unwrap();
-    let example = Store::from_json(json);
+    let json = serde_json::from_str(EXAMPLE_JSON)
+        .expect("Failed to parse example JSON data");
+    let example = Store::from_json(json)
+        .expect("Failed to create Store from JSON");
     let sered = example.ser().unwrap();
 
     c.bench_function("serialise_store", |b| b.iter(|| black_box(example.ser())));
