@@ -56,14 +56,14 @@ impl SourisState {
             return Err(SourisError::InvalidDatabaseName);
         }
 
-        self.db_cache.invalidate(&name).await;
 
         let mut dbs = self.dbs.lock().await;
 
         if dbs.contains_key(&name) && !overwrite_existing {
             return Ok(StatusCode::OK);
         }
-        dbs.insert(name, Store::default());
+        dbs.insert(name.clone(), Store::default());
+        self.db_cache.invalidate(&name).await;
 
         Ok(StatusCode::CREATED)
     }

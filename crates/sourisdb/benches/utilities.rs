@@ -1,12 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::utilities::{bits::Bits, cursor::Cursor, huffman::Huffman};
 
-const EXAMPLE_DATA: &str = include_str!("./exampledata.json");
+const EXAMPLE_DATA: &str = include_str!("./smallexampledata.json");
 
 fn en_de_code_beemovie(c: &mut Criterion) {
     c.bench_function("create huffman", |b| {
         b.iter(|| {
-            let huff = Huffman::new_str(EXAMPLE_DATA);
+            let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
             black_box(huff);
         })
     });

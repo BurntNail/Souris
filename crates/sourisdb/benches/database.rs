@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::store::Store;
 
-const EXAMPLE_JSON: &str = include_str!("exampledata.json");
+const EXAMPLE_JSON: &str = include_str!("smallexampledata.json");
 
 fn ser_and_deser(c: &mut Criterion) {
     let json = serde_json::from_str(EXAMPLE_JSON).unwrap();

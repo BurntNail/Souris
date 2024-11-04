@@ -341,14 +341,9 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
 
     ///Encode a series of `T`s into a [`Bits`]. Will return `None` if any elements found in the iterator were not included in the original [`Huffman::new`] incantation.
     pub fn encode(&self, from: impl Iterator<Item = T>) -> Option<Bits> {
-        let mut bits = Bits::default();
-
-        for ch in from {
-            let bits_to_add = self.to_bits.get(&ch).cloned()?;
-            bits.push_many(bits_to_add);
-        }
-
-        Some(bits)
+        from.into_iter().map(|x| {
+            self.to_bits.get(&x).cloned()
+        }).collect::<Option<_>>()
     }
 
     ///Decode a series of `T`s from a [`Bits`]. Will return `None` if a sequence in the `bits` cannot be found in the conversion tables calculated during the original [`Huffman::new`] incantation.

@@ -131,6 +131,7 @@ impl BinaryData {
     }
 
     #[must_use]
+    #[allow(clippy::missing_panics_doc)]
     pub fn ser(&self) -> (BinaryCompression, Vec<u8>) {
         let vanilla = {
             let mut backing = Integer::usize(self.0.len()).ser().1;
@@ -140,13 +141,11 @@ impl BinaryData {
         let rle = rle(&self.0);
         let lz = lz(&self.0);
 
-        if vanilla.len() <= rle.len() && vanilla.len() <= lz.len() {
-            (BinaryCompression::Nothing, vanilla)
-        } else if rle.len() <= lz.len() {
-            (BinaryCompression::RunLengthEncoding, rle)
-        } else {
+        [
+            (BinaryCompression::Nothing, vanilla),
+            (BinaryCompression::RunLengthEncoding, rle),
             (BinaryCompression::LempelZiv, lz)
-        }
+        ].into_iter().min_by_key(|(_, v)| v.len()).unwrap()
     }
 
     ///Uncompresses bytes using the specified method.
