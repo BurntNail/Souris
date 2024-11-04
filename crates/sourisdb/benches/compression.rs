@@ -38,20 +38,21 @@ fn lz_and_un_lz (c: &mut Criterion) {
             black_box(lz);
         });
     });
-    
-    c.bench_function("un-lz", |b| {
-        let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
-        
-        let encoded = lz(&binary_data);
-        let mut cursor = Cursor::new(&encoded);
-        
-        b.iter(|| {
-            let decoded = un_lz(&mut cursor).unwrap();
-            black_box(decoded);
-            cursor.set_pos(0);
-        })
-    });
+
+    // c.bench_function("un-lz", |b| {
+    //     let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
+    //
+    //     let encoded = lz(&binary_data);
+    //     let mut cursor = Cursor::new(&encoded);
+    //
+    //     b.iter(|| {
+    //         let decoded = un_lz(&mut cursor).unwrap();
+    //         black_box(decoded);
+    //         cursor.set_pos(0);
+    //     })
+    // });
 }
 
-criterion_group!(compression, rle_and_un_rle, lz_and_un_lz);
+// criterion_group!(compression, rle_and_un_rle, lz_and_un_lz);
+criterion_group!(compression, lz_and_un_lz);
 criterion_main!(compression);

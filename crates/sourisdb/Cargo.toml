@@ -34,10 +34,11 @@ ureq = { version = "2.9.7", optional = true }
 http = { version = "1.1.0", optional = true }
 reqwest = { version = "0.12.5", optional = true, features = ["json"] }
 itertools = "0.13.0"
+memchr = { version = "2.7.4", default-features = false, features = ["alloc"] }
 
 [features]
 default = []
-std = ["dep:comfy-table", "dep:dialoguer"]
+std = ["dep:comfy-table", "dep:dialoguer", "memchr/std"]
 axum = ["std", "dep:axum", "serde"]
 serde = ["dep:serde", "chrono/serde", "hashbrown/serde", "chrono-tz/serde"]
 sync_client = ["dep:ureq", "dep:http", "std"]

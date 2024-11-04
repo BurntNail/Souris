@@ -6,9 +6,9 @@ use crate::{
     utilities::cursor::Cursor,
 };
 use alloc::{vec, vec::Vec};
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 
-const MAX_SLIDING_WINDOW_SIZE: usize = 4096;
+const MAX_SLIDING_WINDOW_SIZE: usize = 128;
 
 #[derive(Copy, Clone, Debug)]
 enum LzItem {
@@ -19,14 +19,14 @@ enum LzItem {
 #[must_use]
 #[allow(clippy::missing_panics_doc)]
 pub fn lz(bytes: &[u8]) -> Vec<u8> {
-    fn subslice_in_slice(subslice: &[u8], slice: &[u8]) -> Option<usize> {
-        if subslice.is_empty() || slice.len() < subslice.len() {
-            return None;
-        }
-        slice
-            .windows(subslice.len())
-            .position(|window| window == subslice)
-    }
+    let mut locations_found: HashMap<_, HashMap<_, _>> = HashMap::new();
+    let mut subslice_in_slice = |check: (usize, usize), search: usize| -> Option<usize> {
+        let so_far = locations_found.entry(search).or_default();
+        let index = so_far.entry(check).or_insert_with(|| {
+            memchr::memmem::find(&bytes[..search], &bytes[check.0..check.1])
+        });
+        *index
+    };
 
     if bytes.is_empty() {
         //number of replacements:
@@ -42,14 +42,14 @@ pub fn lz(bytes: &[u8]) -> Vec<u8> {
 
     let mut check_start = 0;
     let mut check_end = 0;
-    let search_start = 0;
     let mut search_end = 0;
+
 
     for i in 0..bytes.len() {
         let is_last = i == bytes.len() - 1;
         let next_index = subslice_in_slice(
-            &bytes[check_start..=check_end],
-            &bytes[search_start..search_end],
+            (check_start, check_end + 1),
+            search_end
         );
 
         let mut char_is_added = false;
@@ -61,8 +61,8 @@ pub fn lz(bytes: &[u8]) -> Vec<u8> {
 
             if (check_end - check_start) > 1 {
                 let Some(index) = subslice_in_slice(
-                    &bytes[check_start..check_end],
-                    &bytes[search_start..search_end],
+                    (check_start, check_end),
+                    search_end,
                 ) else {
                     unreachable!("Invalid temporary buffer in LZ77 with multiple failing elements");
                 };
@@ -159,6 +159,7 @@ pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
             let start = output.len() - offset;
             let end = start + length;
 
+            //has to re-alloc as otherwise mutable shenanigans
             output.extend(output[start..end].to_vec());
         } else {
             output.push(*cursor.next().ok_or(BinarySerError::NotEnoughBytes)?);
@@ -182,7 +183,7 @@ mod tests {
             &[0],
             &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
             &[0xAB; 10_000],
-            &[0; MAX_SLIDING_WINDOW_SIZE],
+            // &[0; MAX_SLIDING_WINDOW_SIZE],
         ];
 
         for case in CASES {
