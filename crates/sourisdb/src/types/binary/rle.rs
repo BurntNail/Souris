@@ -19,20 +19,13 @@ pub fn rle(bytes: &[u8]) -> Vec<u8> {
             let mut current_count = 1;
 
             for byte in iter.copied() {
-                if current != byte {
+                if current == byte && current_count < u8::MAX {
+                    current_count += 1;
+                } else {
                     compressed.push(current_count);
                     compressed.push(current);
-
-                    current_count = 0;
                     current = byte;
-                }
-                current_count += 1;
-
-                if current_count == u8::MAX {
-                    compressed.push(current_count);
-                    compressed.push(current);
-
-                    current_count = 0;
+                    current_count = 1;
                 }
             }
             if current_count != 0 {
