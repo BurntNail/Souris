@@ -76,19 +76,10 @@ pub fn un_rle(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::CASES;
 
     #[test]
     fn test_rle_specific_cases() {
-        const CASES: &[&[u8]] = &[
-            &[
-                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF,
-            ],
-            &[],
-            &[0],
-            &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
-            &[0xAB; 10_000],
-        ];
-
         for case in CASES {
             let vec = case.to_vec();
 

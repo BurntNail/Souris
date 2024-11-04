@@ -22,7 +22,7 @@ pub mod rle;
 pub enum BinaryCompression {
     Nothing,
     RunLengthEncoding,
-    LempelZiv, //LZ77, not LZSS from https://go-compression.github.io/algorithms/lz/
+    LempelZiv,
 }
 
 impl From<BinaryCompression> for u8 {
@@ -174,3 +174,14 @@ impl BinaryData {
         })
     }
 }
+
+#[cfg(test)]
+const CASES: &[&[u8]] = &[
+    &[
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF,
+    ],
+    &[],
+    &[0],
+    &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
+    &[0xAB; 10_000],
+];

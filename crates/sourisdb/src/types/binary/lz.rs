@@ -1,24 +1,48 @@
-use lz4_flex::{compress, compress_prepend_size, decompress};
+use lz4_flex::{compress, decompress};
 use crate::types::binary::BinarySerError;
 use crate::types::integer::{Integer, SignedState};
 use crate::utilities::cursor::Cursor;
+use alloc::vec;
+use alloc::vec::Vec;
 
-const MAX_SLIDING_WINDOW_SIZE: usize = 128;
-
+#[must_use]
 pub fn lz (input: &[u8]) -> Vec<u8> {
-    let mut output = Integer::usize(input.len()).ser().1;
-    output.extend(compress(input));
+    let size = Integer::usize(input.len()).ser().1;
+    if input.is_empty() {
+        return size;
+    }
+    
+    let compressed = compress(input);
+    let mut output = size; //size of input
+    output.extend(Integer::usize(compressed.len()).ser().1); //size of compressed
+    output.extend(compressed); //compressed
+    
     output
 }
 
+///Decompresses LZ compressed data
+/// 
+/// # Errors
+/// - [`IntegerSerError`] if we cannot deserialise an integer
+/// - [`BinarySerError::NotEnoughBytes`] if there aren't enough bytes
+/// - [`DecompressError`] if we fail to decompress the bytes
 pub fn un_lz (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
-    let len: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
-    let compressed = cursor.read(len).ok_or(BinarySerError::NotEnoughBytes)?;
-    Ok(decompress(compressed, len)?)
+    let input_len: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
+    if input_len == 0 {
+        return Ok(vec![]);
+    }
+    
+    let compressed_len = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
+    let compressed = cursor.read(compressed_len).ok_or(BinarySerError::NotEnoughBytes)?;
+    
+    Ok(decompress(compressed, input_len)?)
 }
 
-//leftover from when i tried to actually implement lz, but was very slow
+//leftover from when I tried to actually implement lz, but was very slow
+//I used this: //LZ77, not LZSS from https://go-compression.github.io/algorithms/lz/
 /*#[derive(Copy, Clone, Debug)]
+const MAX_SLIDING_WINDOW_SIZE: usize = 128;
+
 enum LzItem {
     Byte(u8),
     Token { offset: usize, length: usize },
@@ -180,20 +204,13 @@ pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 
 #[cfg(test)]
 mod tests {
+    use proptest::{prop_assert_eq, proptest};
     use super::*;
+    use super::super::CASES;
+    use alloc::format;
 
     #[test]
     fn test_lz_specific_cases() {
-        const CASES: &[&[u8]] = &[
-            &[
-                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF,
-            ],
-            &[],
-            &[0],
-            &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
-            &[0xAB; 10_000],
-        ];
-
         for case in CASES {
             let vec = case.to_vec();
 
@@ -202,6 +219,41 @@ mod tests {
             let decoded = un_lz(&mut cursor).unwrap();
 
             assert_eq!(decoded, vec);
+        }
+    }
+    
+    proptest!{
+        #[test]
+        fn proptest_lz_one (v: [u8; 1]) {
+            let v = v.to_vec();
+            
+            let encoded = lz(&v);
+            let mut cursor = Cursor::new(&encoded);
+            let decoded = un_lz(&mut cursor).unwrap();
+            
+            prop_assert_eq!(v, decoded);
+        }
+        
+        #[test]
+        fn proptest_lz_two (v: [u8; 2]) {
+            let v = v.to_vec();
+            
+            let encoded = lz(&v);
+            let mut cursor = Cursor::new(&encoded);
+            let decoded = un_lz(&mut cursor).unwrap();
+            
+            prop_assert_eq!(v, decoded);
+        }
+        
+        #[test]
+        fn proptest_lz_ten (v: [u8; 10]) {
+            let v = v.to_vec();
+            
+            let encoded = lz(&v);
+            let mut cursor = Cursor::new(&encoded);
+            let decoded = un_lz(&mut cursor).unwrap();
+            
+            prop_assert_eq!(v, decoded);
         }
     }
 }

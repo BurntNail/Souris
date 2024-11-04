@@ -777,6 +777,7 @@ mod tests {
 
     use proptest::prelude::*;
 
+    #[allow(unused_imports)]
     use crate::{
         types::integer::{BiggestInt, BiggestIntButSigned, Integer},
         utilities::cursor::Cursor,
