@@ -56,7 +56,6 @@ impl SourisState {
             return Err(SourisError::InvalidDatabaseName);
         }
 
-
         let mut dbs = self.dbs.lock().await;
 
         if dbs.contains_key(&name) && !overwrite_existing {

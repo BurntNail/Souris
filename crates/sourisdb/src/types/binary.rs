@@ -53,7 +53,7 @@ pub enum BinarySerError {
     NoCompressionTypeFound(u8),
     Integer(IntegerSerError),
     NotEnoughBytes,
-    LzFlex(DecompressError)
+    LzFlex(DecompressError),
 }
 
 impl Display for BinarySerError {
@@ -64,7 +64,7 @@ impl Display for BinarySerError {
             }
             Self::Integer(i) => write!(f, "Error parsing integer: {i}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes to deserialize."),
-            Self::LzFlex(e) => write!(f, "Error decompressing LZ: {e}")
+            Self::LzFlex(e) => write!(f, "Error decompressing LZ: {e}"),
         }
     }
 }
@@ -144,8 +144,11 @@ impl BinaryData {
         [
             (BinaryCompression::Nothing, vanilla),
             (BinaryCompression::RunLengthEncoding, rle),
-            (BinaryCompression::LempelZiv, lz)
-        ].into_iter().min_by_key(|(_, v)| v.len()).unwrap()
+            (BinaryCompression::LempelZiv, lz),
+        ]
+        .into_iter()
+        .min_by_key(|(_, v)| v.len())
+        .unwrap()
     }
 
     ///Uncompresses bytes using the specified method.

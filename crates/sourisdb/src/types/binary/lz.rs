@@ -1,40 +1,45 @@
+use crate::{
+    types::{
+        binary::BinarySerError,
+        integer::{Integer, SignedState},
+    },
+    utilities::cursor::Cursor,
+};
+use alloc::{vec, vec::Vec};
 use lz4_flex::{compress, decompress};
-use crate::types::binary::BinarySerError;
-use crate::types::integer::{Integer, SignedState};
-use crate::utilities::cursor::Cursor;
-use alloc::vec;
-use alloc::vec::Vec;
 
 #[must_use]
-pub fn lz (input: &[u8]) -> Vec<u8> {
+pub fn lz(input: &[u8]) -> Vec<u8> {
     let size = Integer::usize(input.len()).ser().1;
     if input.is_empty() {
         return size;
     }
-    
+
     let compressed = compress(input);
     let mut output = size; //size of input
     output.extend(Integer::usize(compressed.len()).ser().1); //size of compressed
     output.extend(compressed); //compressed
-    
+
     output
 }
 
 ///Decompresses LZ compressed data
-/// 
+///
 /// # Errors
 /// - [`IntegerSerError`] if we cannot deserialise an integer
 /// - [`BinarySerError::NotEnoughBytes`] if there aren't enough bytes
 /// - [`DecompressError`] if we fail to decompress the bytes
-pub fn un_lz (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
+pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
     let input_len: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
     if input_len == 0 {
         return Ok(vec![]);
     }
-    
+
     let compressed_len = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
-    let compressed = cursor.read(compressed_len).ok_or(BinarySerError::NotEnoughBytes)?;
-    
+    let compressed = cursor
+        .read(compressed_len)
+        .ok_or(BinarySerError::NotEnoughBytes)?;
+
     Ok(decompress(compressed, input_len)?)
 }
 
@@ -204,10 +209,9 @@ pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 
 #[cfg(test)]
 mod tests {
-    use proptest::{prop_assert_eq, proptest};
-    use super::*;
-    use super::super::CASES;
+    use super::{super::CASES, *};
     use alloc::format;
+    use proptest::{prop_assert_eq, proptest};
 
     #[test]
     fn test_lz_specific_cases() {
@@ -221,38 +225,38 @@ mod tests {
             assert_eq!(decoded, vec);
         }
     }
-    
-    proptest!{
+
+    proptest! {
         #[test]
         fn proptest_lz_one (v: [u8; 1]) {
             let v = v.to_vec();
-            
+
             let encoded = lz(&v);
             let mut cursor = Cursor::new(&encoded);
             let decoded = un_lz(&mut cursor).unwrap();
-            
+
             prop_assert_eq!(v, decoded);
         }
-        
+
         #[test]
         fn proptest_lz_two (v: [u8; 2]) {
             let v = v.to_vec();
-            
+
             let encoded = lz(&v);
             let mut cursor = Cursor::new(&encoded);
             let decoded = un_lz(&mut cursor).unwrap();
-            
+
             prop_assert_eq!(v, decoded);
         }
-        
+
         #[test]
         fn proptest_lz_ten (v: [u8; 10]) {
             let v = v.to_vec();
-            
+
             let encoded = lz(&v);
             let mut cursor = Cursor::new(&encoded);
             let decoded = un_lz(&mut cursor).unwrap();
-            
+
             prop_assert_eq!(v, decoded);
         }
     }

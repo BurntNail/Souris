@@ -1,9 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::{
-    types::binary::rle::{rle, un_rle},
+    types::binary::{
+        lz::{lz, un_lz},
+        rle::{rle, un_rle},
+    },
     utilities::cursor::Cursor,
 };
-use sourisdb::types::binary::lz::{lz, un_lz};
 
 const EXAMPLE_JSON: &str = include_str!("exampledata.json");
 
@@ -30,7 +32,7 @@ fn rle_and_un_rle(c: &mut Criterion) {
     });
 }
 
-fn lz_and_un_lz (c: &mut Criterion) {
+fn lz_and_un_lz(c: &mut Criterion) {
     c.bench_function("lz", |b| {
         let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
         b.iter(|| {
@@ -41,10 +43,10 @@ fn lz_and_un_lz (c: &mut Criterion) {
 
     c.bench_function("un-lz", |b| {
         let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
-    
+
         let encoded = lz(&binary_data);
         let mut cursor = Cursor::new(&encoded);
-    
+
         b.iter(|| {
             let decoded = un_lz(&mut cursor).unwrap();
             black_box(decoded);
