@@ -12,6 +12,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
+use lz4_flex::block::DecompressError;
 use serde_json::{Map as SJMap, Number, Value as SJValue};
 
 pub mod lz;
@@ -52,6 +53,7 @@ pub enum BinarySerError {
     NoCompressionTypeFound(u8),
     Integer(IntegerSerError),
     NotEnoughBytes,
+    LzFlex(DecompressError)
 }
 
 impl Display for BinarySerError {
@@ -62,6 +64,7 @@ impl Display for BinarySerError {
             }
             Self::Integer(i) => write!(f, "Error parsing integer: {i}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes to deserialize."),
+            Self::LzFlex(e) => write!(f, "Error decompressing LZ: {e}")
         }
     }
 }
@@ -72,6 +75,7 @@ impl std::error::Error for BinarySerError {
         match self {
             Self::NoCompressionTypeFound(_) | Self::NotEnoughBytes => None,
             Self::Integer(i) => Some(i),
+            Self::LzFlex(e) => Some(e),
         }
     }
 }
@@ -79,6 +83,11 @@ impl std::error::Error for BinarySerError {
 impl From<IntegerSerError> for BinarySerError {
     fn from(value: IntegerSerError) -> Self {
         Self::Integer(value)
+    }
+}
+impl From<DecompressError> for BinarySerError {
+    fn from(value: DecompressError) -> Self {
+        Self::LzFlex(value)
     }
 }
 

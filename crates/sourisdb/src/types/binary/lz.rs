@@ -1,16 +1,24 @@
-use crate::{
-    types::{
-        binary::BinarySerError,
-        integer::{Integer, SignedState},
-    },
-    utilities::cursor::Cursor,
-};
-use alloc::{vec, vec::Vec};
-use hashbrown::{HashMap, HashSet};
+use lz4_flex::{compress, compress_prepend_size, decompress};
+use crate::types::binary::BinarySerError;
+use crate::types::integer::{Integer, SignedState};
+use crate::utilities::cursor::Cursor;
 
 const MAX_SLIDING_WINDOW_SIZE: usize = 128;
 
-#[derive(Copy, Clone, Debug)]
+pub fn lz (input: &[u8]) -> Vec<u8> {
+    let mut output = Integer::usize(input.len()).ser().1;
+    output.extend(compress(input));
+    output
+}
+
+pub fn un_lz (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
+    let len: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
+    let compressed = cursor.read(len).ok_or(BinarySerError::NotEnoughBytes)?;
+    Ok(decompress(compressed, len)?)
+}
+
+//leftover from when i tried to actually implement lz, but was very slow
+/*#[derive(Copy, Clone, Debug)]
 enum LzItem {
     Byte(u8),
     Token { offset: usize, length: usize },
@@ -168,6 +176,7 @@ pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 
     Ok(output)
 }
+*/
 
 #[cfg(test)]
 mod tests {
@@ -183,7 +192,6 @@ mod tests {
             &[0],
             &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
             &[0xAB; 10_000],
-            // &[0; MAX_SLIDING_WINDOW_SIZE],
         ];
 
         for case in CASES {
