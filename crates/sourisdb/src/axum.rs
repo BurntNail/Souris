@@ -54,8 +54,7 @@ use crate::{
 impl IntoResponse for Value {
     fn into_response(self) -> Response {
         //TODO: huffman/compression
-        let b = self.ser(None);
-        Bytes::from(b).into_response()
+        Bytes::from(self.ser(None)).into_response()
     }
 }
 
