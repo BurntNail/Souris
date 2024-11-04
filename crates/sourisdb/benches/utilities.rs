@@ -7,13 +7,13 @@ const EXAMPLE_DATA_LINES: usize = usize::MAX;
 fn en_de_code_beemovie(c: &mut Criterion) {
     c.bench_function("create huffman", |b| {
         b.iter(|| {
-            let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+            let huff = Huffman::new_str(EXAMPLE_DATA);
             black_box(huff);
         })
     });
 
     c.bench_function("encode huffman", |b| {
-        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+        let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
         b.iter(|| {
             for line in EXAMPLE_DATA.lines().take(EXAMPLE_DATA_LINES) {
                 let encoded = huff.encode_string(line).unwrap();
@@ -23,7 +23,7 @@ fn en_de_code_beemovie(c: &mut Criterion) {
     });
 
     c.bench_function("decode huffman", |b| {
-        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+        let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
         let data: Bits = EXAMPLE_DATA
             .lines()
             .take(EXAMPLE_DATA_LINES)
@@ -61,7 +61,7 @@ fn ser_de_huffman(c: &mut Criterion) {
 
 fn ser_de_bits(c: &mut Criterion) {
     c.bench_function("serialise bits", |b| {
-        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+        let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
         let data: Bits = EXAMPLE_DATA
             .lines()
             .take(EXAMPLE_DATA_LINES)
@@ -75,7 +75,7 @@ fn ser_de_bits(c: &mut Criterion) {
     });
 
     c.bench_function("deserialise bits", |b| {
-        let huff = unsafe { Huffman::new_str(EXAMPLE_DATA).unwrap_unchecked() };
+        let huff = Huffman::new_str(EXAMPLE_DATA).unwrap();
         let data: Bits = EXAMPLE_DATA
             .lines()
             .take(EXAMPLE_DATA_LINES)
