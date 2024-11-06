@@ -10,6 +10,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use std::ops::Deref;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
@@ -76,13 +77,22 @@ impl SourisState {
     ) -> StatusCode {
         self.db_cache.invalidate(&name).await;
         let mut dbs = self.dbs.lock().await;
-
-        if dbs.contains_key(&name) && !overwrite_existing {
-            return StatusCode::OK;
+        
+        let created_new = dbs.contains_key(&name);
+        let current = dbs.entry(name).or_default();
+        if overwrite_existing {
+            *current = contents;
+        } else {
+            for (k, v) in contents.deref().into_iter() {
+                current.insert(k.clone(), v.clone());
+            }
         }
-
-        dbs.insert(name, contents);
-        StatusCode::CREATED
+        
+        if created_new {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        }
     }
 
     ///returns whether it cleared a database

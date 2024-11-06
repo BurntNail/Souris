@@ -33,7 +33,7 @@ impl AsyncClient {
     ///Create a new asynchronous client using the provided path and port.
     ///
     /// ## Errors
-    /// - [`ClientError::Reqwest`] if there is a non-status related error with Reqwest
+    /// - [`reqwest::Error`] if there is a non-status related error with Reqwest
     /// - [`ClientError::ServerNotHealthy`] if we don't get back a [`StatusCode::OK`] from the server.
     pub async fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
         let path = path.to_string();
@@ -66,7 +66,7 @@ impl AsyncClient {
     ///Get the names of all the databases present in the instance.
     ///
     /// ## Errors
-    /// - [`ClientError::Reqwest`] if there is an error with the HTTP request, or we cannot get the raw bytes out
+    /// - [`reqwest::Error`] if there is an error with the HTTP request, or we cannot get the raw bytes out
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn get_all_dbs(&self) -> Result<Vec<String>, ClientError> {
         Ok(self
@@ -94,7 +94,7 @@ impl AsyncClient {
     /// If it doesn't, then it will be created and `Ok(true)` will be returned.
     ///
     /// ## Errors
-    /// - [`ClientError::Reqwest`] if there is an error with the HTTP request.
+    /// - [`reqwest::Error`] if there is an error with the HTTP request.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn create_new_db(
         &self,
@@ -124,8 +124,8 @@ impl AsyncClient {
     ///
     /// ## Errors
     /// - `[ClientError::HttpErrorCode`] if the database isn't found or another error occurs with the HTTP request.
-    /// - [`ClientError::Reqwest`] if a reqwest error occurs or the bytes cannot be obtained.
-    /// - [`ClientError::Store`] if the store cannot be deserialised from the bytes.
+    /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
+    /// - [`crate::store::StoreSerError`] if the store cannot be deserialised from the bytes.
     pub async fn get_store(&self, db_name: &str) -> Result<Store, ClientError> {
         let rsp = self
             .client
@@ -138,6 +138,17 @@ impl AsyncClient {
         Ok(Store::deser(bytes.as_ref())?)
     }
 
+    ///Adds a new database and immediately inserts the contents of the [`Store`] into it.
+    /// 
+    /// If `overwrite_existing` is true or the store already exists, the server will now have one instance of the provided store with the provided contents.
+    /// 
+    /// If the database already existed, and `overwrite_existing` is false, then the server will append the keys from the provided database into the new one.
+    /// 
+    /// # Errors
+    /// 
+    /// - [`crate::store::StoreSerError`] if we cannot serialise the provided `Store`.
+    /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
+    /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn add_db_with_contents(
         &self,
         overwrite_existing: bool,
@@ -170,6 +181,11 @@ impl AsyncClient {
         })
     }
 
+    ///Adds the given entry to the given database. If that database didn't exist before, it will now.
+    /// 
+    /// # Errors
+    /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
+    /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn add_entry_to_db(
         &self,
         database_name: &str,
@@ -192,6 +208,11 @@ impl AsyncClient {
         })
     }
 
+    ///Removes the entry with the given key from the database.
+    /// 
+    /// # Errors
+    /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
+    /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn remove_entry_from_db(
         &self,
         database_name: &str,
