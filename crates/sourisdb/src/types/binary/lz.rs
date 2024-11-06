@@ -26,9 +26,9 @@ pub fn lz(input: &[u8]) -> Vec<u8> {
 ///Decompresses LZ compressed data
 ///
 /// # Errors
-/// - [`IntegerSerError`] if we cannot deserialise an integer
+/// - [`crate::types::integer::IntegerSerError`] if we cannot deserialise an integer
 /// - [`BinarySerError::NotEnoughBytes`] if there aren't enough bytes
-/// - [`DecompressError`] if we fail to decompress the bytes
+/// - [`lz4_flex::block::DecompressError`] if we fail to decompress the bytes
 pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
     let input_len: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
     if input_len == 0 {
