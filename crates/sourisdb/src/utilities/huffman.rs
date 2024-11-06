@@ -525,10 +525,12 @@ impl Huffman<char> {
         self.root.ser()
     }
 
-    ///Deserialise a [`Cursor`] into a [`Huffman`] using [`Node::deser`]
+    ///Deserialise a [`Cursor`] into a [`Huffman`].
     ///
-    /// ## Errors
-    /// See [`Node::deser`].
+    /// # Errors
+    /// - [`HuffmanSerError::NotEnoughBytes`] if there aren't enough bytes.
+    /// - [`IntegerSerError`] if there is an error deserialising one of the [`Integer`]s.
+    /// - [`HuffmanSerError::InvalidCharacter`] if we find an invalid character. 
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
         let root = Node::deser(bytes)?;
 
