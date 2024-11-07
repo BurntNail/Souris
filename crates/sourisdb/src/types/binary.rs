@@ -20,7 +20,7 @@ use crate::utilities::huffman::HuffmanSerError;
 
 pub mod lz;
 pub mod rle;
-mod huffman;
+pub mod huffman;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BinaryCompression {

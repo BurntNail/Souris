@@ -6,6 +6,7 @@ use sourisdb::{
     },
     utilities::cursor::Cursor,
 };
+use sourisdb::types::binary::huffman::{huffman, un_huffman};
 
 const EXAMPLE_JSON: &str = include_str!("exampledata.json");
 
@@ -55,5 +56,28 @@ fn lz_and_un_lz(c: &mut Criterion) {
     });
 }
 
-criterion_group!(compression, rle_and_un_rle, lz_and_un_lz);
+fn huff_and_un_huff(c: &mut Criterion) {
+    c.bench_function("huff", |b| {
+        let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
+        b.iter(|| {
+            let lz = huffman(&binary_data);
+            black_box(lz);
+        });
+    });
+
+    c.bench_function("un-huff", |b| {
+        let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
+
+        let encoded = huffman(&binary_data);
+        let mut cursor = Cursor::new(&encoded);
+
+        b.iter(|| {
+            let decoded = un_huffman(&mut cursor).unwrap();
+            black_box(decoded);
+            cursor.set_pos(0);
+        })
+    });
+}
+
+criterion_group!(compression, rle_and_un_rle, lz_and_un_lz, huff_and_un_huff);
 criterion_main!(compression);
