@@ -139,6 +139,41 @@ impl<T: PartialEq> Node<T> {
         }
     }
 }
+impl Node<u8> {
+    pub fn ser(&self) -> Vec<u8> {
+        match self {
+            Self::Leaf(ch) => vec![1, *ch], //one means character
+            Self::Branch { left, right } => {
+                let mut res = vec![0]; //null byte means new branch
+                res.extend(left.ser());
+                res.extend(right.ser());
+                res
+            }
+        }
+    }
+    
+    pub fn deser(cursor: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
+        let Some(start) = cursor.next().copied() else {
+            return Err(HuffmanSerError::NotEnoughBytes);
+        };
+        
+        match start {
+            0 => {
+                let left = Box::new(Self::deser(cursor)?);
+                let right = Box::new(Self::deser(cursor)?);
+                Ok(Node::Branch { left, right })
+            },
+            1 => {
+                let Some(byte) = cursor.next().copied() else {
+                    return Err(HuffmanSerError::NotEnoughBytes);
+                };
+
+                Ok(Node::Leaf(byte))
+            }
+            _ => Err(HuffmanSerError::InvalidDiscriminant(start))
+        }
+    }
+}
 impl Node<char> {
     fn ser(&self) -> Vec<u8> {
         match self {
@@ -152,7 +187,7 @@ impl Node<char> {
         }
     }
 
-    fn deser(cursor: &mut Cursor<u8>) -> Result<Node<char>, HuffmanSerError> {
+    fn deser(cursor: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
         let Some(ch) = cursor.next() else {
             return Err(HuffmanSerError::NotEnoughBytes);
         };
@@ -184,6 +219,8 @@ pub enum HuffmanSerError {
     NotEnoughBytes,
     ///The node couldn't be deserialised as an expected character was missing
     InvalidNodeFormat { ex: char, found: u8 },
+    ///We were deserialising nodes with `u8`s, and we found an invalid discriminant for whether the next item was a branch or a leaf
+    InvalidDiscriminant(u8)
 }
 
 impl From<IntegerSerError> for HuffmanSerError {
@@ -207,6 +244,7 @@ impl Display for HuffmanSerError {
                 "Tried to deserialise node, expected: {} ({ex}) but found {found}",
                 *ex as u32
             ),
+            HuffmanSerError::InvalidDiscriminant(b) => write!(f, "Deserialising u8 node tree, expected 0 or 1, found {b}"),
         }
     }
 }
@@ -386,6 +424,30 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     }
 }
 
+impl Huffman<u8> {
+    ///Serialises a [`u8`] huffman tree into bytes
+    pub fn ser (&self) -> Vec<u8> {
+        self.root.ser()
+    }
+
+
+    ///Deserialise a [`Cursor`] into a [`Huffman`].
+    ///
+    /// # Errors
+    /// - [`HuffmanSerError::NotEnoughBytes`] if there aren't enough bytes.
+    /// - [`IntegerSerError`] if there is an error deserialising one of the [`Integer`]s.
+    /// - [`HuffmanSerError::InvalidDiscriminant`] if we find an invalid discriminant in the serialised node tree. 
+    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
+        let root = Node::<u8>::deser(bytes)?;
+
+        let mut to_bits = HashMap::new();
+        Self::add_node_to_table(&root, &mut to_bits, Bits::default());
+
+        Ok(Self { to_bits, root })
+    }
+
+}
+
 impl Huffman<char> {
     ///Create a new huffman code based off a string.
     pub fn new_str(str: impl AsRef<str>) -> Option<Self> {
@@ -543,7 +605,7 @@ impl Huffman<char> {
     /// - [`IntegerSerError`] if there is an error deserialising one of the [`Integer`]s.
     /// - [`HuffmanSerError::InvalidCharacter`] if we find an invalid character. 
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
-        let root = Node::deser(bytes)?;
+        let root = Node::<char>::deser(bytes)?;
 
         let mut to_bits = HashMap::new();
         Self::add_node_to_table(&root, &mut to_bits, Bits::default());
@@ -590,10 +652,10 @@ mod tests {
 
         assert_eq!(data, decoded);
     }
-
+    
     proptest! {
         #[test]
-        fn doesnt_crash (s in "\\PC*") {
+        fn doesnt_crash_string (s in "\\PC*") {
             let _ = Huffman::new_str(s);
         }
 
@@ -628,7 +690,7 @@ mod tests {
             let serialised_huffman = huffman.ser();
             drop(huffman);
 
-            let deserialised_huffman = Huffman::deser(&mut Cursor::new(&serialised_huffman)).expect("unable to deser huffman");
+            let deserialised_huffman = Huffman::<char>::deser(&mut Cursor::new(&serialised_huffman)).expect("unable to deser huffman");
             let deserialised_bits = Bits::deser(&mut Cursor::new(&serialised_bits)).expect("unable to deser huffman");
 
             let decoded = deserialised_huffman.decode_string(deserialised_bits).expect("unable to decode");
