@@ -10,7 +10,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use std::ops::Deref;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
@@ -83,7 +82,7 @@ impl SourisState {
         if overwrite_existing {
             *current = contents;
         } else {
-            for (k, v) in contents.deref() {
+            for (k, v) in &*contents {
                 current.insert(k.clone(), v.clone());
             }
         }
