@@ -12,6 +12,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
+use std::ops::{Deref, DerefMut};
 use lz4_flex::block::DecompressError;
 use serde_json::{Map as SJMap, Number, Value as SJValue};
 
@@ -93,6 +94,33 @@ impl From<DecompressError> for BinarySerError {
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BinaryData(pub Vec<u8>);
+
+impl<T: AsRef<[u8]>> From<T> for BinaryData {
+    fn from(value: T) -> Self {
+        let slice = value.as_ref();
+        let vec = slice.to_vec();
+        Self(vec)
+    }
+}
+
+impl From<BinaryData> for Vec<u8> {
+    fn from(value: BinaryData) -> Self {
+        value.0
+    }
+}
+
+impl Deref for BinaryData {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for BinaryData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl Debug for BinaryData {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {

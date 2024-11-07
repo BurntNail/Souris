@@ -83,7 +83,7 @@ impl SourisState {
         if overwrite_existing {
             *current = contents;
         } else {
-            for (k, v) in contents.deref().into_iter() {
+            for (k, v) in contents.deref() {
                 current.insert(k.clone(), v.clone());
             }
         }
