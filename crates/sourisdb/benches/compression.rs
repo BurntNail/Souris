@@ -8,7 +8,7 @@ use sourisdb::{
 };
 use sourisdb::types::binary::huffman::{huffman, un_huffman};
 
-const EXAMPLE_JSON: &str = include_str!("exampledata.json");
+const EXAMPLE_JSON: &str = include_str!("smallexampledata.json");
 
 fn rle_and_un_rle(c: &mut Criterion) {
     c.bench_function("rle", |b| {
