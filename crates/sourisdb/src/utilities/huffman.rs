@@ -338,6 +338,17 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
 
         Some(Self { to_bits, root })
     }
+    
+    ///Creates a huffman tree using the given data, and immediately encodes the data using it.
+    /// 
+    /// Will return `None` if the provided iterator is empty.
+    #[must_use]
+    pub fn new_and_encode (data: impl Iterator<Item = T> + Clone) -> Option<(Self, Bits)> {
+        let huffman = Self::new(data.clone())?;
+        let encoded = huffman.encode(data)?; //could unwrap_unchecked, but the compiler can probably optimise it away
+        
+        Some((huffman, encoded))
+    }
 
     ///Encode a series of `T`s into a [`Bits`]. Will return `None` if any elements found in the iterator were not included in the original [`Huffman::new`] incantation.
     pub fn encode(&self, from: impl Iterator<Item = T>) -> Option<Bits> {

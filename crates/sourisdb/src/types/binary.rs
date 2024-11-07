@@ -15,15 +15,19 @@ use core::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use lz4_flex::block::DecompressError;
 use serde_json::{Map as SJMap, Number, Value as SJValue};
+use crate::types::binary::huffman::{huffman, un_huffman};
+use crate::utilities::huffman::HuffmanSerError;
 
 pub mod lz;
 pub mod rle;
+mod huffman;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BinaryCompression {
     Nothing,
     RunLengthEncoding,
     LempelZiv,
+    Huffman,
 }
 
 impl From<BinaryCompression> for u8 {
@@ -32,6 +36,7 @@ impl From<BinaryCompression> for u8 {
             BinaryCompression::Nothing => 0,
             BinaryCompression::RunLengthEncoding => 1,
             BinaryCompression::LempelZiv => 2,
+            BinaryCompression::Huffman => 3,
         }
     }
 }
@@ -44,6 +49,7 @@ impl TryFrom<u8> for BinaryCompression {
             0 => Ok(Self::Nothing),
             1 => Ok(Self::RunLengthEncoding),
             2 => Ok(Self::LempelZiv),
+            3 => Ok(Self::Huffman),
             _ => Err(BinarySerError::NoCompressionTypeFound(value)),
         }
     }
@@ -55,6 +61,7 @@ pub enum BinarySerError {
     Integer(IntegerSerError),
     NotEnoughBytes,
     LzFlex(DecompressError),
+    Huffman(HuffmanSerError)
 }
 
 impl Display for BinarySerError {
@@ -66,6 +73,7 @@ impl Display for BinarySerError {
             Self::Integer(i) => write!(f, "Error parsing integer: {i}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes to deserialize."),
             Self::LzFlex(e) => write!(f, "Error decompressing LZ: {e}"),
+            Self::Huffman(e) => write!(f, "Error decompressing huffman: {e}"),
         }
     }
 }
@@ -77,6 +85,7 @@ impl std::error::Error for BinarySerError {
             Self::NoCompressionTypeFound(_) | Self::NotEnoughBytes => None,
             Self::Integer(i) => Some(i),
             Self::LzFlex(e) => Some(e),
+            Self::Huffman(e) => Some(e),
         }
     }
 }
@@ -89,6 +98,11 @@ impl From<IntegerSerError> for BinarySerError {
 impl From<DecompressError> for BinarySerError {
     fn from(value: DecompressError) -> Self {
         Self::LzFlex(value)
+    }
+}
+impl From<HuffmanSerError> for BinarySerError {
+    fn from(value: HuffmanSerError) -> Self {
+        Self::Huffman(value)
     }
 }
 
@@ -168,11 +182,13 @@ impl BinaryData {
         };
         let rle = rle(&self.0);
         let lz = lz(&self.0);
+        let huffman = huffman(&self.0);
 
         [
             (BinaryCompression::Nothing, vanilla),
             (BinaryCompression::RunLengthEncoding, rle),
             (BinaryCompression::LempelZiv, lz),
+            (BinaryCompression::Huffman, huffman)
         ]
         .into_iter()
         .min_by_key(|(_, v)| v.len())
@@ -201,6 +217,7 @@ impl BinaryData {
             }
             BinaryCompression::RunLengthEncoding => Self(un_rle(cursor)?),
             BinaryCompression::LempelZiv => Self(un_lz(cursor)?),
+            BinaryCompression::Huffman => Self(un_huffman(cursor)?)
         })
     }
 }
