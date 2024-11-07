@@ -227,6 +227,13 @@ impl AsyncClient {
         Ok(())
     }
 
+    ///Removes a given database. 
+    /// 
+    /// NB: A 404 code is returned by the daemon if the database cannot be found, which will show up as [`ClientError::HttpErrorCode`].
+    /// 
+    /// # Errors
+    /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
+    /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn remove_db(&self, database_name: &str) -> Result<(), ClientError> {
         self.client
             .post(&format!("http://{}:{}/v1/rm_db", self.path, self.port))
