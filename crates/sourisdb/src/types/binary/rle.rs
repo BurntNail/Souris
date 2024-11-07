@@ -68,7 +68,9 @@ pub fn un_rle(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 
 #[cfg(test)]
 mod tests {
+    use proptest::{prop_assert_eq, proptest};
     use super::{super::CASES, *};
+    use alloc::format;
 
     #[test]
     fn test_rle_specific_cases() {
@@ -80,6 +82,41 @@ mod tests {
             let decoded = un_rle(&mut cursor).unwrap();
 
             assert_eq!(decoded, vec);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_rle_one (v: [u8; 1]) {
+            let v = v.to_vec();
+
+            let encoded = rle(&v);
+            let mut cursor = Cursor::new(&encoded);
+            let decoded = un_rle(&mut cursor).unwrap();
+
+            prop_assert_eq!(v, decoded);
+        }
+
+        #[test]
+        fn proptest_rle_two (v: [u8; 2]) {
+            let v = v.to_vec();
+
+            let encoded = rle(&v);
+            let mut cursor = Cursor::new(&encoded);
+            let decoded = un_rle(&mut cursor).unwrap();
+
+            prop_assert_eq!(v, decoded);
+        }
+
+        #[test]
+        fn proptest_rle_ten (v: [u8; 10]) {
+            let v = v.to_vec();
+
+            let encoded = rle(&v);
+            let mut cursor = Cursor::new(&encoded);
+            let decoded = un_rle(&mut cursor).unwrap();
+
+            prop_assert_eq!(v, decoded);
         }
     }
 }

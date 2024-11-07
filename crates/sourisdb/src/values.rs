@@ -48,6 +48,7 @@ use crate::{
     },
     utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
 };
+use crate::utilities::huffman::HuffmanSerError;
 
 ///The `Value` type used in [`crate::store::Store`]
 #[derive(Clone, Debug)]
@@ -465,10 +466,10 @@ pub enum ValueSerError {
     SerdeCustom(String),
     ///We found a huffman encoded [`String`], but wasn't provided with a huffman tree to decode it.
     NoHuffman,
-    ///We found a huffman encoded [`String`], but couldn't decode it using the provided huffman tree.
-    UnableToDecodeHuffman,
     ///We tried to deserialise some [`BinaryData`], but couldn't.
     BinarySerError(BinarySerError),
+    ///We tried to deserialise some huffman-encoded data, but couldn't
+    HuffmanSerError(HuffmanSerError)
 }
 
 impl Display for ValueSerError {
@@ -491,13 +492,8 @@ impl Display for ValueSerError {
                 f,
                 "Encountered huffman-encoded string with no huffman tree provided"
             ),
-            ValueSerError::UnableToDecodeHuffman => {
-                write!(
-                    f,
-                    "Encountered huffman-encoded string but was unable to decode it"
-                )
-            }
-            ValueSerError::BinarySerError(e) => write!(f, "Error de/serializing binary: {e}"),
+            ValueSerError::BinarySerError(e) => write!(f, "Error deserializing binary: {e}"),
+            ValueSerError::HuffmanSerError(e) => write!(f, "Error deserialising huffman: {e}")
         }
     }
 }
@@ -527,6 +523,11 @@ impl From<BinarySerError> for ValueSerError {
         Self::BinarySerError(value)
     }
 }
+impl From<HuffmanSerError> for ValueSerError {
+    fn from(value: HuffmanSerError) -> Self {
+        Self::HuffmanSerError(value)
+    }
+}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ValueSerError {
@@ -537,6 +538,7 @@ impl std::error::Error for ValueSerError {
             ValueSerError::SerdeJson(e) => Some(e),
             ValueSerError::TzError(e) => Some(e),
             ValueSerError::BinarySerError(e) => Some(e),
+            ValueSerError::HuffmanSerError(e) => Some(e),
             _ => None,
         }
     }
@@ -1071,11 +1073,7 @@ impl Value {
                         return Err(ValueSerError::NoHuffman);
                     };
                     let bits = Bits::deser(bytes)?;
-                    let Some(decoded) = huffman.decode_string(bits) else {
-                        return Err(ValueSerError::UnableToDecodeHuffman);
-                    };
-
-                    Self::String(decoded)
+                    Self::String(huffman.decode_string(bits)?)
                 } else {
                     let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
                     let str_bytes = bytes

@@ -118,7 +118,7 @@ impl Store {
         let mut bytes = Cursor::new(&bytes);
 
         let huffman = if is_huffman_encoded {
-            Some(Huffman::deser(&mut bytes)?)
+            Some(Huffman::<char>::deser(&mut bytes)?)
         } else {
             None
         };

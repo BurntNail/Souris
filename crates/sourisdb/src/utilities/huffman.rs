@@ -72,7 +72,6 @@ use core::{
     fmt::{Display, Formatter},
     hash::Hash,
 };
-
 use hashbrown::HashMap;
 
 use crate::{
@@ -220,7 +219,9 @@ pub enum HuffmanSerError {
     ///The node couldn't be deserialised as an expected character was missing
     InvalidNodeFormat { ex: char, found: u8 },
     ///We were deserialising nodes with `u8`s, and we found an invalid discriminant for whether the next item was a branch or a leaf
-    InvalidDiscriminant(u8)
+    InvalidDiscriminant(u8),
+    ///We tried to decode some bits using the provided [`Huffman`] tree but couldn't.
+    UnableToDecode
 }
 
 impl From<IntegerSerError> for HuffmanSerError {
@@ -245,6 +246,7 @@ impl Display for HuffmanSerError {
                 *ex as u32
             ),
             HuffmanSerError::InvalidDiscriminant(b) => write!(f, "Deserialising u8 node tree, expected 0 or 1, found {b}"),
+            HuffmanSerError::UnableToDecode => write!(f, "Unable to decode given bits using given huffman tree"),
         }
     }
 }
@@ -398,14 +400,14 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     ///Decode a series of `T`s from a [`Bits`]. Will return `None` if a sequence in the `bits` cannot be found in the conversion tables calculated during the original [`Huffman::new`] incantation.
     #[must_use]
     #[allow(clippy::missing_panics_doc)]
-    pub fn decode(&self, bits: Bits) -> Option<Vec<T>> {
+    pub fn decode(&self, bits: Bits) -> Result<Vec<T>, HuffmanSerError> {
         let mut result = Vec::new();
         let mut current_node = &self.root;
 
         for next_direction in bits {
             let new_node;
             match current_node {
-                Node::Leaf(_) => panic!("not sure what happens here lol"),
+                Node::Leaf(_) => unreachable!(),
                 Node::Branch { left, right } => {
                     let found = if next_direction { left } else { right };
                     if let Some(t) = found.leaf_contents().cloned() {
@@ -419,8 +421,12 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
 
             current_node = new_node;
         }
-
-        Some(result)
+        
+        if current_node != &self.root {
+            Err(HuffmanSerError::UnableToDecode)
+        } else {
+            Ok(result)
+        }
     }
 }
 
@@ -584,8 +590,8 @@ impl Huffman<char> {
 
     ///Decode a string from a [`Bits`]. Will return `None` if it cannot parse the [`Bits`].
     #[must_use]
-    pub fn decode_string(&self, bits: Bits) -> Option<String> {
-        Some(self.decode(bits)?.into_iter().collect())
+    pub fn decode_string(&self, bits: Bits) -> Result<String, HuffmanSerError> {
+        Ok(self.decode(bits)?.into_iter().collect())
     }
 
     ///Serialise the huffman tables into a series of bytes using [`Integer::ser`].

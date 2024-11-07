@@ -12,7 +12,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 use lz4_flex::block::DecompressError;
 use serde_json::{Map as SJMap, Number, Value as SJValue};
 use crate::types::binary::huffman::{huffman, un_huffman};
