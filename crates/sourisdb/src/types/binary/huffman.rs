@@ -3,26 +3,52 @@ use crate::utilities::cursor::Cursor;
 use crate::utilities::huffman::{Huffman, HuffmanSerError};
 use alloc::vec;
 use alloc::vec::Vec;
+use itertools::Itertools;
+use crate::types::integer::{Integer, SignedState};
 
 pub fn huffman (input: &[u8]) -> Vec<u8> {
+    if input.is_empty() {
+        return vec![0];
+    } else if input.iter().all_equal() {
+        let mut n = Integer::usize(input.len()).ser().1;
+        n.insert(0, 1);
+        n.push(input[0]);
+        return n;
+    }
+    
     let Some((huffman, encoded)) = Huffman::new_and_encode(input.iter().copied()) else {
-        return vec![];
+        unreachable!("checked for empty input already :)")
     };
     
     let serialised_huffman = huffman.ser();
     let serialised_bits = encoded.ser();
     
-    let mut output = serialised_huffman;
+    let mut output = vec![2];
+    output.extend(serialised_huffman);
     output.extend(serialised_bits);
     
     output
 }
 
 pub fn un_huffman (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, HuffmanSerError> {
-    let huffman = Huffman::<u8>::deser(cursor)?;
-    let bits = Bits::deser(cursor)?;
+    let Some(first_byte) = cursor.next().copied() else {
+        return Err(HuffmanSerError::NotEnoughBytes);
+    };
+    Ok(match first_byte {
+        0 => vec![],
+        1 => {
+            let count: usize = Integer::deser(SignedState::Unsigned, cursor)?.try_into()?;
+            let element = cursor.next().copied().ok_or(HuffmanSerError::NotEnoughBytes)?;
+            vec![element; count]
+        },
+        _ => {
+            let huffman = Huffman::<u8>::deser(cursor)?;
+            let bits = Bits::deser(cursor)?;
 
-    huffman.decode(bits)
+            huffman.decode(bits)?
+        }
+    })
+    
 }
 
 #[cfg(test)]
