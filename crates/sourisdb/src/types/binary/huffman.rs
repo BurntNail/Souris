@@ -16,9 +16,7 @@ pub fn huffman (input: &[u8]) -> Vec<u8> {
         return n;
     }
     
-    let Some((huffman, encoded)) = Huffman::new_and_encode(input.iter().copied()) else {
-        unreachable!("checked for empty input already :)")
-    };
+    let (huffman, encoded) = Huffman::new_and_encode(input.iter().copied()).expect("already checked for empty list");
     
     let serialised_huffman = huffman.ser();
     let serialised_bits = encoded.ser();

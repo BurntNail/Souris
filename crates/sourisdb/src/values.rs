@@ -873,7 +873,7 @@ impl Value {
                 res.extend(bytes.iter());
             }
             Self::String(s) => {
-                let huffman_encoded = huffman.and_then(|x| x.encode_string(s)); //unlikely to not be able to encode, but just in case ;)
+                let huffman_encoded = huffman.and_then(|x| x.encode_string(s).ok()); //unlikely to not be able to encode, but just in case ;)
 
                 if let Some(huffman_encoded) = huffman_encoded {
                     let sered = huffman_encoded.ser();

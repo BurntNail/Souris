@@ -220,8 +220,10 @@ pub enum HuffmanSerError {
     InvalidNodeFormat { ex: char, found: u8 },
     ///We were deserialising nodes with `u8`s, and we found an invalid discriminant for whether the next item was a branch or a leaf
     InvalidDiscriminant(u8),
-    ///We tried to decode some bits using the provided [`Huffman`] tree but couldn't.
-    UnableToDecode
+    ///We tried to encode/decode some bits using the provided [`Huffman`] tree but couldn't.
+    UnableToCode,
+    ///In order to create a node tree, the provided list must not be empty
+    UnableToCreateNodeTree
 }
 
 impl From<IntegerSerError> for HuffmanSerError {
@@ -246,7 +248,8 @@ impl Display for HuffmanSerError {
                 *ex as u32
             ),
             HuffmanSerError::InvalidDiscriminant(b) => write!(f, "Deserialising u8 node tree, expected 0 or 1, found {b}"),
-            HuffmanSerError::UnableToDecode => write!(f, "Unable to decode given bits using given huffman tree"),
+            HuffmanSerError::UnableToCode => write!(f, "Unable to encode/decode given bits using given huffman tree"),
+            HuffmanSerError::UnableToCreateNodeTree => write!(f, "Unable to create node tree with empty input"),
         }
     }
 }
@@ -299,7 +302,7 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     ///Convert an iterator into a node tree where less common elements are more left.
     ///
     /// Can return `None` if there aren't any elements.
-    fn data_to_node_tree(data: impl Iterator<Item = T>) -> Option<Node<T>> {
+    fn data_to_node_tree(data: impl Iterator<Item = T>) -> Result<Node<T>, HuffmanSerError> {
         let mut frequency_table = HashMap::new();
         for ch in data {
             *frequency_table.entry(ch).or_default() += 1_usize;
@@ -312,9 +315,9 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     /// NB: There is no unique-ness requirement in the list - the weights will get added together for the calculations.
     ///
     /// Can return `None` if no elements are provided.
-    fn data_with_frequencies_to_node_tree(data: HashMap<T, usize>) -> Option<Node<T>> {
+    fn data_with_frequencies_to_node_tree(data: HashMap<T, usize>) -> Result<Node<T>, HuffmanSerError> {
         if data.is_empty() {
-            return None;
+            return Err(HuffmanSerError::UnableToCreateNodeTree);
         }
         let mut frequency_table: HashMap<Node<T>, usize> = HashMap::new();
         for (ch, freq) in data {
@@ -327,7 +330,7 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
         loop {
             let (least_frequent_ch, least_frequent_weight) = min_heap.next().unwrap(); //checked for len earlier for first iteration, and pushed at end of previous iteration for i > 0
             let Some((next_least_frequent_ch, next_least_frequent_weight)) = min_heap.next() else {
-                return Some(least_frequent_ch);
+                return Ok(least_frequent_ch);
             };
 
             let new_node = Node::Branch {
@@ -369,36 +372,36 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     ///
     ///Can return `None` if the iterator provided is empty.
     #[must_use]
-    pub fn new(data: impl Iterator<Item = T>) -> Option<Self> {
+    pub fn new(data: impl Iterator<Item = T>) -> Result<Self, HuffmanSerError> {
         let mut to_bits = HashMap::new();
 
         let root = Self::data_to_node_tree(data)?;
 
         Self::add_node_to_table(&root, &mut to_bits, Bits::default());
 
-        Some(Self { to_bits, root })
+        Ok(Self { to_bits, root })
     }
     
     ///Creates a huffman tree using the given data, and immediately encodes the data using it.
     /// 
     /// Will return `None` if the provided iterator is empty.
     #[must_use]
-    pub fn new_and_encode (data: impl Iterator<Item = T> + Clone) -> Option<(Self, Bits)> {
+    pub fn new_and_encode (data: impl Iterator<Item = T> + Clone) -> Result<(Self, Bits), HuffmanSerError> {
         let huffman = Self::new(data.clone())?;
         let encoded = huffman.encode(data)?; //could unwrap_unchecked, but the compiler can probably optimise it away
         
-        Some((huffman, encoded))
+        Ok((huffman, encoded))
     }
 
     ///Encode a series of `T`s into a [`Bits`]. Will return `None` if any elements found in the iterator were not included in the original [`Huffman::new`] incantation.
-    pub fn encode(&self, from: impl Iterator<Item = T>) -> Option<Bits> {
+    pub fn encode(&self, from: impl Iterator<Item = T>) -> Result<Bits, HuffmanSerError> {
         from.into_iter()
             .map(|x| self.to_bits.get(&x).cloned())
             .collect::<Option<_>>()
+            .ok_or(HuffmanSerError::UnableToCode)
     }
 
     ///Decode a series of `T`s from a [`Bits`]. Will return `None` if a sequence in the `bits` cannot be found in the conversion tables calculated during the original [`Huffman::new`] incantation.
-    #[must_use]
     #[allow(clippy::missing_panics_doc)]
     pub fn decode(&self, bits: Bits) -> Result<Vec<T>, HuffmanSerError> {
         let mut result = Vec::new();
@@ -423,7 +426,7 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
         }
         
         if current_node != &self.root {
-            Err(HuffmanSerError::UnableToDecode)
+            Err(HuffmanSerError::UnableToCode)
         } else {
             Ok(result)
         }
@@ -456,7 +459,7 @@ impl Huffman<u8> {
 
 impl Huffman<char> {
     ///Create a new huffman code based off a string.
-    pub fn new_str(str: impl AsRef<str>) -> Option<Self> {
+    pub fn new_str(str: impl AsRef<str>) -> Result<Self, HuffmanSerError> {
         Self::new(str.as_ref().chars())
     }
 
@@ -584,12 +587,11 @@ impl Huffman<char> {
     }
 
     ///Encode a string into a [`Bits`]. Will return `None` if it encounters a new character.
-    pub fn encode_string(&self, str: impl AsRef<str>) -> Option<Bits> {
+    pub fn encode_string(&self, str: impl AsRef<str>) -> Result<Bits, HuffmanSerError> {
         self.encode(str.as_ref().chars())
     }
 
     ///Decode a string from a [`Bits`]. Will return `None` if it cannot parse the [`Bits`].
-    #[must_use]
     pub fn decode_string(&self, bits: Bits) -> Result<String, HuffmanSerError> {
         Ok(self.decode(bits)?.into_iter().collect())
     }
@@ -635,7 +637,7 @@ mod tests {
     #[test]
     fn nodes_from_empty_string() {
         let huffman = Huffman::data_to_node_tree("".chars());
-        assert!(huffman.is_none());
+        assert!(huffman.is_err());
     }
 
     #[test]

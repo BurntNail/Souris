@@ -68,10 +68,10 @@ impl Store {
         add_value_text_to_string(&raw_map, &mut all_text);
 
         let huffman = Huffman::new_str(&all_text);
-        let map = raw_map.ser(huffman.as_ref());
+        let map = raw_map.ser(huffman.as_ref().ok());
 
-        let huffman_exists = huffman.is_some();
-        let mut res = if let Some(huffman) = huffman {
+        let huffman_exists = huffman.is_ok();
+        let mut res = if let Ok(huffman) = huffman {
             huffman.ser()
         } else {
             vec![]
