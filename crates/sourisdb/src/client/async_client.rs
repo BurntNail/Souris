@@ -1,15 +1,4 @@
 //! `async_client` provides an asynchronous client for use with a `sourisd` client.
-//!
-//! When you create a new client using [`AsyncClient::new`], it polls the database's healthcheck endpoint to confirm that the database is running.
-//!
-//! ```rust
-//! use sourisdb::client::{AsyncClient, ClientError};
-//!
-//! async fn get_all_database_names_from_localhost () -> Result<Vec<String>, ClientError> {
-//!     let client = AsyncClient::new("localhost", 7687).await?;
-//!     client.get_all_dbs().await
-//! }
-//! ```
 
 use crate::{client::ClientError, store::Store, values::Value};
 use alloc::{
@@ -20,8 +9,11 @@ use alloc::{
 use core::fmt::Display;
 use http::StatusCode;
 use reqwest::{Client, Response};
+use crate::client::DEFAULT_SOURISD_PORT;
 
 ///A client for interacting with `sourisd` asynchronously.
+/// 
+/// Construct a new one using [`AsyncClient::new`]
 #[derive(Debug, Clone)]
 pub struct AsyncClient {
     path: String,
@@ -30,14 +22,29 @@ pub struct AsyncClient {
 }
 
 impl AsyncClient {
-    ///Create a new asynchronous client using the provided path and port.
-    ///
-    /// ## Errors
-    /// - [`reqwest::Error`] if there is a non-status related error with Reqwest
-    /// - [`ClientError::ServerNotHealthy`] if we don't get back a [`StatusCode::OK`] from the server.
-    pub async fn new(path: impl Display, port: u32) -> Result<Self, ClientError> {
+    ///Create a new asynchronous client using the provided path and port, and then confirms whether that database is alive.
+    /// 
+    /// NB: This is an async and fallible method because if the provided path/port doesn't respond correctly to a healthcheck, then the method will not return a client.
+    /// 
+    ///```rust
+    /// # use sourisdb::client::{AsyncClient, ClientError};
+    /// # async fn client () -> Result<(), ClientError> {
+    /// let client = AsyncClient::new("host.domain.tld", None).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    /// 
+    /// # Arguments
+    /// - The path should either be an IP address or a DNS part, like `127.0.0.1`, `localhost` or `google.com`.
+    /// - The port is optional - if [`None`] is provided, then the default `sourisd` port will be used (7687).
+    /// 
+    /// # Errors
+    /// - [`reqwest::Error`] if there is a non-status related error with [`reqwest`].
+    /// - [`ClientError::ServerNotHealthy`] if we don't get back a [`StatusCode::OK`] from the server when doing the healthcheck.
+    pub async fn new(path: impl Display, port: Option<u32>) -> Result<Self, ClientError> {
         let path = path.to_string();
         let client = Client::new();
+        let port = port.unwrap_or(DEFAULT_SOURISD_PORT);
 
         match client
             .get(&format!("http://{path}:{port}/healthcheck"))
@@ -63,7 +70,25 @@ impl AsyncClient {
         Ok(Self { path, port, client })
     }
 
-    ///Get the names of all the databases present in the instance.
+    ///Get the names of all the databases present in the instance that the client is connected to.
+    /// 
+    ///```rust
+    /// # use sourisdb::client::{AsyncClient, ClientError};
+    /// # async fn get_all_dbs_example () -> Result<(), ClientError> {
+    /// let client = AsyncClient::new("host.domain.tld", None).await?;
+    /// println!("Getting databases");
+    /// match client.get_all_dbs().await {
+    ///    Err(e) => eprintln!("Error getting databases: {e}"),
+    ///    Ok(db_names) => {
+    ///        println!("Found database names:");
+    ///        for name in db_names {
+    ///            println!("\t- {name:?}");
+    ///        }
+    ///    }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// ## Errors
     /// - [`reqwest::Error`] if there is an error with the HTTP request, or we cannot get the raw bytes out
@@ -81,19 +106,29 @@ impl AsyncClient {
             .await?)
     }
 
-    ///Creates a new database in the connected instance with the given name.
+    ///Creates a new database in the connected instance with the given name. Returns whether a new database had to be created.
+    /// 
+    ///```rust
+    /// # use sourisdb::client::{AsyncClient, ClientError};
+    /// # async fn client () -> Result<(), ClientError> {
+    /// let client = AsyncClient::new("host.domain.tld", None).await?;
+    /// client.create_new_db(false, "example_database").await?; //ensures that a database named `example_database` exists.
+    /// client.create_new_db(true, "empty_database").await?; //ensures that an *empty* database called `empty_database` exists.
+    /// # Ok(())
+    /// # }
+    /// ```
+    /// 
+    /// # Arguments
+    /// 
+    /// `name` is just the name of the database to create. NB: The name needs to be valid ASCII and not equal to `meta` as that is reserved.
+    /// 
+    /// |Database already exists|`overwrite_existing`|Behaviour|
+    /// |--|--|--|
+    /// |`false`|`false` or `true`|A new blank database will be created|
+    /// |`true`|`true`|The existing database will be cleared.|
+    /// |`true`|`false`|Nothing happens to the existing database.|
     ///
-    /// ## `overwrite_existing`
-    ///
-    /// If the database already exists, it will be cleared and `Ok(true)` will always be returned in the happy path.
-    ///
-    /// ## !`overwrite_existing`
-    ///
-    /// If the database already exists, it will be left as is and `Ok(false)` will be returned in the happy path.
-    ///
-    /// If it doesn't, then it will be created and `Ok(true)` will be returned.
-    ///
-    /// ## Errors
+    /// # Errors
     /// - [`reqwest::Error`] if there is an error with the HTTP request.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn create_new_db(

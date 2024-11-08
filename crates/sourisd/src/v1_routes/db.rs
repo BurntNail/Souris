@@ -24,11 +24,11 @@ pub struct DbByName {
 pub async fn add_db(
     State(state): State<SourisState>,
     Query(NewDB {
-        db_name: name,
+        db_name,
         overwrite_existing,
     }): Query<NewDB>,
 ) -> Result<StatusCode, SourisError> {
-    state.new_db(name, overwrite_existing).await
+    state.new_db(db_name, overwrite_existing).await
 }
 
 pub async fn add_db_with_content(

@@ -487,7 +487,7 @@ pub enum ValueSerError {
 pub enum InvalidSourisTypeError {
     ///We couldn't find the relevant fields that are neeeded
     NotFound,
-    ///We found the fields, but they were invalid for some reason (eg. the array for [`Value::IPV4Addr`] having some number of elements other than 4)
+    ///We found the fields, but they were invalid for some reason (eg. the array for [`Value::Ipv4Addr`] having some number of elements other than 4)
     InvalidData,
     ///This type should not have a `souris_type` attached.
     NoSourisTypeApplicable,
@@ -579,8 +579,8 @@ impl Value {
     /// - [`Value::Timestamp`]
     /// - [`Value::Timezone`]
     /// - [`Value::Binary`]
-    /// - [`Value::IPV4Addr`]
-    /// - [`Value::IPV6Addr`]
+    /// - [`Value::Ipv4Addr`]
+    /// - [`Value::Ipv6Addr`]
     ///
     /// Since JSON only supports a maximum of 64-bit integers and finite floating point numbers, [`None`] will be returned if either of those are encountered.
     #[allow(clippy::too_many_lines)]
@@ -707,8 +707,8 @@ impl Value {
     /// - [`Value::Timestamp`]
     /// - [`Value::Timezone`]
     /// - [`Value::Binary`]
-    /// - [`Value::IPV4Addr`]
-    /// - [`Value::IPV6Addr`]
+    /// - [`Value::IpV4Addr`]
+    /// - [`Value::Ipv6Addr`]
     #[allow(clippy::too_many_lines)]
     pub fn convert_from_json(val: SJValue) -> Result<Self, ValueSerError> {
         Ok(match val {
@@ -954,7 +954,7 @@ impl Value {
 
     ///Serialises a [`Value`] into bytes.
     ///
-    /// If a [`Huffman`] is passed in, it will be used to serialise the key names in a [`Map`] and all other Strings, including JSON.
+    /// If a [`Huffman`] is passed in, it will be used to serialise the key names in a [`Value::Map`] and all other Strings, including JSON.
     #[allow(clippy::too_many_lines)]
     pub fn ser(&self, huffman: Option<&Huffman<char>>) -> Vec<u8> {
         let mut res = vec![];

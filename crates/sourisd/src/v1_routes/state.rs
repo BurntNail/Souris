@@ -42,7 +42,7 @@ pub struct SourisState {
 impl SourisState {
     ///Create a new database.
     ///
-    /// Returns [`StatusCode::OK`] if an existing database was overwritten, or [`StatusCode::CREATED`] if a new database was created.
+    /// Returns [`StatusCode::OK`] if an existing database was present, or [`StatusCode::CREATED`] if a new database was created.
     ///
     /// ## Errors
     /// - [`SourisError::InvalidDatabaseName`] if the name is not ASCII or the name is `meta`.
@@ -57,14 +57,23 @@ impl SourisState {
         }
 
         let mut dbs = self.dbs.lock().await;
-
-        if dbs.contains_key(&name) && !overwrite_existing {
-            return Ok(StatusCode::OK);
-        }
-        dbs.insert(name.clone(), Store::default());
+        
+        let sc = match dbs.entry(name.clone()) {
+            Entry::Occupied(mut occ) => {
+                if overwrite_existing {
+                    occ.get_mut().clear();
+                }
+                StatusCode::OK
+            }
+            Entry::Vacant(vac) => {
+                vac.insert(Store::default());
+                StatusCode::CREATED
+            }
+        };
+        
         self.db_cache.invalidate(&name).await;
 
-        Ok(StatusCode::CREATED)
+        Ok(sc)
     }
 
     #[tracing::instrument(level = "trace", skip(self, contents))]

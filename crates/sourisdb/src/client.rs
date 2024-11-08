@@ -20,6 +20,8 @@ mod async_client;
 #[cfg(feature = "sync_client")]
 mod sync_client;
 
+pub const DEFAULT_SOURISD_PORT: u32 = 7687;
+
 ///An error which could occur using one of the [`sourisd`] clients.
 #[derive(Debug)]
 pub enum ClientError {
