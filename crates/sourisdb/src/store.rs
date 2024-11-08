@@ -138,7 +138,7 @@ impl Store {
     /// - [`serde_json::Error`] if we cannot parse the JSON.
     pub fn from_json_bytes(json: &[u8]) -> Result<Self, StoreSerError> {
         let val = serde_json::from_slice(json)?;
-        Ok(Self::from_json(val))
+        Self::from_json(val)
     }
 
     #[cfg(feature = "serde")]
@@ -153,7 +153,7 @@ impl Store {
     #[cfg(feature = "serde")]
     pub fn to_bytes(t: &impl serde::Serialize) -> Result<Vec<u8>, StoreSerError> {
         let v = serde_json::to_value(t)?;
-        let s = Self::from_json(v);
+        let s = Self::from_json(v)?;
         s.ser()
     }
 
@@ -175,15 +175,15 @@ impl Store {
     }
 
     #[must_use]
-    pub fn from_json(val: SJValue) -> Self {
-        Self(match Value::convert_from_json(val) {
+    pub fn from_json(val: SJValue) -> Result<Self, StoreSerError> {
+        Ok(Self(match Value::convert_from_json(val)? {
             Value::Map(m) => m,
             v => {
                 let mut map = HashMap::new();
                 map.insert("JSON".into(), v);
                 map
             }
-        })
+        }))
     }
 }
 

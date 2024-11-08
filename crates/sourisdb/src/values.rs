@@ -469,7 +469,25 @@ pub enum ValueSerError {
     ///We tried to deserialise some [`BinaryData`], but couldn't.
     BinarySerError(BinarySerError),
     ///We tried to deserialise some huffman-encoded data, but couldn't
-    HuffmanSerError(HuffmanSerError)
+    HuffmanSerError(HuffmanSerError),
+    ///We tried to deserialise some JSON, found a `souris_type` for some variable, but the contents were invalid
+    InvalidSourisType {
+        ///The `souris_type` we deserialised
+        found: ValueTy,
+        ///The issue with the object
+        cause: InvalidSourisTypeError
+    }
+}
+
+#[derive(Debug)]
+///An error encountered with JSON `souris_type` stuff.
+pub enum InvalidSourisTypeError {
+    ///We couldn't find the relevant fields that are neeeded
+    NotFound,
+    ///We found the fields, but they were invalid for some reason (eg. the array for [`Value::IPV4Addr`] having some number of elements other than 4)
+    InvalidData,
+    ///This type should not have a `souris_type` attached.
+    NoSourisTypeApplicable
 }
 
 impl Display for ValueSerError {
@@ -492,8 +510,9 @@ impl Display for ValueSerError {
                 f,
                 "Encountered huffman-encoded string with no huffman tree provided"
             ),
-            ValueSerError::BinarySerError(e) => write!(f, "Error deserializing binary: {e}"),
-            ValueSerError::HuffmanSerError(e) => write!(f, "Error deserialising huffman: {e}")
+            ValueSerError::BinarySerError(e) => write!(f, "Error deserialising binary: {e}"),
+            ValueSerError::HuffmanSerError(e) => write!(f, "Error deserialising huffman: {e}"),
+            ValueSerError::InvalidSourisType {found, cause} => write!(f, "Error with JSON `souris_type` - was deserialising a {found:?}, but {cause:?}"),
         }
     }
 }
@@ -691,8 +710,8 @@ impl Value {
     /// - [`Value::IPV4Addr`]
     /// - [`Value::IPV6Addr`]
     #[allow(clippy::too_many_lines)]
-    pub fn convert_from_json(val: SJValue) -> Self {
-        match val {
+    pub fn convert_from_json(val: SJValue) -> Result<Self, ValueSerError> {
+        Ok(match val {
             SJValue::Null => Self::Null(()),
             SJValue::Bool(b) => Self::Boolean(b),
             SJValue::Number(n) => {
@@ -707,7 +726,7 @@ impl Value {
             }
             SJValue::String(s) => Value::String(s),
             SJValue::Array(a) => {
-                Value::Array(a.into_iter().map(Value::convert_from_json).collect())
+                Value::Array(a.into_iter().map(Value::convert_from_json).collect::<Result<_, _>>()?)
             }
             SJValue::Object(obj) => {
                 if let Some(SJValue::Number(n)) = obj.get("souris_type").cloned() {
@@ -718,7 +737,7 @@ impl Value {
                         .map(ValueTy::try_from)
                         .and_then(Result::ok)
                     {
-                        match ty {
+                        return match ty {
                             ValueTy::Imaginary => {
                                 if let Some((SJValue::Number(real), SJValue::Number(imaginary))) =
                                     obj.get("real").cloned().zip(obj.get("imaginary").cloned())
@@ -726,32 +745,45 @@ impl Value {
                                     if let Some((real, imaginary)) = Integer::from_json(&real)
                                         .zip(Integer::from_json(&imaginary))
                                     {
-                                        return Value::Imaginary(Imaginary::CartesianForm {
+                                        Ok(Value::Imaginary(Imaginary::CartesianForm {
                                             real,
                                             imaginary,
-                                        });
+                                        }))
+                                    } else {
+                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
                                     }
-                                }
-                                if let Some((SJValue::Number(modulus), SJValue::Number(argument))) =
+                                } else if let Some((SJValue::Number(modulus), SJValue::Number(argument))) =
                                     obj.get("modulus").cloned().zip(obj.get("argument").cloned())
                                 {
                                     if let Some((modulus, argument)) = modulus.as_f64().zip(argument.as_f64()) {
-                                        return Value::Imaginary(Imaginary::PolarForm {modulus, argument});
+                                        Ok(Value::Imaginary(Imaginary::PolarForm { modulus, argument }))
+                                    } else {
+                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
                                     }
+                                } else {
+                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
                                 }
                             }
                             ValueTy::Timestamp => {
                                 if let Some(SJValue::String(timestamp)) = obj.get("timestamp") {
                                     if let Ok(timestamp) = NaiveDateTime::from_str(timestamp) {
-                                        return Value::Timestamp(timestamp);
+                                        Ok(Value::Timestamp(timestamp))
+                                    } else {
+                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
                                     }
+                                } else {
+                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
                                 }
                             }
                             ValueTy::Timezone => {
                                 if let Some(SJValue::String(tz)) = obj.get("timezone") {
                                     if let Ok(tz) = Tz::from_str(tz) {
-                                        return Value::Timezone(tz);
+                                        Ok(Value::Timezone(tz))
+                                    } else {
+                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
                                     }
+                                } else {
+                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
                                 }
                             }
                             ValueTy::Binary => {
@@ -761,8 +793,12 @@ impl Value {
                                         .map(|x| x.as_u64().and_then(|x| u8::try_from(x).ok()))
                                         .collect::<Option<Vec<_>>>()
                                     {
-                                        return Value::Binary(BinaryData(bytes));
+                                        Ok(Value::Binary(BinaryData(bytes)))
+                                    } else {
+                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
                                     }
+                                } else {
+                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
                                 }
                             }
                             ValueTy::Ipv4Addr => {
@@ -773,8 +809,12 @@ impl Value {
                                         .collect::<Option<Vec<_>>>()
                                         .and_then(|x| <[u8; 4]>::try_from(x).ok())
                                     {
-                                        return Value::Ipv4Addr(Ipv4Addr::new(a, b, c, d));
+                                        Ok(Value::Ipv4Addr(Ipv4Addr::new(a, b, c, d)))
+                                    } else {
+                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
                                     }
+                                } else {
+                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
                                 }
                             }
                             ValueTy::Ipv6Addr => {
@@ -785,24 +825,28 @@ impl Value {
                                         .collect::<Option<Vec<_>>>()
                                         .and_then(|x| <[u16; 8]>::try_from(x).ok())
                                     {
-                                        return Value::Ipv6Addr(Ipv6Addr::new(
+                                        Ok(Value::Ipv6Addr(Ipv6Addr::new(
                                             a, b, c, d, e, f, g, h,
-                                        ));
+                                        )))
+                                    } else {
+                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
                                     }
+                                } else {
+                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
                                 }
                             }
-                            _ => {}
+                            _ => Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NoSourisTypeApplicable})
                         }
                     }
                 }
 
                 Self::Map(
                     obj.into_iter()
-                        .map(|(k, v)| (k, Value::convert_from_json(v)))
-                        .collect(),
+                        .map(|(k, v)| Value::convert_from_json(v).map(|v| (k, v)))
+                        .collect::<Result<_, _>>()?,
                 )
             }
-        }
+        })
     }
 }
 
