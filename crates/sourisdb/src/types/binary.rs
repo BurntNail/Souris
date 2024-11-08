@@ -2,25 +2,26 @@ use crate::{
     display_bytes_as_hex_array,
     types::{
         binary::{
+            huffman::{huffman, un_huffman},
             lz::{lz, un_lz},
             rle::{rle, un_rle},
         },
         integer::{Integer, IntegerSerError, SignedState},
     },
-    utilities::cursor::Cursor,
+    utilities::{cursor::Cursor, huffman::HuffmanSerError},
     values::ValueTy,
 };
 use alloc::vec::Vec;
-use core::fmt::{Debug, Display, Formatter};
-use core::ops::{Deref, DerefMut};
+use core::{
+    fmt::{Debug, Display, Formatter},
+    ops::{Deref, DerefMut},
+};
 use lz4_flex::block::DecompressError;
 use serde_json::{Map as SJMap, Number, Value as SJValue};
-use crate::types::binary::huffman::{huffman, un_huffman};
-use crate::utilities::huffman::HuffmanSerError;
 
+pub mod huffman;
 pub mod lz;
 pub mod rle;
-pub mod huffman;
 
 #[derive(Debug, Copy, Clone)]
 pub enum BinaryCompression {
@@ -61,7 +62,7 @@ pub enum BinarySerError {
     Integer(IntegerSerError),
     NotEnoughBytes,
     LzFlex(DecompressError),
-    Huffman(HuffmanSerError)
+    Huffman(HuffmanSerError),
 }
 
 impl Display for BinarySerError {
@@ -188,7 +189,7 @@ impl BinaryData {
             (BinaryCompression::Nothing, vanilla),
             (BinaryCompression::RunLengthEncoding, rle),
             (BinaryCompression::LempelZiv, lz),
-            (BinaryCompression::Huffman, huffman)
+            (BinaryCompression::Huffman, huffman),
         ]
         .into_iter()
         .min_by_key(|(_, v)| v.len())
@@ -217,7 +218,7 @@ impl BinaryData {
             }
             BinaryCompression::RunLengthEncoding => Self(un_rle(cursor)?),
             BinaryCompression::LempelZiv => Self(un_lz(cursor)?),
-            BinaryCompression::Huffman => Self(un_huffman(cursor)?)
+            BinaryCompression::Huffman => Self(un_huffman(cursor)?),
         })
     }
 }
@@ -234,11 +235,11 @@ const CASES: &[&[u8]] = &[
 ];
 
 #[cfg(test)]
-fn test_roundtrip<SER, DESER, DESERE> (input: &[u8], s: SER, d: DESER) 
-where 
+fn test_roundtrip<SER, DESER, DESERE>(input: &[u8], s: SER, d: DESER)
+where
     SER: Fn(&[u8]) -> Vec<u8>,
     DESER: Fn(&mut Cursor<u8>) -> Result<Vec<u8>, DESERE>,
-    DESERE: Debug
+    DESERE: Debug,
 {
     let v = input.to_vec();
     let encoded = s(&v);

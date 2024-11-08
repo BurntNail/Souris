@@ -76,7 +76,7 @@ impl SourisState {
     ) -> StatusCode {
         self.db_cache.invalidate(&name).await;
         let mut dbs = self.dbs.lock().await;
-        
+
         let created_new = dbs.contains_key(&name);
         let current = dbs.entry(name).or_default();
         if overwrite_existing {
@@ -86,7 +86,7 @@ impl SourisState {
                 current.insert(k.clone(), v.clone());
             }
         }
-        
+
         if created_new {
             StatusCode::CREATED
         } else {

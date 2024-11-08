@@ -286,10 +286,10 @@ impl<T: Into<usize>> Index<T> for Bits {
 
 #[cfg(test)]
 mod tests {
+    use crate::utilities::bits::Bits;
     use alloc::{format, string::ToString};
     #[allow(unused_imports)]
     use proptest::{prop_assert, prop_assert_eq, prop_assert_ne};
-    use crate::utilities::bits::Bits;
 
     #[test]
     fn test_display() {

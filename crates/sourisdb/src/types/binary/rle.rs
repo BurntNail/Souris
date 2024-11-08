@@ -68,9 +68,9 @@ pub fn un_rle(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 
 #[cfg(test)]
 mod tests {
-    use proptest::{proptest};
     use super::{super::CASES, *};
     use crate::types::binary::test_roundtrip;
+    use proptest::proptest;
 
     #[test]
     fn test_rle_specific_cases() {

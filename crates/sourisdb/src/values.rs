@@ -1,9 +1,9 @@
 //! This module contains the [`Value`] which is the value in the key-value [`crate::store::Store`].
-//! 
-//! There are 16 variants, each of which stores one kind of item which I consider important. Variants can be constructed directly, by the `Value::xx` methods, or [`From`] implementations. There are also [`From`] implementations for all Rust integer types. 
-//! 
+//!
+//! There are 16 variants, each of which stores one kind of item which I consider important. Variants can be constructed directly, by the `Value::xx` methods, or [`From`] implementations. There are also [`From`] implementations for all Rust integer types.
+//!
 //! Values can be serialised into bytes using the infallible [`Value::ser`] method, and brought back from bytes using [`Value::deser`] (which uses a [`Cursor`]).
-//! 
+//!
 //! ```rust
 //! use sourisdb::utilities::cursor::Cursor;
 //! use sourisdb::values::Value;
@@ -18,7 +18,7 @@
 //! //`serialised` = [182, 49, 65, 1, 0, 242, 150, 245, 1]
 //! let mut cursor = Cursor::new(&serialised); //create a cursor for deserialising
 //! let deserialised = Value::deser(&mut cursor, None).unwrap(); //deserialise without a huffman tree
-//! 
+//!
 //! assert_eq!(example_value_array, deserialised); //order is preserved when serialising arrays
 //! ```
 use alloc::{
@@ -46,9 +46,12 @@ use crate::{
         imaginary::Imaginary,
         integer::{Integer, IntegerSerError, SignedState},
     },
-    utilities::{bits::Bits, cursor::Cursor, huffman::Huffman},
+    utilities::{
+        bits::Bits,
+        cursor::Cursor,
+        huffman::{Huffman, HuffmanSerError},
+    },
 };
-use crate::utilities::huffman::HuffmanSerError;
 
 ///The `Value` type used in [`crate::store::Store`]
 #[derive(Clone, Debug)]
@@ -57,18 +60,18 @@ pub enum Value {
     Character(char),
     ///A string
     String(String),
-    ///A vector of [`u8`]s, wrapped inside a [`BinaryData`], which has [`From`] implementations for anything that can be referenced as a slice of [`u8`]s. 
+    ///A vector of [`u8`]s, wrapped inside a [`BinaryData`], which has [`From`] implementations for anything that can be referenced as a slice of [`u8`]s.
     Binary(BinaryData),
     ///A boolean
     Boolean(bool),
     ///An [`Integer`], which can represent any Rust integer type and has [`From`] methods for all of them.
-    /// 
+    ///
     /// [`Integer`] does not preserve the original type - for example, a [`usize`] with value `1066` could be serialised and deserialised as a [`u16`], or a [`u32`] or any integer type other than [`u8`] or [`i8`] as those could not store that value.
     Integer(Integer),
-    ///An [`Imaginary`] number which can represent both polar and cartesian forms. When serialised, 
+    ///An [`Imaginary`] number which can represent both polar and cartesian forms. When serialised,
     Imaginary(Imaginary),
     ///A point in time represented by [`NaiveDateTime`].
-    /// 
+    ///
     /// NB: Does not record a timezone - if you need times at specific locations, consider also encoding a [`Value::Timezone`].
     Timestamp(NaiveDateTime),
     ///A JSON value represented by [`serde_json::Value`].
@@ -79,12 +82,12 @@ pub enum Value {
     SingleFloat(f32),
     ///A double-precision float.
     DoubleFloat(f64),
-    ///A list of [`Value`]s. 
-    /// 
+    ///A list of [`Value`]s.
+    ///
     /// NB: The order is preserved through serialisation.
     Array(Vec<Value>),
     ///A map of [`String`]s to [`Value`]s.
-    /// 
+    ///
     /// NB: The order is not preserved through serialisation.
     Map(HashMap<String, Value>),
     ///A timezone represented by [`chrono_tz::Tz`].
@@ -135,7 +138,7 @@ macro_rules! as_ty {
                     pub fn [<is_ $name>] (&self) -> bool {
                         matches!(self, Value::$variant(_))
                     }
-                
+
                     ///Create a new [`Value`] with the given contents.
                     #[must_use]
                     pub fn $name (v: $t) -> Self {
@@ -153,7 +156,7 @@ macro_rules! as_ty {
                 let found = value.as_ty();
                 paste::paste!{
                     value.[<to_ $name>]().ok_or(ValueSerError::UnexpectedValueType{
-                        found, 
+                        found,
                         expected: ValueTy::$variant
                     })
                 }
@@ -449,13 +452,13 @@ pub enum ValueSerError {
     ///We tried to deserialise some JSON, but the bytes weren't valid JSON.
     SerdeJson(SJError),
     ///When deserialising one type, we need to immediately deserialise another type, and if the next [`Value`] to deserialise isn't the type we need, this is the error.
-    /// 
+    ///
     /// This error can also appear when using the `TryFrom<Value>` implementations
     UnexpectedValueType {
         ///The type we found
         found: ValueTy,
         ///The type we expected to find
-        expected: ValueTy
+        expected: ValueTy,
     },
     ///We tried to deserialise a [`Tz`], but couldn't.
     TzError(chrono_tz::ParseError),
@@ -475,8 +478,8 @@ pub enum ValueSerError {
         ///The `souris_type` we deserialised
         found: ValueTy,
         ///The issue with the object
-        cause: InvalidSourisTypeError
-    }
+        cause: InvalidSourisTypeError,
+    },
 }
 
 #[derive(Debug)]
@@ -487,7 +490,7 @@ pub enum InvalidSourisTypeError {
     ///We found the fields, but they were invalid for some reason (eg. the array for [`Value::IPV4Addr`] having some number of elements other than 4)
     InvalidData,
     ///This type should not have a `souris_type` attached.
-    NoSourisTypeApplicable
+    NoSourisTypeApplicable,
 }
 
 impl Display for ValueSerError {
@@ -501,7 +504,7 @@ impl Display for ValueSerError {
             ValueSerError::InvalidCharacter => write!(f, "Invalid character provided"),
             ValueSerError::NonUTF8String(e) => write!(f, "Error converting to UTF-8: {e}"),
             ValueSerError::SerdeJson(e) => write!(f, "Error de/ser-ing serde_json: {e}"),
-            ValueSerError::UnexpectedValueType{found, expected} => {
+            ValueSerError::UnexpectedValueType { found, expected } => {
                 write!(f, "Expected {expected:?}, found: {found:?}")
             }
             ValueSerError::TzError(e) => write!(f, "Error parsing timezone: {e}"),
@@ -512,7 +515,10 @@ impl Display for ValueSerError {
             ),
             ValueSerError::BinarySerError(e) => write!(f, "Error deserialising binary: {e}"),
             ValueSerError::HuffmanSerError(e) => write!(f, "Error deserialising huffman: {e}"),
-            ValueSerError::InvalidSourisType {found, cause} => write!(f, "Error with JSON `souris_type` - was deserialising a {found:?}, but {cause:?}"),
+            ValueSerError::InvalidSourisType { found, cause } => write!(
+                f,
+                "Error with JSON `souris_type` - was deserialising a {found:?}, but {cause:?}"
+            ),
         }
     }
 }
@@ -564,10 +570,10 @@ impl std::error::Error for ValueSerError {
 }
 
 impl Value {
-    ///Converts a [`Value`] to a [`serde_json::Value`]. 
-    /// 
+    ///Converts a [`Value`] to a [`serde_json::Value`].
+    ///
     /// If `add_souris_types` is enabled, then some objects will have extra fields that can be used for more accurate conversions back the other way. For example, an [`Imaginary`] number will be read as an [`Imaginary`] number, rather than a [`Value::Map`].
-    /// 
+    ///
     /// The variants which will have the `souris_type`s added are:
     /// - [`Value::Imaginary`]
     /// - [`Value::Timestamp`]
@@ -575,7 +581,7 @@ impl Value {
     /// - [`Value::Binary`]
     /// - [`Value::IPV4Addr`]
     /// - [`Value::IPV6Addr`]
-    /// 
+    ///
     /// Since JSON only supports a maximum of 64-bit integers and finite floating point numbers, [`None`] will be returned if either of those are encountered.
     #[allow(clippy::too_many_lines)]
     #[must_use]
@@ -695,7 +701,7 @@ impl Value {
     }
 
     ///Converts a [`serde_json::Value`] back into a [`Value`]. If `add_souris_types` was enabled, then certain variants will be constructed back into their proper variants. If not, then they will be added as [`Value::Map`]s.
-    /// 
+    ///
     /// Those variants are:
     /// - [`Value::Imaginary`]
     /// - [`Value::Timestamp`]
@@ -719,9 +725,11 @@ impl Value {
                 }
             }
             SJValue::String(s) => Value::String(s),
-            SJValue::Array(a) => {
-                Value::Array(a.into_iter().map(Value::convert_from_json).collect::<Result<_, _>>()?)
-            }
+            SJValue::Array(a) => Value::Array(
+                a.into_iter()
+                    .map(Value::convert_from_json)
+                    .collect::<Result<_, _>>()?,
+            ),
             SJValue::Object(obj) => {
                 if let Some(SJValue::Number(n)) = obj.get("souris_type").cloned() {
                     if let Some(ty) = n
@@ -744,18 +752,37 @@ impl Value {
                                             imaginary,
                                         }))
                                     } else {
-                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
+                                        Err(ValueSerError::InvalidSourisType {
+                                            found: ty,
+                                            cause: InvalidSourisTypeError::InvalidData,
+                                        })
                                     }
-                                } else if let Some((SJValue::Number(modulus), SJValue::Number(argument))) =
-                                    obj.get("modulus").cloned().zip(obj.get("argument").cloned())
+                                } else if let Some((
+                                    SJValue::Number(modulus),
+                                    SJValue::Number(argument),
+                                )) = obj
+                                    .get("modulus")
+                                    .cloned()
+                                    .zip(obj.get("argument").cloned())
                                 {
-                                    if let Some((modulus, argument)) = modulus.as_f64().zip(argument.as_f64()) {
-                                        Ok(Value::Imaginary(Imaginary::PolarForm { modulus, argument }))
+                                    if let Some((modulus, argument)) =
+                                        modulus.as_f64().zip(argument.as_f64())
+                                    {
+                                        Ok(Value::Imaginary(Imaginary::PolarForm {
+                                            modulus,
+                                            argument,
+                                        }))
                                     } else {
-                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
+                                        Err(ValueSerError::InvalidSourisType {
+                                            found: ty,
+                                            cause: InvalidSourisTypeError::InvalidData,
+                                        })
                                     }
                                 } else {
-                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
+                                    Err(ValueSerError::InvalidSourisType {
+                                        found: ty,
+                                        cause: InvalidSourisTypeError::NotFound,
+                                    })
                                 }
                             }
                             ValueTy::Timestamp => {
@@ -763,10 +790,16 @@ impl Value {
                                     if let Ok(timestamp) = NaiveDateTime::from_str(timestamp) {
                                         Ok(Value::Timestamp(timestamp))
                                     } else {
-                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
+                                        Err(ValueSerError::InvalidSourisType {
+                                            found: ty,
+                                            cause: InvalidSourisTypeError::InvalidData,
+                                        })
                                     }
                                 } else {
-                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
+                                    Err(ValueSerError::InvalidSourisType {
+                                        found: ty,
+                                        cause: InvalidSourisTypeError::NotFound,
+                                    })
                                 }
                             }
                             ValueTy::Timezone => {
@@ -774,10 +807,16 @@ impl Value {
                                     if let Ok(tz) = Tz::from_str(tz) {
                                         Ok(Value::Timezone(tz))
                                     } else {
-                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
+                                        Err(ValueSerError::InvalidSourisType {
+                                            found: ty,
+                                            cause: InvalidSourisTypeError::InvalidData,
+                                        })
                                     }
                                 } else {
-                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
+                                    Err(ValueSerError::InvalidSourisType {
+                                        found: ty,
+                                        cause: InvalidSourisTypeError::NotFound,
+                                    })
                                 }
                             }
                             ValueTy::Binary => {
@@ -789,10 +828,16 @@ impl Value {
                                     {
                                         Ok(Value::Binary(BinaryData(bytes)))
                                     } else {
-                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
+                                        Err(ValueSerError::InvalidSourisType {
+                                            found: ty,
+                                            cause: InvalidSourisTypeError::InvalidData,
+                                        })
                                     }
                                 } else {
-                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
+                                    Err(ValueSerError::InvalidSourisType {
+                                        found: ty,
+                                        cause: InvalidSourisTypeError::NotFound,
+                                    })
                                 }
                             }
                             ValueTy::Ipv4Addr => {
@@ -805,10 +850,16 @@ impl Value {
                                     {
                                         Ok(Value::Ipv4Addr(Ipv4Addr::new(a, b, c, d)))
                                     } else {
-                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
+                                        Err(ValueSerError::InvalidSourisType {
+                                            found: ty,
+                                            cause: InvalidSourisTypeError::InvalidData,
+                                        })
                                     }
                                 } else {
-                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
+                                    Err(ValueSerError::InvalidSourisType {
+                                        found: ty,
+                                        cause: InvalidSourisTypeError::NotFound,
+                                    })
                                 }
                             }
                             ValueTy::Ipv6Addr => {
@@ -819,18 +870,25 @@ impl Value {
                                         .collect::<Option<Vec<_>>>()
                                         .and_then(|x| <[u16; 8]>::try_from(x).ok())
                                     {
-                                        Ok(Value::Ipv6Addr(Ipv6Addr::new(
-                                            a, b, c, d, e, f, g, h,
-                                        )))
+                                        Ok(Value::Ipv6Addr(Ipv6Addr::new(a, b, c, d, e, f, g, h)))
                                     } else {
-                                        Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::InvalidData})
+                                        Err(ValueSerError::InvalidSourisType {
+                                            found: ty,
+                                            cause: InvalidSourisTypeError::InvalidData,
+                                        })
                                     }
                                 } else {
-                                    Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NotFound})
+                                    Err(ValueSerError::InvalidSourisType {
+                                        found: ty,
+                                        cause: InvalidSourisTypeError::NotFound,
+                                    })
                                 }
                             }
-                            _ => Err(ValueSerError::InvalidSourisType {found: ty, cause: InvalidSourisTypeError::NoSourisTypeApplicable})
-                        }
+                            _ => Err(ValueSerError::InvalidSourisType {
+                                found: ty,
+                                cause: InvalidSourisTypeError::NoSourisTypeApplicable,
+                            }),
+                        };
                     }
                 }
 
@@ -887,15 +945,15 @@ impl Value {
 
             Ok(len)
         } else {
-            Err(ValueSerError::UnexpectedValueType{
+            Err(ValueSerError::UnexpectedValueType {
                 found: ty,
-                expected: expected_type
+                expected: expected_type,
             })
         }
     }
 
     ///Serialises a [`Value`] into bytes.
-    /// 
+    ///
     /// If a [`Huffman`] is passed in, it will be used to serialise the key names in a [`Map`] and all other Strings, including JSON.
     #[allow(clippy::too_many_lines)]
     pub fn ser(&self, huffman: Option<&Huffman<char>>) -> Vec<u8> {
@@ -1124,7 +1182,7 @@ impl Value {
             ValueTy::JSON => {
                 let val = Value::deser(bytes, huffman)?;
                 let Value::String(s) = val else {
-                    return Err(ValueSerError::UnexpectedValueType{
+                    return Err(ValueSerError::UnexpectedValueType {
                         found: val.as_ty(),
                         expected: ValueTy::String,
                     });

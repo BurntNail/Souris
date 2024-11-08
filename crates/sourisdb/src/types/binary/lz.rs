@@ -210,8 +210,8 @@ pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 #[cfg(test)]
 mod tests {
     use super::{super::CASES, *};
-    use proptest::{proptest};
     use crate::types::binary::test_roundtrip;
+    use proptest::proptest;
 
     #[test]
     fn test_lz_specific_cases() {

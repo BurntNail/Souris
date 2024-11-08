@@ -1,12 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sourisdb::{
     types::binary::{
+        huffman::{huffman, un_huffman},
         lz::{lz, un_lz},
         rle::{rle, un_rle},
     },
     utilities::cursor::Cursor,
 };
-use sourisdb::types::binary::huffman::{huffman, un_huffman};
 
 const EXAMPLE_JSON: &str = include_str!("smallexampledata.json");
 

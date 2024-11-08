@@ -139,13 +139,13 @@ impl AsyncClient {
     }
 
     ///Adds a new database and immediately inserts the contents of the [`Store`] into it.
-    /// 
+    ///
     /// If `overwrite_existing` is true or the store already exists, the server will now have one instance of the provided store with the provided contents.
-    /// 
+    ///
     /// If the database already existed, and `overwrite_existing` is false, then the server will append the keys from the provided database into the new one.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// - [`crate::store::StoreSerError`] if we cannot serialise the provided `Store`.
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
@@ -182,7 +182,7 @@ impl AsyncClient {
     }
 
     ///Adds the given entry to the given database. If that database didn't exist before, it will now.
-    /// 
+    ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
@@ -209,7 +209,7 @@ impl AsyncClient {
     }
 
     ///Removes the entry with the given key from the database.
-    /// 
+    ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
@@ -227,10 +227,10 @@ impl AsyncClient {
         Ok(())
     }
 
-    ///Removes a given database. 
-    /// 
+    ///Removes a given database.
+    ///
     /// NB: A 404 code is returned by the daemon if the database cannot be found, which will show up as [`ClientError::HttpErrorCode`].
-    /// 
+    ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
