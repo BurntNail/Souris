@@ -68,55 +68,36 @@ pub fn un_rle(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 
 #[cfg(test)]
 mod tests {
-    use proptest::{prop_assert_eq, proptest};
+    use proptest::{proptest};
     use super::{super::CASES, *};
-    use alloc::format;
+    use crate::types::binary::test_roundtrip;
 
     #[test]
     fn test_rle_specific_cases() {
         for case in CASES {
-            let vec = case.to_vec();
-
-            let encoded = rle(&vec);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_rle(&mut cursor).unwrap();
-
-            assert_eq!(decoded, vec);
+            test_roundtrip(case, rle, un_rle);
         }
     }
 
     proptest! {
         #[test]
-        fn proptest_rle_one (v: [u8; 1]) {
-            let v = v.to_vec();
-
-            let encoded = rle(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_rle(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        fn proptest_rle_1 (v: [u8; 1]) {
+            test_roundtrip(&v, rle, un_rle);
         }
 
         #[test]
-        fn proptest_rle_two (v: [u8; 2]) {
-            let v = v.to_vec();
-
-            let encoded = rle(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_rle(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        fn proptest_rle_2 (v: [u8; 2]) {
+            test_roundtrip(&v, rle, un_rle);
         }
 
         #[test]
-        fn proptest_rle_ten (v: [u8; 10]) {
-            let v = v.to_vec();
+        fn proptest_rle_10 (v: [u8; 10]) {
+            test_roundtrip(&v, rle, un_rle);
+        }
 
-            let encoded = rle(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_rle(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        #[test]
+        fn proptest_rle_256 (v: [u8; 256]) {
+            test_roundtrip(&v, rle, un_rle);
         }
     }
 }

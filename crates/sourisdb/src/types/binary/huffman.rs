@@ -51,56 +51,37 @@ pub fn un_huffman (cursor: &mut Cursor<u8>) -> Result<Vec<u8>, HuffmanSerError> 
 
 #[cfg(test)]
 mod tests {
-    use super::{super::CASES, *};
-    use alloc::format;
-    use proptest::{prop_assert_eq, proptest};
+    use super::super::CASES;
+    use proptest::{proptest};
     use crate::types::binary::huffman::{huffman, un_huffman};
+    use crate::types::binary::test_roundtrip;
 
     #[test]
     fn test_huff_specific_cases() {
         for case in CASES {
-            let vec = case.to_vec();
-
-            let encoded = huffman(&vec);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_huffman(&mut cursor).unwrap();
-
-            assert_eq!(decoded, vec);
+            test_roundtrip(case, huffman, un_huffman);
         }
     }
 
     proptest! {
         #[test]
-        fn proptest_huff_one (v: [u8; 1]) {
-            let v = v.to_vec();
-
-            let encoded = huffman(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_huffman(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        fn proptest_huffman_1 (v: [u8; 1]) {
+            test_roundtrip(&v, huffman, un_huffman);
         }
 
         #[test]
-        fn proptest_huff_two (v: [u8; 2]) {
-            let v = v.to_vec();
-
-            let encoded = huffman(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_huffman(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        fn proptest_huffman_2 (v: [u8; 2]) {
+            test_roundtrip(&v, huffman, un_huffman);
         }
 
         #[test]
-        fn proptest_huff_ten (v: [u8; 10]) {
-            let v = v.to_vec();
+        fn proptest_huffman_10 (v: [u8; 10]) {
+            test_roundtrip(&v, huffman, un_huffman);
+        }
 
-            let encoded = huffman(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_huffman(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        #[test]
+        fn proptest_huffman_256 (v: [u8; 256]) {
+            test_roundtrip(&v, huffman, un_huffman);
         }
     }
 }

@@ -60,8 +60,8 @@ fn huff_and_un_huff(c: &mut Criterion) {
     c.bench_function("huff", |b| {
         let binary_data = EXAMPLE_JSON.as_bytes().to_vec();
         b.iter(|| {
-            let lz = huffman(&binary_data);
-            black_box(lz);
+            let huff = huffman(&binary_data);
+            black_box(huff);
         });
     });
 

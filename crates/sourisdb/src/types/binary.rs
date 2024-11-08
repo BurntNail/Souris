@@ -232,3 +232,17 @@ const CASES: &[&[u8]] = &[
     &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
     &[0xAB; 10_000],
 ];
+
+#[cfg(test)]
+fn test_roundtrip<SER, DESER, DESERE> (input: &[u8], s: SER, d: DESER) 
+where 
+    SER: Fn(&[u8]) -> Vec<u8>,
+    DESER: Fn(&mut Cursor<u8>) -> Result<Vec<u8>, DESERE>,
+    DESERE: Debug
+{
+    let v = input.to_vec();
+    let encoded = s(&v);
+    let mut cursor = Cursor::new(&encoded);
+    let decoded = d(&mut cursor).unwrap();
+    assert_eq!(v, decoded);
+}
