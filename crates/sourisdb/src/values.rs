@@ -614,13 +614,7 @@ impl Value {
                         obj.insert("imaginary".into(), imaginary.to_json()?);
                     }
                     Imaginary::PolarForm { modulus, argument } => {
-                        let to_json = |float| {
-                            if let Some(n) = Number::from_f64(float) {
-                                Some(SJValue::Number(n))
-                            } else {
-                                None
-                            }
-                        };
+                        let to_json = |float| Number::from_f64(float).map(SJValue::Number);
 
                         obj.insert("modulus".into(), to_json(modulus)?);
                         obj.insert("argument".into(), to_json(argument)?);

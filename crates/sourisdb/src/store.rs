@@ -174,7 +174,6 @@ impl Store {
         ))
     }
 
-    #[must_use]
     pub fn from_json(val: SJValue) -> Result<Self, StoreSerError> {
         Ok(Self(match Value::convert_from_json(val)? {
             Value::Map(m) => m,
