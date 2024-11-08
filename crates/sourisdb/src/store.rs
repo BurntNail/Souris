@@ -68,10 +68,10 @@ impl Store {
         add_value_text_to_string(&raw_map, &mut all_text);
 
         let huffman = Huffman::new_str(&all_text);
-        let map = raw_map.ser(huffman.as_ref());
+        let map = raw_map.ser(huffman.as_ref().ok());
 
-        let huffman_exists = huffman.is_some();
-        let mut res = if let Some(huffman) = huffman {
+        let huffman_exists = huffman.is_ok();
+        let mut res = if let Ok(huffman) = huffman {
             huffman.ser()
         } else {
             vec![]
@@ -118,7 +118,7 @@ impl Store {
         let mut bytes = Cursor::new(&bytes);
 
         let huffman = if is_huffman_encoded {
-            Some(Huffman::deser(&mut bytes)?)
+            Some(Huffman::<char>::deser(&mut bytes)?)
         } else {
             None
         };
@@ -138,7 +138,7 @@ impl Store {
     /// - [`serde_json::Error`] if we cannot parse the JSON.
     pub fn from_json_bytes(json: &[u8]) -> Result<Self, StoreSerError> {
         let val = serde_json::from_slice(json)?;
-        Ok(Self::from_json(val))
+        Self::from_json(val)
     }
 
     #[cfg(feature = "serde")]
@@ -153,7 +153,7 @@ impl Store {
     #[cfg(feature = "serde")]
     pub fn to_bytes(t: &impl serde::Serialize) -> Result<Vec<u8>, StoreSerError> {
         let v = serde_json::to_value(t)?;
-        let s = Self::from_json(v);
+        let s = Self::from_json(v)?;
         s.ser()
     }
 
@@ -174,16 +174,15 @@ impl Store {
         ))
     }
 
-    #[must_use]
-    pub fn from_json(val: SJValue) -> Self {
-        Self(match Value::convert_from_json(val) {
+    pub fn from_json(val: SJValue) -> Result<Self, StoreSerError> {
+        Ok(Self(match Value::convert_from_json(val)? {
             Value::Map(m) => m,
             v => {
                 let mut map = HashMap::new();
                 map.insert("JSON".into(), v);
                 map
             }
-        })
+        }))
     }
 }
 

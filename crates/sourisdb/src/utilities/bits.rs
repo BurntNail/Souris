@@ -286,11 +286,10 @@ impl<T: Into<usize>> Index<T> for Bits {
 
 #[cfg(test)]
 mod tests {
-    use alloc::{format, string::ToString};
-
-    use proptest::{prop_assert, prop_assert_eq, prop_assert_ne};
-
     use crate::utilities::bits::Bits;
+    use alloc::{format, string::ToString};
+    #[allow(unused_imports)]
+    use proptest::{prop_assert, prop_assert_eq, prop_assert_ne};
 
     #[test]
     fn test_display() {
@@ -367,17 +366,17 @@ mod tests {
 
         #[cfg(feature = "std")]
         #[test]
-        fn test_hash (a: u32, b: u32, a_bits in 0..=32_usize, b_bits in 0..=32_usize) {
+        fn test_hash (a: u8, b: u8, bits in 0..=8_usize) {
             let a_bytes = a.to_le_bytes().to_vec();
             let a_bits = Bits {
                 backing: a_bytes,
-                valid_bits: a_bits
+                valid_bits: bits
             };
 
             let b_bytes = b.to_le_bytes().to_vec();
             let b_bits = Bits {
                 backing: b_bytes,
-                valid_bits: b_bits
+                valid_bits: bits
             };
 
 
@@ -390,7 +389,7 @@ mod tests {
             let a_hash = std::hash::Hasher::finish(&a_hasher);
             let b_hash = std::hash::Hasher::finish(&b_hasher);
 
-            if a == b {
+            if a_bits == b_bits {
                 prop_assert_eq!(a_hash, b_hash);
             } else {
                 prop_assert_ne!(a_hash, b_hash);

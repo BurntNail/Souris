@@ -69,17 +69,35 @@ pub fn un_rle(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 #[cfg(test)]
 mod tests {
     use super::{super::CASES, *};
+    use crate::types::binary::test_roundtrip;
+    use proptest::proptest;
 
     #[test]
     fn test_rle_specific_cases() {
         for case in CASES {
-            let vec = case.to_vec();
+            test_roundtrip(case, rle, un_rle);
+        }
+    }
 
-            let encoded = rle(&vec);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_rle(&mut cursor).unwrap();
+    proptest! {
+        #[test]
+        fn proptest_rle_1 (v: [u8; 1]) {
+            test_roundtrip(&v, rle, un_rle);
+        }
 
-            assert_eq!(decoded, vec);
+        #[test]
+        fn proptest_rle_2 (v: [u8; 2]) {
+            test_roundtrip(&v, rle, un_rle);
+        }
+
+        #[test]
+        fn proptest_rle_10 (v: [u8; 10]) {
+            test_roundtrip(&v, rle, un_rle);
+        }
+
+        #[test]
+        fn proptest_rle_256 (v: [u8; 256]) {
+            test_roundtrip(&v, rle, un_rle);
         }
     }
 }

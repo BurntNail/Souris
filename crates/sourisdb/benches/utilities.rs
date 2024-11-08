@@ -46,7 +46,7 @@ fn ser_de_huffman(c: &mut Criterion) {
 
         b.iter(|| {
             let mut cursor = Cursor::new(&sered);
-            let desered = Huffman::deser(&mut cursor).unwrap();
+            let desered = Huffman::<char>::deser(&mut cursor).unwrap();
             black_box(desered);
         });
     });

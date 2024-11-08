@@ -2,19 +2,24 @@ use crate::{
     display_bytes_as_hex_array,
     types::{
         binary::{
+            huffman::{huffman, un_huffman},
             lz::{lz, un_lz},
             rle::{rle, un_rle},
         },
         integer::{Integer, IntegerSerError, SignedState},
     },
-    utilities::cursor::Cursor,
+    utilities::{cursor::Cursor, huffman::HuffmanSerError},
     values::ValueTy,
 };
 use alloc::vec::Vec;
-use core::fmt::{Debug, Display, Formatter};
+use core::{
+    fmt::{Debug, Display, Formatter},
+    ops::{Deref, DerefMut},
+};
 use lz4_flex::block::DecompressError;
 use serde_json::{Map as SJMap, Number, Value as SJValue};
 
+pub mod huffman;
 pub mod lz;
 pub mod rle;
 
@@ -23,6 +28,7 @@ pub enum BinaryCompression {
     Nothing,
     RunLengthEncoding,
     LempelZiv,
+    Huffman,
 }
 
 impl From<BinaryCompression> for u8 {
@@ -31,6 +37,7 @@ impl From<BinaryCompression> for u8 {
             BinaryCompression::Nothing => 0,
             BinaryCompression::RunLengthEncoding => 1,
             BinaryCompression::LempelZiv => 2,
+            BinaryCompression::Huffman => 3,
         }
     }
 }
@@ -43,6 +50,7 @@ impl TryFrom<u8> for BinaryCompression {
             0 => Ok(Self::Nothing),
             1 => Ok(Self::RunLengthEncoding),
             2 => Ok(Self::LempelZiv),
+            3 => Ok(Self::Huffman),
             _ => Err(BinarySerError::NoCompressionTypeFound(value)),
         }
     }
@@ -54,6 +62,7 @@ pub enum BinarySerError {
     Integer(IntegerSerError),
     NotEnoughBytes,
     LzFlex(DecompressError),
+    Huffman(HuffmanSerError),
 }
 
 impl Display for BinarySerError {
@@ -65,6 +74,7 @@ impl Display for BinarySerError {
             Self::Integer(i) => write!(f, "Error parsing integer: {i}"),
             Self::NotEnoughBytes => write!(f, "Not enough bytes to deserialize."),
             Self::LzFlex(e) => write!(f, "Error decompressing LZ: {e}"),
+            Self::Huffman(e) => write!(f, "Error decompressing huffman: {e}"),
         }
     }
 }
@@ -76,6 +86,7 @@ impl std::error::Error for BinarySerError {
             Self::NoCompressionTypeFound(_) | Self::NotEnoughBytes => None,
             Self::Integer(i) => Some(i),
             Self::LzFlex(e) => Some(e),
+            Self::Huffman(e) => Some(e),
         }
     }
 }
@@ -90,9 +101,41 @@ impl From<DecompressError> for BinarySerError {
         Self::LzFlex(value)
     }
 }
+impl From<HuffmanSerError> for BinarySerError {
+    fn from(value: HuffmanSerError) -> Self {
+        Self::Huffman(value)
+    }
+}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BinaryData(pub Vec<u8>);
+
+impl<T: AsRef<[u8]>> From<T> for BinaryData {
+    fn from(value: T) -> Self {
+        let slice = value.as_ref();
+        let vec = slice.to_vec();
+        Self(vec)
+    }
+}
+
+impl From<BinaryData> for Vec<u8> {
+    fn from(value: BinaryData) -> Self {
+        value.0
+    }
+}
+
+impl Deref for BinaryData {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for BinaryData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl Debug for BinaryData {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -140,11 +183,13 @@ impl BinaryData {
         };
         let rle = rle(&self.0);
         let lz = lz(&self.0);
+        let huffman = huffman(&self.0);
 
         [
             (BinaryCompression::Nothing, vanilla),
             (BinaryCompression::RunLengthEncoding, rle),
             (BinaryCompression::LempelZiv, lz),
+            (BinaryCompression::Huffman, huffman),
         ]
         .into_iter()
         .min_by_key(|(_, v)| v.len())
@@ -173,6 +218,7 @@ impl BinaryData {
             }
             BinaryCompression::RunLengthEncoding => Self(un_rle(cursor)?),
             BinaryCompression::LempelZiv => Self(un_lz(cursor)?),
+            BinaryCompression::Huffman => Self(un_huffman(cursor)?),
         })
     }
 }
@@ -187,3 +233,17 @@ const CASES: &[&[u8]] = &[
     &[0x12, 0x12, 0x12, 0xDE, 0xAD, 0xBE, 0xEF],
     &[0xAB; 10_000],
 ];
+
+#[cfg(test)]
+fn test_roundtrip<SER, DESER, DESERE>(input: &[u8], s: SER, d: DESER)
+where
+    SER: Fn(&[u8]) -> Vec<u8>,
+    DESER: Fn(&mut Cursor<u8>) -> Result<Vec<u8>, DESERE>,
+    DESERE: Debug,
+{
+    let v = input.to_vec();
+    let encoded = s(&v);
+    let mut cursor = Cursor::new(&encoded);
+    let decoded = d(&mut cursor).unwrap();
+    assert_eq!(v, decoded);
+}

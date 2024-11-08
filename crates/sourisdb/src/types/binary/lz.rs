@@ -210,54 +210,35 @@ pub fn un_lz(cursor: &mut Cursor<u8>) -> Result<Vec<u8>, BinarySerError> {
 #[cfg(test)]
 mod tests {
     use super::{super::CASES, *};
-    use alloc::format;
-    use proptest::{prop_assert_eq, proptest};
+    use crate::types::binary::test_roundtrip;
+    use proptest::proptest;
 
     #[test]
     fn test_lz_specific_cases() {
         for case in CASES {
-            let vec = case.to_vec();
-
-            let encoded = lz(&vec);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_lz(&mut cursor).unwrap();
-
-            assert_eq!(decoded, vec);
+            test_roundtrip(case, lz, un_lz);
         }
     }
 
     proptest! {
         #[test]
-        fn proptest_lz_one (v: [u8; 1]) {
-            let v = v.to_vec();
-
-            let encoded = lz(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_lz(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        fn proptest_lz_1 (v: [u8; 1]) {
+            test_roundtrip(&v, lz, un_lz);
         }
 
         #[test]
-        fn proptest_lz_two (v: [u8; 2]) {
-            let v = v.to_vec();
-
-            let encoded = lz(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_lz(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        fn proptest_lz_2 (v: [u8; 2]) {
+            test_roundtrip(&v, lz, un_lz);
         }
 
         #[test]
-        fn proptest_lz_ten (v: [u8; 10]) {
-            let v = v.to_vec();
+        fn proptest_lz_10 (v: [u8; 10]) {
+            test_roundtrip(&v, lz, un_lz);
+        }
 
-            let encoded = lz(&v);
-            let mut cursor = Cursor::new(&encoded);
-            let decoded = un_lz(&mut cursor).unwrap();
-
-            prop_assert_eq!(v, decoded);
+        #[test]
+        fn proptest_lz_256 (v: [u8; 256]) {
+            test_roundtrip(&v, lz, un_lz);
         }
     }
 }

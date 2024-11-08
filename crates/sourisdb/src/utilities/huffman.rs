@@ -72,7 +72,6 @@ use core::{
     fmt::{Display, Formatter},
     hash::Hash,
 };
-
 use hashbrown::HashMap;
 
 use crate::{
@@ -139,6 +138,41 @@ impl<T: PartialEq> Node<T> {
         }
     }
 }
+impl Node<u8> {
+    pub fn ser(&self) -> Vec<u8> {
+        match self {
+            Self::Leaf(ch) => vec![1, *ch], //one means character
+            Self::Branch { left, right } => {
+                let mut res = vec![0]; //null byte means new branch
+                res.extend(left.ser());
+                res.extend(right.ser());
+                res
+            }
+        }
+    }
+
+    pub fn deser(cursor: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
+        let Some(start) = cursor.next().copied() else {
+            return Err(HuffmanSerError::NotEnoughBytes);
+        };
+
+        match start {
+            0 => {
+                let left = Box::new(Self::deser(cursor)?);
+                let right = Box::new(Self::deser(cursor)?);
+                Ok(Node::Branch { left, right })
+            }
+            1 => {
+                let Some(byte) = cursor.next().copied() else {
+                    return Err(HuffmanSerError::NotEnoughBytes);
+                };
+
+                Ok(Node::Leaf(byte))
+            }
+            _ => Err(HuffmanSerError::InvalidDiscriminant(start)),
+        }
+    }
+}
 impl Node<char> {
     fn ser(&self) -> Vec<u8> {
         match self {
@@ -152,7 +186,7 @@ impl Node<char> {
         }
     }
 
-    fn deser(cursor: &mut Cursor<u8>) -> Result<Node<char>, HuffmanSerError> {
+    fn deser(cursor: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
         let Some(ch) = cursor.next() else {
             return Err(HuffmanSerError::NotEnoughBytes);
         };
@@ -184,6 +218,12 @@ pub enum HuffmanSerError {
     NotEnoughBytes,
     ///The node couldn't be deserialised as an expected character was missing
     InvalidNodeFormat { ex: char, found: u8 },
+    ///We were deserialising nodes with `u8`s, and we found an invalid discriminant for whether the next item was a branch or a leaf
+    InvalidDiscriminant(u8),
+    ///We tried to encode/decode some bits using the provided [`Huffman`] tree but couldn't.
+    UnableToCode,
+    ///In order to create a node tree, the provided list must not be empty
+    UnableToCreateNodeTree,
 }
 
 impl From<IntegerSerError> for HuffmanSerError {
@@ -207,6 +247,16 @@ impl Display for HuffmanSerError {
                 "Tried to deserialise node, expected: {} ({ex}) but found {found}",
                 *ex as u32
             ),
+            HuffmanSerError::InvalidDiscriminant(b) => {
+                write!(f, "Deserialising u8 node tree, expected 0 or 1, found {b}")
+            }
+            HuffmanSerError::UnableToCode => write!(
+                f,
+                "Unable to encode/decode given bits using given huffman tree"
+            ),
+            HuffmanSerError::UnableToCreateNodeTree => {
+                write!(f, "Unable to create node tree with empty input")
+            }
         }
     }
 }
@@ -259,7 +309,7 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     ///Convert an iterator into a node tree where less common elements are more left.
     ///
     /// Can return `None` if there aren't any elements.
-    fn data_to_node_tree(data: impl Iterator<Item = T>) -> Option<Node<T>> {
+    fn data_to_node_tree(data: impl Iterator<Item = T>) -> Result<Node<T>, HuffmanSerError> {
         let mut frequency_table = HashMap::new();
         for ch in data {
             *frequency_table.entry(ch).or_default() += 1_usize;
@@ -272,9 +322,11 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     /// NB: There is no unique-ness requirement in the list - the weights will get added together for the calculations.
     ///
     /// Can return `None` if no elements are provided.
-    fn data_with_frequencies_to_node_tree(data: HashMap<T, usize>) -> Option<Node<T>> {
+    fn data_with_frequencies_to_node_tree(
+        data: HashMap<T, usize>,
+    ) -> Result<Node<T>, HuffmanSerError> {
         if data.is_empty() {
-            return None;
+            return Err(HuffmanSerError::UnableToCreateNodeTree);
         }
         let mut frequency_table: HashMap<Node<T>, usize> = HashMap::new();
         for (ch, freq) in data {
@@ -287,7 +339,7 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
         loop {
             let (least_frequent_ch, least_frequent_weight) = min_heap.next().unwrap(); //checked for len earlier for first iteration, and pushed at end of previous iteration for i > 0
             let Some((next_least_frequent_ch, next_least_frequent_weight)) = min_heap.next() else {
-                return Some(least_frequent_ch);
+                return Ok(least_frequent_ch);
             };
 
             let new_node = Node::Branch {
@@ -329,34 +381,47 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
     ///
     ///Can return `None` if the iterator provided is empty.
     #[must_use]
-    pub fn new(data: impl Iterator<Item = T>) -> Option<Self> {
+    pub fn new(data: impl Iterator<Item = T>) -> Result<Self, HuffmanSerError> {
         let mut to_bits = HashMap::new();
 
         let root = Self::data_to_node_tree(data)?;
 
         Self::add_node_to_table(&root, &mut to_bits, Bits::default());
 
-        Some(Self { to_bits, root })
+        Ok(Self { to_bits, root })
+    }
+
+    ///Creates a huffman tree using the given data, and immediately encodes the data using it.
+    ///
+    /// Will return `None` if the provided iterator is empty.
+    #[must_use]
+    pub fn new_and_encode(
+        data: impl Iterator<Item = T> + Clone,
+    ) -> Result<(Self, Bits), HuffmanSerError> {
+        let huffman = Self::new(data.clone())?;
+        let encoded = huffman.encode(data)?; //could unwrap_unchecked, but the compiler can probably optimise it away
+
+        Ok((huffman, encoded))
     }
 
     ///Encode a series of `T`s into a [`Bits`]. Will return `None` if any elements found in the iterator were not included in the original [`Huffman::new`] incantation.
-    pub fn encode(&self, from: impl Iterator<Item = T>) -> Option<Bits> {
+    pub fn encode(&self, from: impl Iterator<Item = T>) -> Result<Bits, HuffmanSerError> {
         from.into_iter()
             .map(|x| self.to_bits.get(&x).cloned())
             .collect::<Option<_>>()
+            .ok_or(HuffmanSerError::UnableToCode)
     }
 
     ///Decode a series of `T`s from a [`Bits`]. Will return `None` if a sequence in the `bits` cannot be found in the conversion tables calculated during the original [`Huffman::new`] incantation.
-    #[must_use]
     #[allow(clippy::missing_panics_doc)]
-    pub fn decode(&self, bits: Bits) -> Option<Vec<T>> {
+    pub fn decode(&self, bits: Bits) -> Result<Vec<T>, HuffmanSerError> {
         let mut result = Vec::new();
         let mut current_node = &self.root;
 
         for next_direction in bits {
             let new_node;
             match current_node {
-                Node::Leaf(_) => panic!("not sure what happens here lol"),
+                Node::Leaf(_) => unreachable!(),
                 Node::Branch { left, right } => {
                     let found = if next_direction { left } else { right };
                     if let Some(t) = found.leaf_contents().cloned() {
@@ -371,13 +436,39 @@ impl<T: Eq + Hash + Clone> Huffman<T> {
             current_node = new_node;
         }
 
-        Some(result)
+        if current_node != &self.root {
+            Err(HuffmanSerError::UnableToCode)
+        } else {
+            Ok(result)
+        }
+    }
+}
+
+impl Huffman<u8> {
+    ///Serialises a [`u8`] huffman tree into bytes
+    pub fn ser(&self) -> Vec<u8> {
+        self.root.ser()
+    }
+
+    ///Deserialise a [`Cursor`] into a [`Huffman`].
+    ///
+    /// # Errors
+    /// - [`HuffmanSerError::NotEnoughBytes`] if there aren't enough bytes.
+    /// - [`IntegerSerError`] if there is an error deserialising one of the [`Integer`]s.
+    /// - [`HuffmanSerError::InvalidDiscriminant`] if we find an invalid discriminant in the serialised node tree.
+    pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
+        let root = Node::<u8>::deser(bytes)?;
+
+        let mut to_bits = HashMap::new();
+        Self::add_node_to_table(&root, &mut to_bits, Bits::default());
+
+        Ok(Self { to_bits, root })
     }
 }
 
 impl Huffman<char> {
     ///Create a new huffman code based off a string.
-    pub fn new_str(str: impl AsRef<str>) -> Option<Self> {
+    pub fn new_str(str: impl AsRef<str>) -> Result<Self, HuffmanSerError> {
         Self::new(str.as_ref().chars())
     }
 
@@ -505,14 +596,13 @@ impl Huffman<char> {
     }
 
     ///Encode a string into a [`Bits`]. Will return `None` if it encounters a new character.
-    pub fn encode_string(&self, str: impl AsRef<str>) -> Option<Bits> {
+    pub fn encode_string(&self, str: impl AsRef<str>) -> Result<Bits, HuffmanSerError> {
         self.encode(str.as_ref().chars())
     }
 
     ///Decode a string from a [`Bits`]. Will return `None` if it cannot parse the [`Bits`].
-    #[must_use]
-    pub fn decode_string(&self, bits: Bits) -> Option<String> {
-        Some(self.decode(bits)?.into_iter().collect())
+    pub fn decode_string(&self, bits: Bits) -> Result<String, HuffmanSerError> {
+        Ok(self.decode(bits)?.into_iter().collect())
     }
 
     ///Serialise the huffman tables into a series of bytes using [`Integer::ser`].
@@ -530,9 +620,9 @@ impl Huffman<char> {
     /// # Errors
     /// - [`HuffmanSerError::NotEnoughBytes`] if there aren't enough bytes.
     /// - [`IntegerSerError`] if there is an error deserialising one of the [`Integer`]s.
-    /// - [`HuffmanSerError::InvalidCharacter`] if we find an invalid character. 
+    /// - [`HuffmanSerError::InvalidCharacter`] if we find an invalid character.
     pub fn deser(bytes: &mut Cursor<u8>) -> Result<Self, HuffmanSerError> {
-        let root = Node::deser(bytes)?;
+        let root = Node::<char>::deser(bytes)?;
 
         let mut to_bits = HashMap::new();
         Self::add_node_to_table(&root, &mut to_bits, Bits::default());
@@ -556,7 +646,7 @@ mod tests {
     #[test]
     fn nodes_from_empty_string() {
         let huffman = Huffman::data_to_node_tree("".chars());
-        assert!(huffman.is_none());
+        assert!(huffman.is_err());
     }
 
     #[test]
@@ -582,7 +672,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn doesnt_crash (s in "\\PC*") {
+        fn doesnt_crash_string (s in "\\PC*") {
             let _ = Huffman::new_str(s);
         }
 
@@ -617,7 +707,7 @@ mod tests {
             let serialised_huffman = huffman.ser();
             drop(huffman);
 
-            let deserialised_huffman = Huffman::deser(&mut Cursor::new(&serialised_huffman)).expect("unable to deser huffman");
+            let deserialised_huffman = Huffman::<char>::deser(&mut Cursor::new(&serialised_huffman)).expect("unable to deser huffman");
             let deserialised_bits = Bits::deser(&mut Cursor::new(&serialised_bits)).expect("unable to deser huffman");
 
             let decoded = deserialised_huffman.decode_string(deserialised_bits).expect("unable to decode");
