@@ -9,7 +9,7 @@
 use crate::{store::StoreSerError, values::ValueSerError};
 use core::fmt::{Display, Formatter};
 use http::StatusCode;
-
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "async_client")]
 pub use async_client::AsyncClient;
 #[cfg(feature = "sync_client")]
@@ -19,6 +19,36 @@ pub use sync_client::SyncClient;
 mod async_client;
 #[cfg(feature = "sync_client")]
 mod sync_client;
+
+const fn bool_to_string (b: bool) -> &'static str {
+    if b {
+        "true"
+    } else {
+        "false"
+    }
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
+pub enum CreationResult {
+    InsertedKeyIntoExistingDB,
+    OverwroteKeyInExistingDB,
+    FoundExistingKey,
+    InsertedKeyIntoNewDB,
+    UnableToFindDB,
+}
+
+impl Display for CreationResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let txt = match self {
+            Self::InsertedKeyIntoExistingDB => "Added new key to existing database",
+            Self::OverwroteKeyInExistingDB => "Overwrote existing key in existing database",
+            Self::FoundExistingKey => "Found existing key in existing database, didn't overwrite",
+            Self::InsertedKeyIntoNewDB => "Added new key to new database",
+            Self::UnableToFindDB => "Unable to find database"
+        };
+        write!(f, "{txt}")
+    }
+}
 
 pub const DEFAULT_SOURISD_PORT: u32 = 7687;
 

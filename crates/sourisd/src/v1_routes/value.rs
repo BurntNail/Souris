@@ -1,9 +1,6 @@
-use axum::{
-    extract::{Query, State},
-    http::StatusCode,
-};
+use axum::{extract::{Query, State}, http::StatusCode, Json};
 use serde::Deserialize;
-
+use sourisdb::client::CreationResult;
 use sourisdb::values::Value;
 
 use crate::{error::SourisError, v1_routes::state::SourisState};
@@ -14,14 +11,23 @@ pub struct KeyAndDb {
     pub key: String,
 }
 
+#[derive(Deserialize)]
+pub struct NewKeyArgs {
+    pub db_name: String,
+    pub key: String,
+    pub create_new_database: bool,
+    pub overwrite_key: bool,
+}
+
 #[axum::debug_handler]
 pub async fn add_kv(
-    Query(kanddb): Query<KeyAndDb>,
+    Query(nka): Query<NewKeyArgs>,
     State(state): State<SourisState>,
     value: Value,
-) -> StatusCode {
+) -> Json<CreationResult> {
     info!(?value, "Adding value");
-    state.add_key_value_pair(kanddb, value).await
+    let cr = state.add_key_value_pair(nka, value).await;
+    Json(cr)
 }
 
 #[axum::debug_handler]

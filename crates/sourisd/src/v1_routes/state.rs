@@ -4,12 +4,13 @@ use dirs::data_dir;
 use moka::future::Cache;
 use sourisdb::{store::Store, values::Value};
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry as SEntry},
     env::var,
     fmt::Debug,
     path::{Path, PathBuf},
     sync::Arc,
 };
+use sourisdb::hashbrown::hash_map::Entry as HBEntry;
 use tokio::{
     fs::{create_dir_all, File},
     io::{AsyncReadExt, AsyncWriteExt, ErrorKind},
@@ -28,6 +29,8 @@ mod meta {
 }
 use crate::{error::SourisError, v1_routes::value::KeyAndDb};
 use meta::{DB_FILE_NAMES_KEY, META_DB_FILE_NAME};
+use sourisdb::client::CreationResult;
+use crate::v1_routes::value::NewKeyArgs;
 
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
@@ -59,13 +62,13 @@ impl SourisState {
         let mut dbs = self.dbs.lock().await;
         
         let sc = match dbs.entry(name.clone()) {
-            Entry::Occupied(mut occ) => {
+            SEntry::Occupied(mut occ) => {
                 if overwrite_existing {
                     occ.get_mut().clear();
                 }
                 StatusCode::OK
             }
-            Entry::Vacant(vac) => {
+            SEntry::Vacant(vac) => {
                 vac.insert(Store::default());
                 StatusCode::CREATED
             }
@@ -110,7 +113,7 @@ impl SourisState {
 
         let mut dbs = self.dbs.lock().await;
 
-        if let Entry::Occupied(mut e) = dbs.entry(name) {
+        if let SEntry::Occupied(mut e) = dbs.entry(name) {
             e.insert(Store::default());
             Ok(())
         } else {
@@ -155,7 +158,7 @@ impl SourisState {
             .cloned()
             .ok_or(SourisError::DatabaseNotFound)?;
 
-        let sered = db.ser()?;
+        let sered = db.ser();
         let bytes = Bytes::from(sered);
 
         self.db_cache.insert(name, bytes.clone()).await;
@@ -164,24 +167,39 @@ impl SourisState {
 
     pub async fn add_key_value_pair(
         &self,
-        KeyAndDb { key, db_name }: KeyAndDb,
+        NewKeyArgs { db_name, key, create_new_database, overwrite_key }: NewKeyArgs,
         v: Value,
-    ) -> StatusCode {
+    ) -> CreationResult {
         self.db_cache.invalidate(&db_name).await;
 
         let mut dbs = self.dbs.lock().await;
-
-        let db = if let Some(d) = dbs.get_mut(&db_name) {
-            d
-        } else {
-            dbs.insert(db_name.clone(), Store::default());
-            dbs.get_mut(&db_name)
-                .expect("just added this database key lol")
-        };
-
-        match db.insert(key, v) {
-            Some(_) => StatusCode::OK,
-            None => StatusCode::CREATED,
+        match dbs.entry(db_name) {
+            SEntry::Occupied(mut occ) => {
+                let db = occ.get_mut();
+                match db.entry(key) {
+                    HBEntry::Occupied(mut occ) => {
+                        if overwrite_key {
+                            occ.insert(v);
+                            CreationResult::OverwroteKeyInExistingDB
+                        } else {
+                            CreationResult::FoundExistingKey
+                        }
+                    }
+                    HBEntry::Vacant(vac) => {
+                        vac.insert(v);
+                        CreationResult::InsertedKeyIntoExistingDB
+                    }
+                }
+            }
+            SEntry::Vacant(vac) => {
+                if create_new_database {
+                    let db = vac.insert(Store::default());
+                    db.insert(key, v);
+                    CreationResult::InsertedKeyIntoNewDB
+                } else {
+                    CreationResult::UnableToFindDB
+                }
+            }
         }
     }
 
@@ -319,7 +337,7 @@ impl SourisState {
 
         for (name, db) in self.dbs.lock().await.iter() {
             let file_name = self.base_location.join(format!("{name}.sdb"));
-            let bytes = db.ser()?;
+            let bytes = db.ser();
 
             if let Err(e) = write_to_file(&bytes, file_name, &self.base_location).await {
                 error!(?e, "Error writing out database");
@@ -332,7 +350,7 @@ impl SourisState {
         meta.insert(DB_FILE_NAMES_KEY.into(), Value::Array(names));
 
         let location = self.base_location.join(META_DB_FILE_NAME);
-        let meta = meta.ser()?;
+        let meta = meta.ser();
         write_to_file(&meta, location, &self.base_location).await
     }
 }

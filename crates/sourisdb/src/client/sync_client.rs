@@ -1,9 +1,8 @@
 use core::fmt::Display;
-
 use http::StatusCode;
 use ureq::{Agent, Response};
-
 use crate::{client::ClientError, store::Store, values::Value};
+use crate::client::{bool_to_string, CreationResult};
 
 #[derive(Debug, Clone)]
 pub struct SyncClient {
@@ -51,7 +50,7 @@ impl SyncClient {
             .post(&format!("http://{}:{}/v1/add_db", self.path, self.port))
             .query(
                 "overwrite_existing",
-                if overwrite_existing { "true" } else { "false" },
+                bool_to_string(overwrite_existing),
             )
             .query("db_name", name)
             .call()?;
@@ -82,7 +81,7 @@ impl SyncClient {
         name: &str,
         store: &Store,
     ) -> Result<bool, ClientError> {
-        let store = store.ser()?;
+        let store = store.ser();
 
         let rsp = self
             .agent
@@ -92,7 +91,7 @@ impl SyncClient {
             ))
             .query(
                 "overwrite_existing",
-                if overwrite_existing { "true" } else { "false" },
+                bool_to_string(overwrite_existing),
             )
             .query("db_name", name)
             .send_bytes(&store)?;
@@ -107,21 +106,24 @@ impl SyncClient {
     pub fn add_entry_to_db(
         &self,
         database_name: &str,
+        create_new_database_if_needed: bool,
+        overwrite_existing_key: bool,
         key: &str,
         value: &Value,
-    ) -> Result<bool, ClientError> {
+    ) -> Result<CreationResult, ClientError> {
         let value = value.ser(None);
         let rsp = self
             .agent
             .put(&format!("http://{}:{}/v1/add_kv", self.path, self.port))
             .query("db_name", database_name)
             .query("key", key)
+            .query("create_new_database", bool_to_string(create_new_database_if_needed))
+            .query("overwrite_key", bool_to_string(overwrite_existing_key))
             .send_bytes(&value)?;
-        Ok(match rsp.status_code()? {
-            StatusCode::OK => false,
-            StatusCode::CREATED => true,
-            _ => unreachable!("API cannot return anything but ok or created"),
-        })
+        
+        rsp.status_code()?;
+        
+        Ok(rsp.into_json()?)
     }
 
     #[allow(clippy::result_large_err)]

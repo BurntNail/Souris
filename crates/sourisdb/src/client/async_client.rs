@@ -1,4 +1,4 @@
-//! `async_client` provides an asynchronous client for use with a `sourisd` client.
+//! `async_client` provides an asynchronous client for use with a `sourisd` database.
 
 use crate::{client::ClientError, store::Store, values::Value};
 use alloc::{
@@ -9,7 +9,7 @@ use alloc::{
 use core::fmt::Display;
 use http::StatusCode;
 use reqwest::{Client, Response};
-use crate::client::DEFAULT_SOURISD_PORT;
+use crate::client::{bool_to_string, CreationResult, DEFAULT_SOURISD_PORT};
 
 ///A client for interacting with `sourisd` asynchronously.
 /// 
@@ -29,7 +29,7 @@ impl AsyncClient {
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
     /// # async fn client () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("host.domain.tld", None).await?;
+    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -70,15 +70,15 @@ impl AsyncClient {
         Ok(Self { path, port, client })
     }
 
-    ///Get the names of all the databases present in the instance that the client is connected to.
+    ///Get the names of all the [`Store`]s present in the database that the client is connected to.
     /// 
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
     /// # async fn get_all_dbs_example () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("host.domain.tld", None).await?;
-    /// println!("Getting databases");
+    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    ///
     /// match client.get_all_dbs().await {
-    ///    Err(e) => eprintln!("Error getting databases: {e}"),
+    ///    Err(e) => eprintln!("Error getting all database names: {e}"),
     ///    Ok(db_names) => {
     ///        println!("Found database names:");
     ///        for name in db_names {
@@ -106,12 +106,12 @@ impl AsyncClient {
             .await?)
     }
 
-    ///Creates a new database in the connected instance with the given name. Returns whether a new database had to be created.
+    ///Creates a new [`Store`] in the connected database with the given name. Returns whether a new database had to be created.
     /// 
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
     /// # async fn client () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("host.domain.tld", None).await?;
+    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
     /// client.create_new_db(false, "example_database").await?; //ensures that a database named `example_database` exists.
     /// client.create_new_db(true, "empty_database").await?; //ensures that an *empty* database called `empty_database` exists.
     /// # Ok(())
@@ -120,13 +120,13 @@ impl AsyncClient {
     /// 
     /// # Arguments
     /// 
-    /// `name` is just the name of the database to create. NB: The name needs to be valid ASCII and not equal to `meta` as that is reserved.
+    /// `name` is just the name of the [`Store`] to create. NB: The name needs to be valid ASCII and not equal to `meta` as that is reserved.
     /// 
-    /// |Database already exists|`overwrite_existing`|Behaviour|
+    /// |[`Store`] already exists|`overwrite_existing`|Behaviour|
     /// |--|--|--|
-    /// |`false`|`false` or `true`|A new blank database will be created|
-    /// |`true`|`true`|The existing database will be cleared.|
-    /// |`true`|`false`|Nothing happens to the existing database.|
+    /// |`false`|`false` or `true`|A new blank [`Store`] will be created|
+    /// |`true`|`true`|The existing [`Store`] will be cleared.|
+    /// |`true`|`false`|Nothing happens to the existing [`Store`].|
     ///
     /// # Errors
     /// - [`reqwest::Error`] if there is an error with the HTTP request.
@@ -142,7 +142,7 @@ impl AsyncClient {
             .query(&[
                 (
                     "overwrite_existing",
-                    if overwrite_existing { "true" } else { "false" },
+                    bool_to_string(overwrite_existing)
                 ),
                 ("db_name", name),
             ])
@@ -155,10 +155,32 @@ impl AsyncClient {
         })
     }
 
-    /// Gets a given store by name. If the store doesn't exist, [`ClientError::HttpErrorCode`] will be returned with a code of [`StatusCode::NOT_FOUND`].
+    /// Gets a given [`Store`] by name. If the [`Store`] doesn't exist, [`ClientError::HttpErrorCode`] will be returned with a code of [`StatusCode::NOT_FOUND`].
+    /// 
+    ///```rust
+    /// # use http::StatusCode;
+    /// # use sourisdb::client::{AsyncClient, ClientError};
+    /// # use sourisdb::store::Store;
+    /// # use sourisdb::values::Value;
+    /// # async fn client () -> Result<(), ClientError> {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// 
+    /// //existing store:
+    /// let example_store = client.get_store("existing store").await?; 
+    /// 
+    /// //non-existing store:
+    /// let non_existing_store_error = client.get_store("non existing store").await.unwrap_err();
+    /// assert!(matches!(non_existing_store_error, ClientError::HttpErrorCode(StatusCode::NOT_FOUND)));
+    /// # Ok(())
+    /// # }
+    /// ```
+    /// 
+    /// # Arguments
+    /// 
+    /// - `db_name`: the name of the [`Store`] to get.
     ///
-    /// ## Errors
-    /// - `[ClientError::HttpErrorCode`] if the database isn't found or another error occurs with the HTTP request.
+    /// # Errors
+    /// - [`ClientError::HttpErrorCode`] if the database isn't found or another error occurs with the HTTP request.
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`crate::store::StoreSerError`] if the store cannot be deserialised from the bytes.
     pub async fn get_store(&self, db_name: &str) -> Result<Store, ClientError> {
@@ -173,15 +195,34 @@ impl AsyncClient {
         Ok(Store::deser(bytes.as_ref())?)
     }
 
-    ///Adds a new database and immediately inserts the contents of the [`Store`] into it.
+    ///Creates a new [`Store`] and inserts the contents of the provided [`Store`] into it.
+    /// 
+    ///```rust
+    /// # use sourisdb::client::{AsyncClient, ClientError};
+    /// # use sourisdb::store::Store;
+    /// # use sourisdb::values::Value;
+    /// 
+    /// # async fn stuff () -> Result<(), ClientError> {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// let example_store = (); //fill in your own store here
+    /// # let example_store = Store::new([("key".into(), Value::Character('v')), ("other_key".into(), Value::Boolean(false))]);
+    /// 
+    /// //replace existing store
+    /// client.add_db_with_contents(true, "to be replaced", &example_store).await?;
+    /// //append to existing store
+    /// client.add_db_with_contents(false, "to be appended to", &example_store).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
-    /// If `overwrite_existing` is true or the store already exists, the server will now have one instance of the provided store with the provided contents.
-    ///
-    /// If the database already existed, and `overwrite_existing` is false, then the server will append the keys from the provided database into the new one.
+    /// |[`Store`] already exists|`overwrite_existing`|Behaviour|
+    /// |--|--|--|
+    /// |`false`|`false` or `true`|The given [`Store`] will be added to the database.|
+    /// |`true`|`true`|The existing [`Store`] inside the database will be overwritten by the provided [`Store`].|
+    /// |`true`|`false`|The provided [`Store`] will be appended to the existing [`Store`] inside the database.|
     ///
     /// # Errors
     ///
-    /// - [`crate::store::StoreSerError`] if we cannot serialise the provided `Store`.
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
     pub async fn add_db_with_contents(
@@ -190,7 +231,7 @@ impl AsyncClient {
         name: &str,
         store: &Store,
     ) -> Result<bool, ClientError> {
-        let store = store.ser()?;
+        let store = store.ser();
 
         let rsp = self
             .client
@@ -201,7 +242,7 @@ impl AsyncClient {
             .query(&[
                 (
                     "overwrite_existing",
-                    if overwrite_existing { "true" } else { "false" },
+                    bool_to_string(overwrite_existing)
                 ),
                 ("db_name", name),
             ])
@@ -216,7 +257,24 @@ impl AsyncClient {
         })
     }
 
-    ///Adds the given entry to the given database. If that database didn't exist before, it will now.
+    ///Adds the given entry to the given database. If that database didn't exist before, the database will be created and the key added.
+    ///
+    /// 
+    ///```rust
+    /// use sourisdb::client::{AsyncClient, ClientError};
+    /// use sourisdb::values::Value;
+    /// 
+    /// # async fn stuff () -> Result<(), ClientError> {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    /// 
+    /// # Returns
+    /// A tuple which contains three elements:
+    /// - Whether we had to create a new database
+    /// - Whether we overwrote an existing key
+    /// - Whether we actually inserted the key
     ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
@@ -224,23 +282,25 @@ impl AsyncClient {
     pub async fn add_entry_to_db(
         &self,
         database_name: &str,
+        create_new_database_if_needed: bool,
+        overwrite_existing_key: bool,
         key: &str,
         value: &Value,
-    ) -> Result<bool, ClientError> {
+    ) -> Result<CreationResult, ClientError> {
         let value = value.ser(None);
         let rsp = self
             .client
             .put(&format!("http://{}:{}/v1/add_kv", self.path, self.port))
-            .query(&[("db_name", database_name), ("key", key)])
+            .query(&[("db_name", database_name), ("key", key), ("create_new_database", bool_to_string(create_new_database_if_needed)), ("overwrite_key", bool_to_string(overwrite_existing_key))])
             .body(value)
             .send()
             .await?;
-
-        Ok(match rsp.error_for_status_to_client_error()? {
-            StatusCode::OK => false,
-            StatusCode::CREATED => true,
-            _ => unreachable!("API cannot return anything but ok or created"),
-        })
+        
+        if !rsp.status().is_success() {
+            return Err(ClientError::HttpErrorCode(rsp.status()));
+        }
+        
+        Ok(rsp.json().await?)
     }
 
     ///Removes the entry with the given key from the database.
@@ -262,9 +322,7 @@ impl AsyncClient {
         Ok(())
     }
 
-    ///Removes a given database.
-    ///
-    /// NB: A 404 code is returned by the daemon if the database cannot be found, which will show up as [`ClientError::HttpErrorCode`].
+    ///Removes a given database. If the database cannot be found, this function will fail and return [`ClientError::HttpErrorCode`] with a [`StatusCode::NOT_FOUND`].
     ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
