@@ -34,11 +34,12 @@ use crate::{
 pub struct Store(HashMap<String, Value>);
 
 impl Store {
+    pub fn new (items: impl IntoIterator<Item = (String, Value)>) -> Self {
+        Self(items.into_iter().collect())
+    }
+    
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
-    ///
-    /// # Errors
-    /// - [`ValueSerError`] if there is an error serialising the internal map as a [`Value::Map`]
-    pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
+    pub fn ser(&self) -> Vec<u8> {
         fn add_value_text_to_string(value: &Value, string: &mut String) {
             match value {
                 Value::Map(map) => {
@@ -87,7 +88,7 @@ impl Store {
         fin.push(magic_ty);
         fin.extend(compressed);
 
-        Ok(fin)
+        fin
     }
 
     /// Deserialises bytes (which must require the magic bytes) into a Store.
@@ -154,7 +155,7 @@ impl Store {
     pub fn to_bytes(t: &impl serde::Serialize) -> Result<Vec<u8>, StoreSerError> {
         let v = serde_json::to_value(t)?;
         let s = Self::from_json(v)?;
-        s.ser()
+        Ok(s.ser())
     }
 
     ///fails if integer out of range, or float is NaN or infinite
