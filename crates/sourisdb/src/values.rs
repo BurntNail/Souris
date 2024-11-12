@@ -707,7 +707,7 @@ impl Value {
     /// - [`Value::Timestamp`]
     /// - [`Value::Timezone`]
     /// - [`Value::Binary`]
-    /// - [`Value::IpV4Addr`]
+    /// - [`Value::Ipv4Addr`]
     /// - [`Value::Ipv6Addr`]
     #[allow(clippy::too_many_lines)]
     pub fn convert_from_json(val: SJValue) -> Result<Self, ValueSerError> {

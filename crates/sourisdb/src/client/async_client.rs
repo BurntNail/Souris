@@ -28,9 +28,8 @@ impl AsyncClient {
     /// 
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
-    /// # async fn client () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
-    /// # Ok(())
+    /// # async fn client (){
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.expect("unable to create client");
     /// # }
     /// ```
     /// 
@@ -74,8 +73,8 @@ impl AsyncClient {
     /// 
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
-    /// # async fn get_all_dbs_example () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// # async fn get_all_dbs_example () {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.expect("unable to create client");
     ///
     /// match client.get_all_dbs().await {
     ///    Err(e) => eprintln!("Error getting all database names: {e}"),
@@ -86,7 +85,6 @@ impl AsyncClient {
     ///        }
     ///    }
     /// }
-    /// # Ok(())
     /// # }
     /// ```
     ///
@@ -110,11 +108,10 @@ impl AsyncClient {
     /// 
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
-    /// # async fn client () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
-    /// client.create_new_db(false, "example_database").await?; //ensures that a database named `example_database` exists.
-    /// client.create_new_db(true, "empty_database").await?; //ensures that an *empty* database called `empty_database` exists.
-    /// # Ok(())
+    /// # async fn client () {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.expect("unable to create client");
+    /// client.create_new_db(false, "example_database").await.unwrap(); //ensures that a database named `example_database` exists.
+    /// client.create_new_db(true, "empty_database").await.unwrap(); //ensures that an *empty* database called `empty_database` exists.
     /// # }
     /// ```
     /// 
@@ -155,23 +152,23 @@ impl AsyncClient {
         })
     }
 
-    /// Gets a given [`Store`] by name. If the [`Store`] doesn't exist, [`ClientError::HttpErrorCode`] will be returned with a code of [`StatusCode::NOT_FOUND`].
+    /// Gets a given [`Store`] by name.
     /// 
     ///```rust
     /// # use http::StatusCode;
     /// # use sourisdb::client::{AsyncClient, ClientError};
     /// # use sourisdb::store::Store;
     /// # use sourisdb::values::Value;
-    /// # async fn client () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// # async fn client () {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.expect("unable to create client");
     /// 
     /// //existing store:
-    /// let example_store = client.get_store("existing store").await?; 
+    /// let example_store = client.get_store("existing store").await.unwrap();
+    /// assert!(example_store.is_some());
     /// 
     /// //non-existing store:
-    /// let non_existing_store_error = client.get_store("non existing store").await.unwrap_err();
-    /// assert!(matches!(non_existing_store_error, ClientError::HttpErrorCode(StatusCode::NOT_FOUND)));
-    /// # Ok(())
+    /// let non_existing_store_error = client.get_store("non existing store").await.unwrap();
+    /// assert!(non_existing_store_error.is_none());
     /// # }
     /// ```
     /// 
@@ -183,35 +180,44 @@ impl AsyncClient {
     /// - [`ClientError::HttpErrorCode`] if the database isn't found or another error occurs with the HTTP request.
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`crate::store::StoreSerError`] if the store cannot be deserialised from the bytes.
-    pub async fn get_store(&self, db_name: &str) -> Result<Store, ClientError> {
+    pub async fn get_store(&self, db_name: &str) -> Result<Option<Store>, ClientError> {
         let rsp = self
             .client
             .get(&format!("http://{}:{}/v1/get_db", self.path, self.port))
             .query(&["db_name", db_name])
             .send()
             .await?;
-        rsp.error_for_status_to_client_error()?;
-        let bytes = rsp.bytes().await?;
-        Ok(Store::deser(bytes.as_ref())?)
+        
+        match rsp.status() {
+            gone if gone == StatusCode::GONE => {
+                Ok(None)
+            },
+            other_failure if !other_failure.is_success() => {
+                Err(ClientError::HttpErrorCode(other_failure)) 
+            }
+            _success => {
+                let bytes = rsp.bytes().await?;
+                Ok(Some(Store::deser(bytes.as_ref())?))
+            }
+        }
     }
 
-    ///Creates a new [`Store`] and inserts the contents of the provided [`Store`] into it.
+    ///Creates a new [`Store`] and inserts the contents of the provided [`Store`] into it. Returns whether we had to create a new database.
     /// 
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
     /// # use sourisdb::store::Store;
     /// # use sourisdb::values::Value;
     /// 
-    /// # async fn stuff () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// # async fn stuff () {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.expect("unable to create client");
     /// let example_store = (); //fill in your own store here
     /// # let example_store = Store::new([("key".into(), Value::Character('v')), ("other_key".into(), Value::Boolean(false))]);
     /// 
     /// //replace existing store
-    /// client.add_db_with_contents(true, "to be replaced", &example_store).await?;
+    /// client.add_db_with_contents(true, "to be replaced", &example_store).await.unwrap();
     /// //append to existing store
-    /// client.add_db_with_contents(false, "to be appended to", &example_store).await?;
-    /// # Ok(())
+    /// client.add_db_with_contents(false, "to be appended to", &example_store).await.unwrap();
     /// # }
     /// ```
     ///
@@ -261,21 +267,36 @@ impl AsyncClient {
     ///
     /// 
     ///```rust
-    /// use sourisdb::client::{AsyncClient, ClientError};
-    /// use sourisdb::values::Value;
+    /// # use sourisdb::client::{AsyncClient, ClientError, CreationResult};
+    /// # use sourisdb::store::Store;
+    /// # use sourisdb::values::Value;
     /// 
-    /// # async fn stuff () -> Result<(), ClientError> {
-    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
-    /// # Ok(())
+    /// # async fn stuff () {
+    /// //blank database
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.expect("unable to create client");
+    /// let example_value = (); //fill in your own value here
+    /// # let example_value = Value::Null(());
+    /// 
+    /// //returns CreationResult::UnableToFindDB as we specified not to create a new database
+    /// client.add_entry_to_db("non_existent_db", false, false, "key", &example_value).await.unwrap();
+    /// 
+    /// //returns CreationResult::InsertedKeyIntoNewDB as we specified to create a new database, which we then inserted the key into
+    /// client.add_entry_to_db("non_existent_db", true, false, "key", &example_value).await.unwrap();
+    /// 
+    /// 
+    /// let existing_store = Store::new([("key", Value::Boolean(true))]);
+    /// client.add_db_with_contents(true, "db", &existing_store).await.unwrap();
+    /// 
+    /// //returns CreationResult::FoundExistingKey as we found the existing key, but did not overwrite it.
+    /// client.add_entry_to_db("db", false, false, "key", &example_value).await.unwrap();
+    /// 
+    /// //returns CreationResult::OverwroteKeyInExistingDB as we found the existing key and overwrote it.
+    /// client.add_entry_to_db("db", false, true, "key", &example_value).await.unwrap();
+    /// 
+    /// //returns CreationResult::InsertedKeyIntoExistingDB as we found the database, but no key yet existed with that name so we added it.
+    /// client.add_entry_to_db("db", false, false, "new key", &example_value).await.unwrap();
     /// # }
     /// ```
-    /// 
-    /// # Returns
-    /// A tuple which contains three elements:
-    /// - Whether we had to create a new database
-    /// - Whether we overwrote an existing key
-    /// - Whether we actually inserted the key
-    ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
@@ -303,7 +324,22 @@ impl AsyncClient {
         Ok(rsp.json().await?)
     }
 
-    ///Removes the entry with the given key from the database.
+    ///Removes the entry with the given key from the database. 
+    /// 
+    /// NB: This function just ensures that a given key doesn't exist - if the key or database are not found, this function will not error.
+    /// 
+    ///```rust
+    /// # use sourisdb::client::{AsyncClient, ClientError};
+    /// 
+    /// # async fn rm_entry (){
+    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// 
+    /// client.remove_entry_from_db("existing store", "existing key").await.unwrap();
+    /// client.remove_entry_from_db("existing store", "non existent key").await.unwrap();
+    /// client.remove_entry_from_db("non existent store", "non existent key").await.unwrap();
+    /// 
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
@@ -322,19 +358,43 @@ impl AsyncClient {
         Ok(())
     }
 
-    ///Removes a given database. If the database cannot be found, this function will fail and return [`ClientError::HttpErrorCode`] with a [`StatusCode::NOT_FOUND`].
+    ///Removes a given database. Returns whether we actually removed anything
+    /// 
+    ///```rust
+    /// # use sourisdb::client::{AsyncClient, ClientError};
+    /// 
+    /// # async fn rm_db () {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.expect("unable to remove client");
+    /// 
+    /// let non_existent = client.remove_db("non existent store").await.unwrap();
+    /// assert!(!non_existent);
+    /// 
+    /// let existed = client.remove_db("existing store").await.unwrap();
+    /// assert!(existed);
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// - [`reqwest::Error`] if a reqwest error occurs or the bytes cannot be obtained.
     /// - [`ClientError::HttpErrorCode`] if an HTTP Error status code is encountered.
-    pub async fn remove_db(&self, database_name: &str) -> Result<(), ClientError> {
-        self.client
+    pub async fn remove_db(&self, database_name: &str) -> Result<bool, ClientError> {
+        let rsp = self.client
             .post(&format!("http://{}:{}/v1/rm_db", self.path, self.port))
             .query(&[("db_name", database_name)])
             .send()
-            .await?
-            .error_for_status_to_client_error()?;
-        Ok(())
+            .await?;
+        
+        match rsp.status() {
+            gone if gone == StatusCode::GONE => {
+                Ok(false)
+            },
+            ok if ok.is_success() => {
+                Ok(true)
+            },
+            other => {
+                Err(ClientError::HttpErrorCode(other))
+            }
+        }
     }
 }
 

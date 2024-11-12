@@ -76,12 +76,17 @@ impl IntoResponse for SourisError {
         error!(?self, "Returning error");
 
         let code = match self {
-            Self::DatabaseNotFound | Self::KeyNotFound | Self::InvalidDatabaseName => {
+            Self::KeyNotFound | Self::InvalidDatabaseName | Self::StoreError(_) | Self::ValueError(_) | Self::IntegerSerError(_) => {
                 StatusCode::BAD_REQUEST
             }
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::DatabaseNotFound => {
+                StatusCode::GONE
+            }
+            Self::IO(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         };
 
-        (code, format!("{self}")).into_response()
+        (code, format!("{self:?}")).into_response()
     }
 }

@@ -52,7 +52,7 @@ impl Display for CreationResult {
 
 pub const DEFAULT_SOURISD_PORT: u32 = 7687;
 
-///An error which could occur using one of the [`sourisd`] clients.
+///An error which could occur using one of the `sourisd` clients.
 #[derive(Debug)]
 pub enum ClientError {
     ///An error from `ureq` - this can only be a transport issue as HTTP error codes are handled in a separate variant - [`ClientError::HttpErrorCode`].
