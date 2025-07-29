@@ -354,7 +354,7 @@ impl AsyncClient {
             .query(&[("db_name", database_name), ("key", key)])
             .send()
             .await?
-            .error_for_status_to_client_error()?;
+            .error_for_status_to_client_error()?; //TODO: fixme as to whether anything happened - use StatusCode::Gone?
         Ok(())
     }
 

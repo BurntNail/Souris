@@ -69,7 +69,7 @@ impl SyncClient {
             .get(&format!("http://{}:{}/v1/get_db", self.path, self.port))
             .query("db_name", db_name)
             .call()?;
-        let body = rsp.body()?;
+        let body = rsp.body()?; //TODO: fixme to be optional
         println!("Received body from client");
         Ok(Store::deser(&body)?)
     }
@@ -131,7 +131,7 @@ impl SyncClient {
         self.agent
             .post(&format!("http://{}:{}/v1/rm_kv", self.path, self.port))
             .query("db_name", database_name)
-            .query("key", key)
+            .query("key", key) //TODO: fixme as to whether anything happened
             .call()?;
         Ok(())
     }
@@ -140,7 +140,7 @@ impl SyncClient {
     pub fn remove_db(&self, database_name: &str) -> Result<(), ClientError> {
         self.agent
             .post(&format!("http://{}:{}/v1/rm_db", self.path, self.port))
-            .query("db_name", database_name)
+            .query("db_name", database_name) //TODO: fixme as to whether anything happened
             .call()?;
         Ok(())
     }
