@@ -284,7 +284,7 @@ impl AsyncClient {
     /// client.add_entry_to_db("non_existent_db", true, false, "key", &example_value).await.unwrap();
     /// 
     /// 
-    /// let existing_store = Store::new([("key", Value::Boolean(true))]);
+    /// let existing_store = Store::new([(String::from("key"), Value::Boolean(true))]);
     /// client.add_db_with_contents(true, "db", &existing_store).await.unwrap();
     /// 
     /// //returns CreationResult::FoundExistingKey as we found the existing key, but did not overwrite it.
