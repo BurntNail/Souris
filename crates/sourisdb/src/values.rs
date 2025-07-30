@@ -1126,7 +1126,7 @@ impl Value {
             FoundValue(Value),
             JsonNeeded,
             TimezoneNeeded,
-            Map(HashMap<String, Value>, usize),
+            Map(HashMap<String, Value>, usize, u8),
             FoundKey(String),
             FoundKeyValue(String, Value),
             Array(Vec<Value>, usize),
@@ -1135,7 +1135,7 @@ impl Value {
         enum ParseResult {
             Value(Value),
             NewArray(usize),
-            NewMap(usize),
+            NewMap(usize, u8),
             Json,
             Timezone,
         }
@@ -1158,7 +1158,12 @@ impl Value {
             })
         }
 
-        fn parse_primitive(byte: u8, ty: ValueTy, bytes: &mut Cursor<u8>, huffman: Option<&Huffman<char>>) -> Result<ParseResult, ValueSerError> {
+        fn parse_primitive(bytes: &mut Cursor<u8>, huffman: Option<&Huffman<char>>) -> Result<ParseResult, ValueSerError> {
+            let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
+
+            let ty = (byte & 0b1111_0000) >> 4;
+            let ty = ValueTy::try_from(ty)?;
+            
             Ok(ParseResult::Value(match ty {
                 ValueTy::Integer => {
                     let signed_state = SignedState::try_from(byte & 0b0000_0011)?;
@@ -1221,7 +1226,7 @@ impl Value {
                 }
                 ValueTy::Map => {
                     let len = Value::deser_array_or_map_len(byte, bytes, ty)?;
-                    return Ok(ParseResult::NewMap(len));
+                    return Ok(ParseResult::NewMap(len, byte));
                 }
                 ValueTy::Array => {
                     let len = Value::deser_array_or_map_len(byte, bytes, ty)?;
@@ -1255,17 +1260,12 @@ impl Value {
         let mut stack: Vec<DeserialisationState> = vec![DeserialisationState::ValueNeeded];
 
         while let Some(state) = stack.pop() {
-            let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
-
-            let ty = (byte & 0b1111_0000) >> 4;
-            let ty = ValueTy::try_from(ty)?;
-
             match state {
                 DeserialisationState::ValueNeeded => {
-                    let to_be_added_to_stack = match parse_primitive(byte, ty, bytes, huffman)? {
+                    let to_be_added_to_stack = match parse_primitive(bytes, huffman)? {
                         ParseResult::Value(val) => DeserialisationState::FoundValue(val),
                         ParseResult::NewArray(len) => DeserialisationState::Array(Vec::with_capacity(len), len),
-                        ParseResult::NewMap(len) => DeserialisationState::Map(HashMap::with_capacity(len), len),
+                        ParseResult::NewMap(len, byte) => DeserialisationState::Map(HashMap::with_capacity(len), len, byte),
                         ParseResult::Json => {
                             stack.push(DeserialisationState::JsonNeeded);
                             DeserialisationState::ValueNeeded
@@ -1284,7 +1284,7 @@ impl Value {
                         }
                         Some(next_stack_frame) => {
                             match next_stack_frame {
-                                DeserialisationState::ValueNeeded | DeserialisationState::FoundValue(_) | DeserialisationState::Map(_, _) | DeserialisationState::FoundKeyValue(_, _) => unreachable!(),
+                                DeserialisationState::ValueNeeded | DeserialisationState::FoundValue(_) | DeserialisationState::Map(_, _, _) | DeserialisationState::FoundKeyValue(_, _) => unreachable!("these shouldn't come on top of a value"),
                                 DeserialisationState::FoundKey(key) => {
                                     stack.push(DeserialisationState::FoundKeyValue(key, val));
                                 }
@@ -1324,18 +1324,18 @@ impl Value {
                     stack.push(DeserialisationState::Array(so_far, left));
                     stack.push(DeserialisationState::ValueNeeded);
                 }
-                DeserialisationState::Map(so_far, left) => {
+                DeserialisationState::Map(so_far, left, byte) => {
                     let key = parse_string(byte, bytes, huffman)?;
-                    stack.push(DeserialisationState::Map(so_far, left));
+                    stack.push(DeserialisationState::Map(so_far, left, byte));
                     stack.push(DeserialisationState::FoundKey(key));
                 },
                 DeserialisationState::FoundKeyValue(key, val) => {
-                    if let Some(DeserialisationState::Map(mut so_far, left)) = stack.pop() {
+                    if let Some(DeserialisationState::Map(mut so_far, left, byte)) = stack.pop() {
                         so_far.insert(key, val);
                         if left <= 1 {
                             stack.push(DeserialisationState::FoundValue(Value::Map(so_far)));
                         } else {
-                            stack.push(DeserialisationState::Map(so_far, left - 1));
+                            stack.push(DeserialisationState::Map(so_far, left - 1, byte));
                         }
                     } else {
                         unreachable!("foundkeyvalue should always be after a map")
