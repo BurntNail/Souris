@@ -331,8 +331,8 @@ impl AsyncClient {
     ///```rust
     /// # use sourisdb::client::{AsyncClient, ClientError};
     /// 
-    /// # async fn rm_entry (){
-    /// let client = AsyncClient::new("sub.domain.tld", None).await?;
+    /// # async fn rm_entry () {
+    /// let client = AsyncClient::new("sub.domain.tld", None).await.unwrap();
     /// 
     /// client.remove_entry_from_db("existing store", "existing key").await.unwrap();
     /// client.remove_entry_from_db("existing store", "non existent key").await.unwrap();
