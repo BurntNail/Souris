@@ -50,6 +50,7 @@ impl Display for CreationResult {
     }
 }
 
+/// Default port for sourisd server connections
 pub const DEFAULT_SOURISD_PORT: u32 = 7687;
 
 ///An error which could occur using one of the `sourisd` clients.
