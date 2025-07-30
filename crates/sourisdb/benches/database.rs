@@ -5,8 +5,8 @@ const EXAMPLE_JSON: &str = include_str!("smallexampledata.json");
 
 fn ser_and_deser(c: &mut Criterion) {
     let json = serde_json::from_str(EXAMPLE_JSON).unwrap();
-    let example = Store::from_json(json);
-    let sered = example.ser().unwrap();
+    let example = Store::from_json(json).unwrap();
+    let sered = example.ser();
 
     c.bench_function("serialise_store", |b| b.iter(|| black_box(example.ser())));
 
