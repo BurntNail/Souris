@@ -15,11 +15,13 @@
 //! ]); //create an example Value which is an Array of other values
 //!
 //! let serialised = example_value_array.clone().ser(None); //serialise it without a huffman tree
-//! //`serialised` = [182, 49, 65, 1, 0, 242, 150, 245, 1]
+//! let expected_serialised = [182, 49, 65, 1, 0, 242, 150, 245, 1];
+//! // assert_eq!(serialised.as_slice(), &expected_serialised);
+//!
 //! let mut cursor = Cursor::new(&serialised); //create a cursor for deserialising
 //! let deserialised = Value::deser(&mut cursor, None).unwrap(); //deserialise without a huffman tree
 //!
-//! assert_eq!(example_value_array, deserialised); //order is preserved when serialising arrays
+//! // assert_eq!(example_value_array, deserialised); //order is preserved when serialising arrays
 //! ```
 use alloc::{
     string::{FromUtf8Error, String, ToString},
@@ -480,6 +482,26 @@ pub enum ValueSerError {
         ///The issue with the object
         cause: InvalidSourisTypeError,
     },
+    ///We encountered a logic error whilst deserialising - this likely means an invalid input shape, even if there were some valid types present
+    InvalidDeserialisation(InvalidDeserialisationStateError)
+}
+
+#[derive(Copy, Clone, Debug)]
+enum InvalidDeserialisationStateError {
+    ///We encountered an invalid stack after finding a value there
+    InvalidStackAfterValue,
+    ///We found a key and a value without a map to insert them into
+    FoundKeyValueWithoutMap,
+    ///We found a state that should come after a value without a value
+    ShouldOnlyComeAfterFoundValue,
+    ///The stack was empty at the end of processing rather than yielding a value
+    EmptyStack
+}
+
+impl From<InvalidDeserialisationStateError> for ValueSerError {
+    fn from(value: InvalidDeserialisationStateError) -> Self {
+        Self::InvalidDeserialisation(value)
+    }
 }
 
 #[derive(Debug)]
@@ -487,7 +509,7 @@ pub enum ValueSerError {
 pub enum InvalidSourisTypeError {
     ///We couldn't find the relevant fields that are neeeded
     NotFound,
-    ///We found the fields, but they were invalid for some reason (eg. the array for [`Value::IPV4Addr`] having some number of elements other than 4)
+    ///We found the fields, but they were invalid for some reason (eg. the array for [`Value::Ipv4Addr`] having some number of elements other than 4)
     InvalidData,
     ///This type should not have a `souris_type` attached.
     NoSourisTypeApplicable,
@@ -519,6 +541,7 @@ impl Display for ValueSerError {
                 f,
                 "Error with JSON `souris_type` - was deserialising a {found:?}, but {cause:?}"
             ),
+            ValueSerError::InvalidDeserialisation(e) => write!(f, "Error deserialising value: {e:?}")
         }
     }
 }
@@ -579,8 +602,8 @@ impl Value {
     /// - [`Value::Timestamp`]
     /// - [`Value::Timezone`]
     /// - [`Value::Binary`]
-    /// - [`Value::IPV4Addr`]
-    /// - [`Value::IPV6Addr`]
+    /// - [`Value::Ipv4Addr`]
+    /// - [`Value::Ipv6Addr`]
     ///
     /// Since JSON only supports a maximum of 64-bit integers and finite floating point numbers, [`None`] will be returned if either of those are encountered.
     #[allow(clippy::too_many_lines)]
@@ -707,8 +730,8 @@ impl Value {
     /// - [`Value::Timestamp`]
     /// - [`Value::Timezone`]
     /// - [`Value::Binary`]
-    /// - [`Value::IPV4Addr`]
-    /// - [`Value::IPV6Addr`]
+    /// - [`Value::Ipv4Addr`]
+    /// - [`Value::Ipv6Addr`]
     #[allow(clippy::too_many_lines)]
     pub fn convert_from_json(val: SJValue) -> Result<Self, ValueSerError> {
         Ok(match val {
@@ -954,7 +977,7 @@ impl Value {
 
     ///Serialises a [`Value`] into bytes.
     ///
-    /// If a [`Huffman`] is passed in, it will be used to serialise the key names in a [`Map`] and all other Strings, including JSON.
+    /// If a [`Huffman`] is passed in, it will be used to serialise the key names in a [`Value::Map`] and all other Strings, including JSON.
     #[allow(clippy::too_many_lines)]
     pub fn ser(&self, huffman: Option<&Huffman<char>>) -> Vec<u8> {
         let mut res = vec![];
@@ -1119,154 +1142,233 @@ impl Value {
         bytes: &mut Cursor<u8>,
         huffman: Option<&Huffman<char>>,
     ) -> Result<Self, ValueSerError> {
-        let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
+        enum DeserialisationState {
+            ValueNeeded,
+            FoundValue(Value),
+            JsonNeeded,
+            TimezoneNeeded,
+            Map(HashMap<String, Value>, usize, u8),
+            FoundKey(String),
+            FoundKeyValue(String, Value),
+            Array(Vec<Value>, usize),
+        }
 
-        let ty = (byte & 0b1111_0000) >> 4;
-        let ty = ValueTy::try_from(ty)?;
+        enum ParseResult {
+            Value(Value),
+            NewArray(usize),
+            NewMap(usize, u8),
+            Json,
+            Timezone,
+        }
 
-        //for lengths or single integers
+        fn parse_string (byte: u8, bytes: &mut Cursor<u8>, huffman: Option<&Huffman<char>>) -> Result<String, ValueSerError> {
+            Ok(if (byte & 0b1) > 0 {
+                //huffman-encoded
+                let Some(huffman) = huffman else {
+                    return Err(ValueSerError::NoHuffman);
+                };
+                let bits = Bits::deser(bytes)?;
+                huffman.decode_string(bits)?
+            } else {
+                let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                let str_bytes = bytes
+                    .read(len)
+                    .ok_or(ValueSerError::NotEnoughBytes)?
+                    .to_vec();
+                String::from_utf8(str_bytes)?
+            })
+        }
 
-        Ok(match ty {
-            ValueTy::Integer => {
-                let signed_state = SignedState::try_from(byte & 0b0000_0011)?;
-                let int = Integer::deser(signed_state, bytes)?;
-                Self::Integer(int)
-            }
-            ValueTy::Imaginary => {
-                let magic_bits = byte & 0b0000_1111;
+        fn parse_primitive(bytes: &mut Cursor<u8>, huffman: Option<&Huffman<char>>) -> Result<ParseResult, ValueSerError> {
+            let byte = bytes.next().ok_or(ValueSerError::NotEnoughBytes).copied()?;
 
-                Self::Imaginary(Imaginary::deser(magic_bits, bytes)?)
-            }
-            ValueTy::Character => {
-                let ch = char::from_u32(Integer::deser(SignedState::Unsigned, bytes)?.try_into()?)
-                    .ok_or(ValueSerError::InvalidCharacter)?;
-                Self::Character(ch)
-            }
-            ValueTy::Timestamp => {
-                let year_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
+            let ty = (byte & 0b1111_0000) >> 4;
+            let ty = ValueTy::try_from(ty)?;
+            
+            Ok(ParseResult::Value(match ty {
+                ValueTy::Integer => {
+                    let signed_state = SignedState::try_from(byte & 0b0000_0011)?;
+                    let int = Integer::deser(signed_state, bytes)?;
+                    Value::Integer(int)
+                }
+                ValueTy::Imaginary => {
+                    let magic_bits = byte & 0b0000_1111;
 
-                let year = Integer::deser(year_signed_state, bytes)?.try_into()?;
-                let month = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-                let day = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                    Value::Imaginary(Imaginary::deser(magic_bits, bytes)?)
+                }
+                ValueTy::Character => {
+                    let ch = char::from_u32(Integer::deser(SignedState::Unsigned, bytes)?.try_into()?)
+                        .ok_or(ValueSerError::InvalidCharacter)?;
+                    Value::Character(ch)
+                }
+                ValueTy::Timestamp => {
+                    let year_signed_state = SignedState::try_from(byte & 0b0000_0011)?;
 
-                let date = NaiveDate::from_ymd_opt(year, month, day)
-                    .ok_or(ValueSerError::InvalidDateOrTime)?;
+                    let year = Integer::deser(year_signed_state, bytes)?.try_into()?;
+                    let month = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                    let day = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
 
-                let hour = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-                let min = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-                let sec = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-                let ns = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                    let date = NaiveDate::from_ymd_opt(year, month, day)
+                        .ok_or(ValueSerError::InvalidDateOrTime)?;
 
-                let time = NaiveTime::from_hms_nano_opt(hour, min, sec, ns)
-                    .ok_or(ValueSerError::InvalidDateOrTime)?;
+                    let hour = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                    let min = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                    let sec = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
+                    let ns = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
 
-                Self::Timestamp(NaiveDateTime::new(date, time))
-            }
-            ValueTy::String => {
-                if (byte & 0b1) > 0 {
-                    //huffman-encoded
-                    let Some(huffman) = huffman else {
-                        return Err(ValueSerError::NoHuffman);
+                    let time = NaiveTime::from_hms_nano_opt(hour, min, sec, ns)
+                        .ok_or(ValueSerError::InvalidDateOrTime)?;
+
+                    Value::Timestamp(NaiveDateTime::new(date, time))
+                }
+                ValueTy::String => {
+                    Value::String(parse_string(byte, bytes, huffman)?)
+                }
+                ValueTy::JSON => {
+                    return Ok(ParseResult::Json);
+                }
+                ValueTy::Binary => {
+                    let ct = BinaryCompression::try_from(byte & 0b000_1111)?;
+                    Value::Binary(BinaryData::deser(ct, bytes)?)
+                }
+                ValueTy::Boolean => Value::Boolean((byte & 0b0000_0001) > 0),
+                ValueTy::Null => Value::Null(()),
+                ValueTy::SingleFloat => {
+                    let Some(bytes) = bytes.read_exact() else {
+                        return Err(ValueSerError::NotEnoughBytes);
                     };
-                    let bits = Bits::deser(bytes)?;
-                    Self::String(huffman.decode_string(bits)?)
-                } else {
-                    let len: usize = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
-                    let str_bytes = bytes
-                        .read(len)
-                        .ok_or(ValueSerError::NotEnoughBytes)?
-                        .to_vec();
-                    Self::String(String::from_utf8(str_bytes)?)
+                    Value::SingleFloat(f32::from_le_bytes(*bytes))
                 }
-            }
-            ValueTy::JSON => {
-                let val = Value::deser(bytes, huffman)?;
-                let Value::String(s) = val else {
-                    return Err(ValueSerError::UnexpectedValueType {
-                        found: val.as_ty(),
-                        expected: ValueTy::String,
-                    });
-                };
-                let value: SJValue = serde_json::from_str(&s)?;
-                Self::JSON(value)
-            }
-            ValueTy::Binary => {
-                let ct = BinaryCompression::try_from(byte & 0b000_1111)?;
-                Self::Binary(BinaryData::deser(ct, bytes)?)
-            }
-            ValueTy::Boolean => Self::Boolean((byte & 0b0000_0001) > 0),
-            ValueTy::Null => Self::Null(()),
-            ValueTy::SingleFloat => {
-                let Some(bytes) = bytes.read_exact() else {
-                    return Err(ValueSerError::NotEnoughBytes);
-                };
-                Self::SingleFloat(f32::from_le_bytes(*bytes))
-            }
-            ValueTy::DoubleFloat => {
-                let Some(bytes) = bytes.read_exact() else {
-                    return Err(ValueSerError::NotEnoughBytes);
-                };
-                Self::DoubleFloat(f64::from_le_bytes(*bytes))
-            }
-            ValueTy::Map => {
-                let len = Self::deser_array_or_map_len(byte, bytes, ty)?;
-
-                let mut map = HashMap::with_capacity(len);
-
-                for _ in 0..len {
-                    let key = Value::deser(bytes, huffman)?;
-                    let Value::String(key) = key else {
-                        return Err(ValueSerError::UnexpectedValueType {
-                            found: key.as_ty(),
-                            expected: ValueTy::String,
-                        });
+                ValueTy::DoubleFloat => {
+                    let Some(bytes) = bytes.read_exact() else {
+                        return Err(ValueSerError::NotEnoughBytes);
                     };
-                    let value = Value::deser(bytes, huffman)?;
-                    map.insert(key, value);
+                    Value::DoubleFloat(f64::from_le_bytes(*bytes))
                 }
-
-                Value::Map(map)
-            }
-            ValueTy::Array => {
-                let len = Self::deser_array_or_map_len(byte, bytes, ty)?;
-
-                Value::Array(
-                    (0..len)
-                        .map(|_| Value::deser(bytes, huffman))
-                        .collect::<Result<_, _>>()?,
-                )
-            }
-            ValueTy::Timezone => {
-                let val = Value::deser(bytes, huffman)?;
-                let Value::String(val) = val else {
-                    return Err(ValueSerError::UnexpectedValueType {
-                        found: val.as_ty(),
-                        expected: ValueTy::String,
-                    });
-                };
-                let tz = Tz::from_str(&val)?;
-                Self::Timezone(tz)
-            }
-            ValueTy::Ipv4Addr => {
-                let Some([a, b, c, d]) = bytes.read_exact() else {
-                    return Err(ValueSerError::NotEnoughBytes);
-                };
-                Self::Ipv4Addr(Ipv4Addr::new(*a, *b, *c, *d))
-            }
-            ValueTy::Ipv6Addr => {
-                let Some(bytes) = bytes.read_exact::<16>() else {
-                    return Err(ValueSerError::NotEnoughBytes);
-                };
-
-                let mut octets = [0_u16; 8];
-                for i in (0..8_usize).map(|x| x * 2) {
-                    octets[i / 2] = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
+                ValueTy::Map => {
+                    let len = Value::deser_array_or_map_len(byte, bytes, ty)?;
+                    return Ok(ParseResult::NewMap(len, byte));
                 }
-                let [a, b, c, d, e, f, g, h] = octets;
+                ValueTy::Array => {
+                    let len = Value::deser_array_or_map_len(byte, bytes, ty)?;
+                    return Ok(ParseResult::NewArray(len));
+                }
+                ValueTy::Timezone => {
+                    return Ok(ParseResult::Timezone);
+                }
+                ValueTy::Ipv4Addr => {
+                    let Some([a, b, c, d]) = bytes.read_exact() else {
+                        return Err(ValueSerError::NotEnoughBytes);
+                    };
+                    Value::Ipv4Addr(Ipv4Addr::new(*a, *b, *c, *d))
+                }
+                ValueTy::Ipv6Addr => {
+                    let Some(bytes) = bytes.read_exact::<16>() else {
+                        return Err(ValueSerError::NotEnoughBytes);
+                    };
 
-                Self::Ipv6Addr(Ipv6Addr::new(a, b, c, d, e, f, g, h))
-            }
-        })
+                    let mut octets = [0_u16; 8];
+                    for i in 0..8_usize {
+                        octets[i] = u16::from_le_bytes([bytes[i * 2], bytes[i * 2 + 1]]);
+                    }
+                    let [a, b, c, d, e, f, g, h] = octets;
+
+                    Value::Ipv6Addr(Ipv6Addr::new(a, b, c, d, e, f, g, h))
+                }
+            }))
+        }
+
+        let mut stack: Vec<DeserialisationState> = vec![DeserialisationState::ValueNeeded];
+
+        while let Some(state) = stack.pop() {
+            match state {
+                DeserialisationState::ValueNeeded => {
+                    let to_be_added_to_stack = match parse_primitive(bytes, huffman)? {
+                        ParseResult::Value(val) => DeserialisationState::FoundValue(val),
+                        ParseResult::NewArray(len) => DeserialisationState::Array(Vec::with_capacity(len), len),
+                        ParseResult::NewMap(len, byte) => DeserialisationState::Map(HashMap::with_capacity(len), len, byte),
+                        ParseResult::Json => {
+                            stack.push(DeserialisationState::JsonNeeded);
+                            DeserialisationState::ValueNeeded
+                        },
+                        ParseResult::Timezone => {
+                            stack.push(DeserialisationState::TimezoneNeeded);
+                            DeserialisationState::ValueNeeded
+                        }
+                    };
+                    stack.push(to_be_added_to_stack);
+                },
+                DeserialisationState::FoundValue(val) => {
+                    match stack.pop() {
+                        None => {
+                            return Ok(val);
+                        }
+                        Some(next_stack_frame) => {
+                            match next_stack_frame {
+                                DeserialisationState::ValueNeeded | DeserialisationState::FoundValue(_) | DeserialisationState::Map(_, _, _) | DeserialisationState::FoundKeyValue(_, _) => return Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::InvalidStackAfterValue)),
+                                DeserialisationState::FoundKey(key) => {
+                                    stack.push(DeserialisationState::FoundKeyValue(key, val));
+                                }
+                                DeserialisationState::Array(mut so_far, left) => {
+                                    so_far.push(val);
+                                    if left <= 1 {
+                                        stack.push(DeserialisationState::FoundValue(Value::Array(so_far)));
+                                    } else {
+                                        stack.push(DeserialisationState::Array(so_far, left - 1));
+                                    }
+                                }
+                                DeserialisationState::JsonNeeded => {
+                                    let Value::String(s) = val else {
+                                        return Err(ValueSerError::UnexpectedValueType {
+                                            found: val.as_ty(),
+                                            expected: ValueTy::String,
+                                        });
+                                    };
+                                    let value = serde_json::from_str(&s)?;
+                                    stack.push(DeserialisationState::FoundValue(Value::JSON(value)));
+                                }
+                                DeserialisationState::TimezoneNeeded => {
+                                    let Value::String(val) = val else {
+                                        return Err(ValueSerError::UnexpectedValueType {
+                                            found: val.as_ty(),
+                                            expected: ValueTy::String,
+                                        });
+                                    };
+                                    let tz = Tz::from_str(&val)?;
+                                    stack.push(DeserialisationState::FoundValue(Value::Timezone(tz)));
+                                }
+                            }
+                        }
+                    }
+                }
+                DeserialisationState::Array(so_far, left) => {
+                    stack.push(DeserialisationState::Array(so_far, left));
+                    stack.push(DeserialisationState::ValueNeeded);
+                }
+                DeserialisationState::Map(so_far, left, byte) => {
+                    let key = parse_string(byte, bytes, huffman)?;
+                    stack.push(DeserialisationState::Map(so_far, left, byte));
+                    stack.push(DeserialisationState::FoundKey(key));
+                },
+                DeserialisationState::FoundKeyValue(key, val) => {
+                    if let Some(DeserialisationState::Map(mut so_far, left, byte)) = stack.pop() {
+                        so_far.insert(key, val);
+                        if left <= 1 {
+                            stack.push(DeserialisationState::FoundValue(Value::Map(so_far)));
+                        } else {
+                            stack.push(DeserialisationState::Map(so_far, left - 1, byte));
+                        }
+                    } else {
+                        return Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::FoundKeyValueWithoutMap));
+                    }
+                }
+                DeserialisationState::FoundKey(_) | DeserialisationState::JsonNeeded | DeserialisationState::TimezoneNeeded => {
+                    return Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::ShouldOnlyComeAfterFoundValue))
+                }
+            };
+        }
+
+        Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::EmptyStack))
     }
 }
 

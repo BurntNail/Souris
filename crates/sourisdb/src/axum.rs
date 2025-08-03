@@ -66,7 +66,7 @@ impl<S: Send + Sync> FromRequest<S> for Value {
         let bytes = Bytes::from_request(req, state).await?;
         let val = match Value::deser(&mut Cursor::new(&bytes), None) {
             Ok(v) => v,
-            Err(e) => return Err(SourisRejection::Value(e, true)),
+            Err(e) => return Err(SourisRejection::Value(e)),
         };
         Ok(val)
     }
@@ -74,10 +74,7 @@ impl<S: Send + Sync> FromRequest<S> for Value {
 
 impl IntoResponse for Store {
     fn into_response(self) -> Response {
-        match self.ser() {
-            Ok(b) => Bytes::from(b).into_response(),
-            Err(e) => SourisRejection::Store(e, true).into_response(),
-        }
+        Bytes::from(self.ser()).into_response()
     }
 }
 
@@ -89,7 +86,7 @@ impl<S: Send + Sync> FromRequest<S> for Store {
         let bytes = Bytes::from_request(req, state).await?;
         let val = match Store::deser(bytes.as_ref()) {
             Ok(v) => v,
-            Err(e) => return Err(SourisRejection::Store(e, true)),
+            Err(e) => return Err(SourisRejection::Store(e)),
         };
         Ok(val)
     }
@@ -98,12 +95,12 @@ impl<S: Send + Sync> FromRequest<S> for Store {
 ///Error struct for if there is a failure de/ser-ing a `Store` using `FromRequest` or `IntoResponse`
 #[non_exhaustive]
 pub enum SourisRejection {
-    ///signifies that there was an error from [`axum::body::Bytes`] getting the bytes
+    ///signifies that there was an error from [`Bytes`] getting the bytes
     CouldNotGetBytes(BytesRejection),
-    ///signifies that there was an error with the [`Value`] - the boolean signifies whether it was serialising or deserialising (`true` is serialising)
-    Value(ValueSerError, bool),
-    ///signifies that there was an error with the [`Store`] - the boolean signifies whether it was serialising or deserialising (`true` is serialising)
-    Store(StoreSerError, bool),
+    ///signifies that there was an error with the [`Value`]
+    Value(ValueSerError),
+    ///signifies that there was an error with the [`Store`]
+    Store(StoreSerError),
 }
 impl From<BytesRejection> for SourisRejection {
     fn from(value: BytesRejection) -> Self {
@@ -117,13 +114,11 @@ impl SourisRejection {
     pub fn body_text(&self) -> String {
         match self {
             Self::CouldNotGetBytes(br) => format!("Could not get bytes: {br}"),
-            Self::Value(e, was_ser) => {
-                let ser = if *was_ser { "serialise" } else { "deserialise" };
-                format!("Could not {ser} value: {e}")
+            Self::Value(e) => {
+                format!("Could not deserialise value: {e}")
             }
-            Self::Store(e, was_ser) => {
-                let ser = if *was_ser { "serialise" } else { "deserialise" };
-                format!("Could not {ser} store: {e}")
+            Self::Store(e) => {
+                format!("Could not deserialise store: {e}")
             }
         }
     }
@@ -136,8 +131,7 @@ impl SourisRejection {
     pub fn status(&self) -> StatusCode {
         match self {
             Self::CouldNotGetBytes(br) => br.status(),
-            Self::Value(_, true) | Self::Store(_, true) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Value(_, false) | Self::Store(_, false) => StatusCode::BAD_REQUEST,
+            Self::Value(_) | Self::Store(_) => StatusCode::BAD_REQUEST,
         }
     }
 }

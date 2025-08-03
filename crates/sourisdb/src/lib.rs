@@ -32,7 +32,7 @@ pub mod values;
 #[cfg(feature = "axum")]
 pub mod axum;
 
-#[cfg(any(feature = "sync_client", feature = "async_client"))]
+#[cfg(any(feature = "sync_client", feature = "async_client", feature = "client_utils"))]
 pub mod client;
 
 #[must_use]

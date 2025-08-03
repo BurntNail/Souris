@@ -202,11 +202,8 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                 .with_prompt("Confirm Addition?")
                 .interact()?
             {
-                if client.add_entry_to_db(&db_name, &key, &value)? {
-                    println!("Successfully created new key-value pair.");
-                } else {
-                    println!("Successfully overwrote existing key-value pair.");
-                }
+                let res = client.add_entry_to_db(&db_name, true, true, &key, &value)?;
+                println!("{res}");
             } else {
                 println!("Cancelled addition");
             }
@@ -266,9 +263,8 @@ fn fun_main(Arguments { path, command }: Arguments) -> Result<(), Error> {
                     .with_prompt("Confirm Update?")
                     .interact()?
                 {
-                    if !client.add_entry_to_db(&db_name, &key, &new_val)? {
-                        println!("Successfully overwrote existing key-value pair.");
-                    }
+                    let res = client.add_entry_to_db(&db_name, true, true, &key, &new_val)?;
+                    println!("{res}");
                 } else {
                     println!("Cancelled updating key-value pair.");
                 }

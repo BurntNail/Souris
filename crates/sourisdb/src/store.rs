@@ -34,39 +34,42 @@ use crate::{
 pub struct Store(HashMap<String, Value>);
 
 impl Store {
+    pub fn new (items: impl IntoIterator<Item = (String, Value)>) -> Self {
+        Self(items.into_iter().collect())
+    }
+    
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
-    ///
-    /// # Errors
-    /// - [`ValueSerError`] if there is an error serialising the internal map as a [`Value::Map`]
-    pub fn ser(&self) -> Result<Vec<u8>, StoreSerError> {
-        fn add_value_text_to_string(value: &Value, string: &mut String) {
-            match value {
-                Value::Map(map) => {
-                    for (k, v) in map {
-                        string.push_str(k);
-                        add_value_text_to_string(v, string);
-                    }
-                }
-                Value::Array(a) => {
-                    for v in a {
-                        add_value_text_to_string(v, string);
-                    }
-                }
-                Value::JSON(sjv) => {
-                    string.push_str(&sjv.to_string());
-                }
-                Value::Timezone(tz) => {
-                    string.push_str(tz.name());
-                }
-                Value::String(s) => string.push_str(s),
-                _ => {}
-            }
-        }
-
+    pub fn ser(&self) -> Vec<u8> {
         let raw_map = Value::Map(self.0.clone());
-        let mut all_text = String::new();
-        add_value_text_to_string(&raw_map, &mut all_text);
-
+        let all_text = {
+            let mut all_text = String::new();
+            let mut to_be_added = vec![&raw_map];
+            
+            while let Some(next_value) = to_be_added.pop() {
+                match next_value {
+                    Value::Map(map) => {
+                        for (k, v) in map {
+                            all_text.push_str(k);
+                            to_be_added.push(v);
+                        }
+                    }
+                    Value::Array(a) => {
+                        to_be_added.extend(a.iter());
+                    }
+                    Value::JSON(sjv) => {
+                        all_text.push_str(&sjv.to_string());
+                    }
+                    Value::Timezone(tz) => {
+                        all_text.push_str(tz.name());
+                    }
+                    Value::String(s) => all_text.push_str(s),
+                    _ => {}
+                }
+            }
+            
+            all_text
+        };
+        
         let huffman = Huffman::new_str(&all_text);
         let map = raw_map.ser(huffman.as_ref().ok());
 
@@ -87,7 +90,7 @@ impl Store {
         fin.push(magic_ty);
         fin.extend(compressed);
 
-        Ok(fin)
+        fin
     }
 
     /// Deserialises bytes (which must require the magic bytes) into a Store.
@@ -154,7 +157,7 @@ impl Store {
     pub fn to_bytes(t: &impl serde::Serialize) -> Result<Vec<u8>, StoreSerError> {
         let v = serde_json::to_value(t)?;
         let s = Self::from_json(v)?;
-        s.ser()
+        Ok(s.ser())
     }
 
     ///fails if integer out of range, or float is NaN or infinite
