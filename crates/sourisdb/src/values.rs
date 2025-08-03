@@ -481,6 +481,26 @@ pub enum ValueSerError {
         found: ValueTy,
         ///The issue with the object
         cause: InvalidSourisTypeError,
+    },
+    ///We encountered a logic error whilst deserialising - this likely means an invalid input shape, even if there were some valid types present
+    InvalidDeserialisation(InvalidDeserialisationStateError)
+}
+
+#[derive(Copy, Clone, Debug)]
+enum InvalidDeserialisationStateError {
+    ///We encountered an invalid stack after finding a value there
+    InvalidStackAfterValue,
+    ///We found a key and a value without a map to insert them into
+    FoundKeyValueWithoutMap,
+    ///We found a state that should come after a value without a value
+    ShouldOnlyComeAfterFoundValue,
+    ///The stack was empty at the end of processing rather than yielding a value
+    EmptyStack
+}
+
+impl From<InvalidDeserialisationStateError> for ValueSerError {
+    fn from(value: InvalidDeserialisationStateError) -> Self {
+        Self::InvalidDeserialisation(value)
     }
 }
 
@@ -521,6 +541,7 @@ impl Display for ValueSerError {
                 f,
                 "Error with JSON `souris_type` - was deserialising a {found:?}, but {cause:?}"
             ),
+            ValueSerError::InvalidDeserialisation(e) => write!(f, "Error deserialising value: {e:?}")
         }
     }
 }
@@ -1181,7 +1202,7 @@ impl Value {
                     Value::Character(ch)
                 }
                 ValueTy::Timestamp => {
-                    let year_signed_state = SignedState::try_from(byte & 0b0000_0001)?;
+                    let year_signed_state = SignedState::try_from(byte & 0b0000_0011)?;
 
                     let year = Integer::deser(year_signed_state, bytes)?.try_into()?;
                     let month = Integer::deser(SignedState::Unsigned, bytes)?.try_into()?;
@@ -1284,7 +1305,7 @@ impl Value {
                         }
                         Some(next_stack_frame) => {
                             match next_stack_frame {
-                                DeserialisationState::ValueNeeded | DeserialisationState::FoundValue(_) | DeserialisationState::Map(_, _, _) | DeserialisationState::FoundKeyValue(_, _) => unreachable!("these shouldn't come on top of a value"),
+                                DeserialisationState::ValueNeeded | DeserialisationState::FoundValue(_) | DeserialisationState::Map(_, _, _) | DeserialisationState::FoundKeyValue(_, _) => return Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::InvalidStackAfterValue)),
                                 DeserialisationState::FoundKey(key) => {
                                     stack.push(DeserialisationState::FoundKeyValue(key, val));
                                 }
@@ -1338,16 +1359,16 @@ impl Value {
                             stack.push(DeserialisationState::Map(so_far, left - 1, byte));
                         }
                     } else {
-                        unreachable!("foundkeyvalue should always be after a map")
+                        return Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::FoundKeyValueWithoutMap));
                     }
                 }
                 DeserialisationState::FoundKey(_) | DeserialisationState::JsonNeeded | DeserialisationState::TimezoneNeeded => {
-                    unreachable!("should be covered in foundvalue's check for the next stack")
+                    return Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::ShouldOnlyComeAfterFoundValue))
                 }
             };
         }
 
-        unreachable!("should've found a stack with only a foundvalue");
+        Err(ValueSerError::InvalidDeserialisation(InvalidDeserialisationStateError::EmptyStack))
     }
 }
 

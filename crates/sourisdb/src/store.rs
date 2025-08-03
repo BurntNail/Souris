@@ -40,34 +40,36 @@ impl Store {
     
     ///Serialises a store into bytes. There are 8 magic bytes at the front which read `SOURISDB` and the rest is serialised as a [`Value::Map`] containing the map stored within the caller.
     pub fn ser(&self) -> Vec<u8> {
-        fn add_value_text_to_string(value: &Value, string: &mut String) {
-            match value {
-                Value::Map(map) => {
-                    for (k, v) in map {
-                        string.push_str(k);
-                        add_value_text_to_string(v, string);
-                    }
-                }
-                Value::Array(a) => {
-                    for v in a {
-                        add_value_text_to_string(v, string);
-                    }
-                }
-                Value::JSON(sjv) => {
-                    string.push_str(&sjv.to_string());
-                }
-                Value::Timezone(tz) => {
-                    string.push_str(tz.name());
-                }
-                Value::String(s) => string.push_str(s),
-                _ => {}
-            }
-        }
-
         let raw_map = Value::Map(self.0.clone());
-        let mut all_text = String::new();
-        add_value_text_to_string(&raw_map, &mut all_text);
-
+        let all_text = {
+            let mut all_text = String::new();
+            let mut to_be_added = vec![&raw_map];
+            
+            while let Some(next_value) = to_be_added.pop() {
+                match next_value {
+                    Value::Map(map) => {
+                        for (k, v) in map {
+                            all_text.push_str(k);
+                            to_be_added.push(v);
+                        }
+                    }
+                    Value::Array(a) => {
+                        to_be_added.extend(a.iter());
+                    }
+                    Value::JSON(sjv) => {
+                        all_text.push_str(&sjv.to_string());
+                    }
+                    Value::Timezone(tz) => {
+                        all_text.push_str(tz.name());
+                    }
+                    Value::String(s) => all_text.push_str(s),
+                    _ => {}
+                }
+            }
+            
+            all_text
+        };
+        
         let huffman = Huffman::new_str(&all_text);
         let map = raw_map.ser(huffman.as_ref().ok());
 
